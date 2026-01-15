@@ -14,19 +14,19 @@ fn generate_test_data(count: usize) -> Vec<RawData> {
 
 fn bench_encoding(c: &mut Criterion) {
     let mut group = c.benchmark_group("encoding");
-    
+
     // Setup
     let data = generate_test_data(1000);
     let classifier = Classifier::default();
     let mut context = Context::new();
-    
+
     // Warm up context
     for d in data.iter().take(100) {
         context.observe(d);
     }
-    
+
     group.throughput(Throughput::Elements(1000));
-    
+
     group.bench_function("encode_1000_messages", |b| {
         b.iter(|| {
             let mut encoder = Encoder::new();
@@ -37,33 +37,34 @@ fn bench_encoding(c: &mut Criterion) {
             }
         })
     });
-    
+
     group.finish();
 }
 
 fn bench_decoding(c: &mut Criterion) {
     let mut group = c.benchmark_group("decoding");
-    
+
     // Setup - encode messages first
     let data = generate_test_data(1000);
     let classifier = Classifier::default();
     let mut context = Context::new();
-    
+
     // Warm up context
     for d in data.iter().take(100) {
         context.observe(d);
     }
-    
+
     let mut encoder = Encoder::new();
-    let messages: Vec<_> = data.iter()
+    let messages: Vec<_> = data
+        .iter()
         .map(|d| {
             let classification = classifier.classify(d, &context);
             encoder.encode(d, &classification, &context)
         })
         .collect();
-    
+
     group.throughput(Throughput::Elements(1000));
-    
+
     group.bench_function("decode_1000_messages", |b| {
         b.iter(|| {
             let mut decoder = Decoder::new();
@@ -73,29 +74,29 @@ fn bench_decoding(c: &mut Criterion) {
             }
         })
     });
-    
+
     group.finish();
 }
 
 fn bench_roundtrip(c: &mut Criterion) {
     let mut group = c.benchmark_group("roundtrip");
-    
+
     let data = generate_test_data(1000);
     let classifier = Classifier::default();
     let mut context = Context::new();
-    
+
     // Warm up
     for d in data.iter().take(100) {
         context.observe(d);
     }
-    
+
     group.throughput(Throughput::Elements(1000));
-    
+
     group.bench_function("encode_decode_1000", |b| {
         b.iter(|| {
             let mut encoder = Encoder::new();
             let mut decoder = Decoder::new();
-            
+
             for d in &data {
                 let classification = classifier.classify(d, &context);
                 let msg = encoder.encode(d, &classification, &context);
@@ -104,24 +105,24 @@ fn bench_roundtrip(c: &mut Criterion) {
             }
         })
     });
-    
+
     group.finish();
 }
 
 fn bench_classification(c: &mut Criterion) {
     let mut group = c.benchmark_group("classification");
-    
+
     let data = generate_test_data(1000);
     let classifier = Classifier::default();
     let mut context = Context::new();
-    
+
     // Warm up
     for d in data.iter().take(100) {
         context.observe(d);
     }
-    
+
     group.throughput(Throughput::Elements(1000));
-    
+
     group.bench_function("classify_1000", |b| {
         b.iter(|| {
             for d in &data {
@@ -130,13 +131,13 @@ fn bench_classification(c: &mut Criterion) {
             }
         })
     });
-    
+
     group.finish();
 }
 
 fn bench_context_operations(c: &mut Criterion) {
     let mut group = c.benchmark_group("context");
-    
+
     group.bench_function("observe_1000", |b| {
         let data = generate_test_data(1000);
         b.iter(|| {
@@ -147,14 +148,14 @@ fn bench_context_operations(c: &mut Criterion) {
             black_box(context);
         })
     });
-    
+
     group.bench_function("predict_1000", |b| {
         let data = generate_test_data(100);
         let mut context = Context::new();
         for d in &data {
             context.observe(d);
         }
-        
+
         b.iter(|| {
             for _ in 0..1000 {
                 let pred = context.predict(0);
@@ -162,7 +163,7 @@ fn bench_context_operations(c: &mut Criterion) {
             }
         })
     });
-    
+
     group.bench_function("hash_context", |b| {
         let data = generate_test_data(100);
         let mut context = Context::new();
@@ -171,43 +172,55 @@ fn bench_context_operations(c: &mut Criterion) {
         }
         // Add some patterns
         for i in 0..100 {
-            context.register_pattern(alec::context::Pattern::new(vec![i as u8; 10])).ok();
+            context
+                .register_pattern(alec::context::Pattern::new(vec![i as u8; 10]))
+                .ok();
         }
-        
+
         b.iter(|| {
             let hash = context.hash();
             black_box(hash);
         })
     });
-    
+
     group.finish();
 }
 
 fn bench_compression_ratio(c: &mut Criterion) {
     let mut group = c.benchmark_group("compression");
-    
+
     // Test compression ratio with different data patterns
     let patterns = vec![
         ("constant", vec![20.0f64; 100]),
         ("linear", (0..100).map(|i| 20.0 + i as f64 * 0.1).collect()),
-        ("noisy", (0..100).map(|i| 20.0 + ((i * 7) % 10) as f64 * 0.1).collect()),
-        ("random", (0..100).map(|i| ((i * 12345) % 1000) as f64 / 10.0).collect()),
+        (
+            "noisy",
+            (0..100)
+                .map(|i| 20.0 + ((i * 7) % 10) as f64 * 0.1)
+                .collect(),
+        ),
+        (
+            "random",
+            (0..100)
+                .map(|i| ((i * 12345) % 1000) as f64 / 10.0)
+                .collect(),
+        ),
     ];
-    
+
     for (name, values) in patterns {
         group.bench_function(format!("ratio_{}", name), |b| {
             b.iter(|| {
                 let mut encoder = Encoder::new();
                 let classifier = Classifier::default();
                 let mut context = Context::new();
-                
+
                 let mut raw_total = 0usize;
                 let mut encoded_total = 0usize;
-                
+
                 for (i, &value) in values.iter().enumerate() {
                     let data = RawData::new(value, i as u64);
                     raw_total += data.raw_size();
-                    
+
                     let classification = classifier.classify(&data, &context);
                     if classification.priority.should_transmit() {
                         let msg = encoder.encode(&data, &classification, &context);
@@ -215,12 +228,12 @@ fn bench_compression_ratio(c: &mut Criterion) {
                     }
                     context.observe(&data);
                 }
-                
+
                 black_box((raw_total, encoded_total));
             })
         });
     }
-    
+
     group.finish();
 }
 

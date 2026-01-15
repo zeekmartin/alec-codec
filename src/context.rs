@@ -31,9 +31,10 @@ pub struct Prediction {
 }
 
 /// Type of prediction model
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum PredictionModel {
     /// No model, using last value
+    #[default]
     LastValue,
     /// Simple moving average
     MovingAverage,
@@ -41,12 +42,6 @@ pub enum PredictionModel {
     LinearRegression,
     /// Periodic pattern detected
     Periodic,
-}
-
-impl Default for PredictionModel {
-    fn default() -> Self {
-        PredictionModel::LastValue
-    }
 }
 
 /// Statistics for a single source
@@ -84,13 +79,13 @@ impl SourceStats {
     fn observe(&mut self, value: f64) {
         self.count += 1;
         self.last_value = value;
-        
+
         // Update running statistics (Welford's algorithm)
         let delta = value - self.mean;
         self.mean += delta / self.count as f64;
         let delta2 = value - self.mean;
         self.sum_sq_diff += delta * delta2;
-        
+
         self.sum += value;
 
         // Update history
@@ -263,11 +258,11 @@ impl Context {
     /// Calculate hash of the entire context for sync verification
     pub fn hash(&self) -> u64 {
         let mut data = Vec::new();
-        
+
         // Sort codes for deterministic hash
         let mut codes: Vec<_> = self.dictionary.keys().collect();
         codes.sort();
-        
+
         for code in codes {
             if let Some(pattern) = self.dictionary.get(code) {
                 data.extend_from_slice(&code.to_be_bytes());
@@ -275,7 +270,7 @@ impl Context {
                 data.extend_from_slice(&pattern.data);
             }
         }
-        
+
         xxh64(&data, 0)
     }
 
@@ -286,7 +281,9 @@ impl Context {
 
     /// Estimate memory usage in bytes
     pub fn memory_usage(&self) -> usize {
-        let dict_size: usize = self.dictionary.values()
+        let dict_size: usize = self
+            .dictionary
+            .values()
             .map(|p| p.data.len() + 32) // pattern data + overhead
             .sum();
         let stats_size = self.source_stats.len() * 200; // approximate
@@ -295,10 +292,11 @@ impl Context {
 
     /// Observe a new data point (update statistics)
     pub fn observe(&mut self, data: &RawData) {
-        let stats = self.source_stats
+        let stats = self
+            .source_stats
             .entry(data.source_id)
             .or_insert_with(|| SourceStats::new(self.config.history_size));
-        
+
         stats.observe(data.value);
         self.version += 1;
     }
@@ -324,14 +322,16 @@ impl Context {
         if self.dictionary.len() >= self.config.max_patterns {
             return Err(ContextError::DictionaryFull {
                 max: self.config.max_patterns,
-            }.into());
+            }
+            .into());
         }
 
         if pattern.data.len() > MAX_PATTERN_SIZE {
             return Err(ContextError::PatternTooLarge {
                 size: pattern.data.len(),
                 max: MAX_PATTERN_SIZE,
-            }.into());
+            }
+            .into());
         }
 
         // Check if pattern already exists
@@ -368,23 +368,23 @@ impl Context {
     /// Export full context for synchronization
     pub fn export_full(&self) -> Vec<u8> {
         let mut data = Vec::new();
-        
+
         // Version
         data.extend_from_slice(&self.version.to_be_bytes());
-        
+
         // Hash
         data.extend_from_slice(&self.hash().to_be_bytes());
-        
+
         // Pattern count
         data.extend_from_slice(&(self.dictionary.len() as u16).to_be_bytes());
-        
+
         // Patterns
         for (&code, pattern) in &self.dictionary {
             data.extend_from_slice(&code.to_be_bytes());
             data.push(pattern.data.len() as u8);
             data.extend_from_slice(&pattern.data);
         }
-        
+
         data
     }
 
@@ -400,13 +400,13 @@ impl Context {
         if data.len() < 14 {
             return Err(ContextError::SyncFailed {
                 reason: "Data too short".to_string(),
-            }.into());
+            }
+            .into());
         }
 
         let version = u32::from_be_bytes([data[0], data[1], data[2], data[3]]);
         let hash = u64::from_be_bytes([
-            data[4], data[5], data[6], data[7],
-            data[8], data[9], data[10], data[11],
+            data[4], data[5], data[6], data[7], data[8], data[9], data[10], data[11],
         ]);
         let count = u16::from_be_bytes([data[12], data[13]]) as usize;
 
@@ -421,12 +421,15 @@ impl Context {
             if offset + 5 > data.len() {
                 return Err(ContextError::SyncFailed {
                     reason: "Truncated data".to_string(),
-                }.into());
+                }
+                .into());
             }
 
             let code = u32::from_be_bytes([
-                data[offset], data[offset + 1],
-                data[offset + 2], data[offset + 3],
+                data[offset],
+                data[offset + 1],
+                data[offset + 2],
+                data[offset + 3],
             ]);
             let len = data[offset + 4] as usize;
             offset += 5;
@@ -434,7 +437,8 @@ impl Context {
             if offset + len > data.len() {
                 return Err(ContextError::SyncFailed {
                     reason: "Truncated pattern data".to_string(),
-                }.into());
+                }
+                .into());
             }
 
             let pattern_data = data[offset..offset + len].to_vec();
@@ -457,7 +461,8 @@ impl Context {
             return Err(ContextError::HashMismatch {
                 expected: hash,
                 actual: computed_hash,
-            }.into());
+            }
+            .into());
         }
 
         Ok(())
@@ -510,15 +515,15 @@ mod tests {
     #[test]
     fn test_observe_and_predict() {
         let mut ctx = Context::new();
-        
+
         // No prediction initially
         assert!(ctx.predict(0).is_none());
-        
+
         // Observe some values
         for i in 0..10 {
             ctx.observe(&RawData::new(20.0 + i as f64 * 0.1, i as u64));
         }
-        
+
         // Should have prediction now
         let pred = ctx.predict(0).unwrap();
         assert!((pred.value - 20.9).abs() < 0.1);
@@ -528,13 +533,13 @@ mod tests {
     #[test]
     fn test_register_pattern() {
         let mut ctx = Context::new();
-        
+
         let pattern = Pattern::new(vec![1, 2, 3, 4]);
         let code = ctx.register_pattern(pattern.clone()).unwrap();
-        
+
         assert_eq!(ctx.pattern_count(), 1);
         assert!(ctx.get_pattern(code).is_some());
-        
+
         // Registering same pattern returns same code
         let code2 = ctx.register_pattern(pattern).unwrap();
         assert_eq!(code, code2);
@@ -545,13 +550,13 @@ mod tests {
     fn test_context_hash() {
         let mut ctx1 = Context::new();
         let mut ctx2 = Context::new();
-        
+
         // Same patterns should have same hash
         ctx1.register_pattern(Pattern::new(vec![1, 2, 3])).unwrap();
         ctx2.register_pattern(Pattern::new(vec![1, 2, 3])).unwrap();
-        
+
         assert_eq!(ctx1.hash(), ctx2.hash());
-        
+
         // Different patterns should have different hash
         ctx1.register_pattern(Pattern::new(vec![4, 5, 6])).unwrap();
         assert_ne!(ctx1.hash(), ctx2.hash());
@@ -562,12 +567,12 @@ mod tests {
         let mut ctx1 = Context::new();
         ctx1.register_pattern(Pattern::new(vec![1, 2, 3])).unwrap();
         ctx1.register_pattern(Pattern::new(vec![4, 5, 6])).unwrap();
-        
+
         let exported = ctx1.export_full();
-        
+
         let mut ctx2 = Context::new();
         ctx2.import_full(&exported).unwrap();
-        
+
         assert_eq!(ctx1.hash(), ctx2.hash());
         assert_eq!(ctx1.pattern_count(), ctx2.pattern_count());
     }
@@ -577,12 +582,12 @@ mod tests {
         let mut ctx = Context::new();
         ctx.observe(&RawData::new(42.0, 0));
         ctx.register_pattern(Pattern::new(vec![1, 2, 3])).unwrap();
-        
+
         assert!(ctx.version() > 0);
         assert!(ctx.pattern_count() > 0);
-        
+
         ctx.reset();
-        
+
         assert_eq!(ctx.version(), 0);
         assert_eq!(ctx.pattern_count(), 0);
         assert!(ctx.predict(0).is_none());
@@ -591,12 +596,12 @@ mod tests {
     #[test]
     fn test_last_value() {
         let mut ctx = Context::new();
-        
+
         assert!(ctx.last_value(0).is_none());
-        
+
         ctx.observe(&RawData::new(42.5, 0));
         assert_eq!(ctx.last_value(0), Some(42.5));
-        
+
         ctx.observe(&RawData::new(43.0, 1));
         assert_eq!(ctx.last_value(0), Some(43.0));
     }

@@ -53,14 +53,12 @@ pub mod protocol;
 
 // Re-exports for convenient access
 pub use channel::Channel;
-pub use classifier::{Classification, Classifier, ClassificationReason};
+pub use classifier::{Classification, ClassificationReason, Classifier};
 pub use context::Context;
 pub use decoder::Decoder;
 pub use encoder::Encoder;
 pub use error::{AlecError, Result};
-pub use protocol::{
-    EncodedMessage, EncodingType, MessageHeader, MessageType, Priority, RawData,
-};
+pub use protocol::{EncodedMessage, EncodingType, MessageHeader, MessageType, Priority, RawData};
 
 /// Library version
 pub const VERSION: &str = env!("CARGO_PKG_VERSION");
@@ -96,7 +94,7 @@ mod tests {
         let decoded = decoder.decode(&message, &context).unwrap();
 
         assert!((decoded.value - data.value).abs() < 0.001);
-        
+
         context.observe(&data);
     }
 }

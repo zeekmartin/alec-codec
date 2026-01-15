@@ -17,15 +17,17 @@ fn main() {
 
     // Simulate temperature readings
     let temperatures = vec![
-        20.0, 20.1, 20.2, 20.1, 20.3,  // Normal readings
-        20.2, 20.4, 20.3, 20.5, 20.4,  // Slight variations
-        20.3, 20.2, 20.1, 20.0, 20.1,  // Stable
-        35.0,  // Anomaly!
-        20.5, 20.4, 20.3, 20.2,        // Back to normal
+        20.0, 20.1, 20.2, 20.1, 20.3, // Normal readings
+        20.2, 20.4, 20.3, 20.5, 20.4, // Slight variations
+        20.3, 20.2, 20.1, 20.0, 20.1, // Stable
+        35.0, // Anomaly!
+        20.5, 20.4, 20.3, 20.2, // Back to normal
     ];
 
-    println!("{:<5} {:<10} {:<15} {:<8} {:<10}",
-             "N°", "Temp (°C)", "Priority", "Size", "Transmit?");
+    println!(
+        "{:<5} {:<10} {:<15} {:<8} {:<10}",
+        "N°", "Temp (°C)", "Priority", "Size", "Transmit?"
+    );
     println!("{}", "-".repeat(55));
 
     let mut total_raw_size = 0;
@@ -35,31 +37,31 @@ fn main() {
     for (i, &temp) in temperatures.iter().enumerate() {
         // Create raw data
         let data = RawData::new(temp, i as u64);
-        
+
         // Classify the data
         let classification = classifier.classify(&data, &context);
-        
+
         // Encode
         let message = encoder.encode(&data, &classification, &context);
-        
+
         // Track sizes
         total_raw_size += data.raw_size();
         let msg_size = message.len();
-        
+
         // Check if we would transmit this
         let should_transmit = classification.priority.should_transmit();
         if should_transmit {
             total_encoded_size += msg_size;
             transmitted_count += 1;
-            
+
             // Decode (verification)
             let decoded = decoder.decode(&message, &context).unwrap();
             assert!((decoded.value - temp).abs() < 0.1, "Decode mismatch!");
         }
-        
+
         // Update context
         context.observe(&data);
-        
+
         // Display
         let transmit_str = if should_transmit { "✓" } else { "✗" };
         println!(
@@ -67,7 +69,11 @@ fn main() {
             i + 1,
             temp,
             format!("{:?}", classification.priority),
-            if should_transmit { msg_size.to_string() } else { "-".to_string() },
+            if should_transmit {
+                msg_size.to_string()
+            } else {
+                "-".to_string()
+            },
             transmit_str
         );
     }
@@ -76,12 +82,17 @@ fn main() {
     println!("\n=== Statistics ===\n");
     println!("Total measurements:     {}", temperatures.len());
     println!("Transmitted:            {}", transmitted_count);
-    println!("Suppressed (P4/P5):     {}", temperatures.len() - transmitted_count);
+    println!(
+        "Suppressed (P4/P5):     {}",
+        temperatures.len() - transmitted_count
+    );
     println!();
     println!("Raw data size:          {} bytes", total_raw_size);
     println!("Encoded size:           {} bytes", total_encoded_size);
-    println!("Compression ratio:      {:.1}%", 
-             (1.0 - total_encoded_size as f64 / total_raw_size as f64) * 100.0);
+    println!(
+        "Compression ratio:      {:.1}%",
+        (1.0 - total_encoded_size as f64 / total_raw_size as f64) * 100.0
+    );
     println!();
     println!("Context patterns:       {}", context.pattern_count());
     println!("Context version:        {}", context.version());

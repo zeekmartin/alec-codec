@@ -63,13 +63,13 @@ impl Encoder {
 
         // Build payload
         let mut payload = Vec::new();
-        
+
         // Source ID (varint encoding)
         self.encode_varint(data.source_id, &mut payload);
-        
+
         // Encoding type
         payload.push(encoding_type as u8);
-        
+
         // Encoded value
         payload.extend(encoded_value);
 
@@ -89,13 +89,13 @@ impl Encoder {
     /// Encode as raw (fallback)
     fn encode_raw(&mut self, data: &RawData, priority: Priority) -> EncodedMessage {
         let mut payload = Vec::new();
-        
+
         // Source ID
         self.encode_varint(data.source_id, &mut payload);
-        
+
         // Encoding type
         payload.push(EncodingType::Raw64 as u8);
-        
+
         // Raw value
         payload.extend_from_slice(&data.value.to_be_bytes());
 
@@ -182,21 +182,21 @@ impl Encoder {
         context: &Context,
     ) -> EncodedMessage {
         let mut payload = Vec::new();
-        
+
         // Source ID
         self.encode_varint(source_id, &mut payload);
-        
+
         // Multi encoding type
         payload.push(EncodingType::Multi as u8);
-        
+
         // Count
         payload.push(values.len() as u8);
-        
+
         // Each value
         for (name_id, value) in values {
             // Name ID (2 bytes BE)
             payload.extend_from_slice(&name_id.to_be_bytes());
-            
+
             // Simple encoding for multi (just use Raw32 for simplicity)
             payload.push(EncodingType::Raw32 as u8);
             payload.extend_from_slice(&(*value as f32).to_be_bytes());
@@ -294,11 +294,11 @@ mod tests {
         let mut encoder = Encoder::new();
         let classifier = Classifier::default();
         let context = Context::new();
-        
+
         let data = RawData::new(42.0, 0);
         let classification = classifier.classify(&data, &context);
         let message = encoder.encode(&data, &classification, &context);
-        
+
         assert!(!message.is_empty());
         assert!(message.len() < data.raw_size() + MessageHeader::SIZE);
     }
@@ -308,17 +308,17 @@ mod tests {
         let mut encoder = Encoder::new();
         let classifier = Classifier::default();
         let mut context = Context::new();
-        
+
         // Build context
         for i in 0..10 {
             context.observe(&RawData::new(20.0 + i as f64 * 0.1, i as u64));
         }
-        
+
         // Encode value close to prediction
         let data = RawData::new(21.0, 100);
         let classification = classifier.classify(&data, &context);
         let message = encoder.encode(&data, &classification, &context);
-        
+
         // Should use delta encoding (smaller)
         let encoding = message.encoding_type();
         assert!(matches!(
@@ -332,15 +332,15 @@ mod tests {
         let mut encoder = Encoder::new();
         let classifier = Classifier::default();
         let mut context = Context::new();
-        
+
         // Observe a value
         context.observe(&RawData::new(42.0, 0));
-        
+
         // Encode same value
         let data = RawData::new(42.0, 1);
         let classification = classifier.classify(&data, &context);
         let message = encoder.encode(&data, &classification, &context);
-        
+
         // Should use repeated encoding (very small)
         assert_eq!(message.encoding_type(), Some(EncodingType::Repeated));
     }
@@ -350,14 +350,14 @@ mod tests {
         let mut encoder = Encoder::new();
         let classifier = Classifier::default();
         let context = Context::new();
-        
+
         let data = RawData::new(42.0, 0);
         let classification = classifier.classify(&data, &context);
-        
+
         let msg1 = encoder.encode(&data, &classification, &context);
         let msg2 = encoder.encode(&data, &classification, &context);
         let msg3 = encoder.encode(&data, &classification, &context);
-        
+
         assert_eq!(msg1.header.sequence, 0);
         assert_eq!(msg2.header.sequence, 1);
         assert_eq!(msg3.header.sequence, 2);
@@ -368,11 +368,11 @@ mod tests {
         let mut encoder = Encoder::new();
         let classifier = Classifier::default();
         let context = Context::new();
-        
+
         let data = RawData::new(f64::NAN, 0);
         let classification = classifier.classify(&data, &context);
         let message = encoder.encode(&data, &classification, &context);
-        
+
         // Should fall back to raw encoding
         assert_eq!(message.encoding_type(), Some(EncodingType::Raw64));
     }
@@ -381,38 +381,32 @@ mod tests {
     fn test_encode_multi() {
         let mut encoder = Encoder::new();
         let context = Context::new();
-        
+
         let values = vec![
-            (1, 22.5),  // temperature
-            (2, 65.0),  // humidity
+            (1, 22.5),    // temperature
+            (2, 65.0),    // humidity
             (3, 1013.25), // pressure
         ];
-        
-        let message = encoder.encode_multi(
-            &values,
-            42,
-            12345,
-            Priority::P3Normal,
-            &context,
-        );
-        
+
+        let message = encoder.encode_multi(&values, 42, 12345, Priority::P3Normal, &context);
+
         assert_eq!(message.encoding_type(), Some(EncodingType::Multi));
     }
 
     #[test]
     fn test_varint_encoding() {
         let encoder = Encoder::new();
-        
+
         // Small value (1 byte)
         let mut out1 = Vec::new();
         encoder.encode_varint(42, &mut out1);
         assert_eq!(out1.len(), 1);
-        
+
         // Medium value (2 bytes)
         let mut out2 = Vec::new();
         encoder.encode_varint(200, &mut out2);
         assert_eq!(out2.len(), 2);
-        
+
         // Large value
         let mut out3 = Vec::new();
         encoder.encode_varint(100000, &mut out3);
@@ -428,7 +422,7 @@ mod tests {
             .timestamp(12345)
             .payload(vec![1, 2, 3])
             .build();
-        
+
         assert_eq!(message.header.message_type, MessageType::Sync);
         assert_eq!(message.header.priority, Priority::P1Critical);
         assert_eq!(message.header.sequence, 42);

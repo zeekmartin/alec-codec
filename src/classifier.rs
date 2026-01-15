@@ -22,7 +22,12 @@ pub struct Classification {
 
 impl Classification {
     /// Create a new classification
-    pub fn new(priority: Priority, reason: ClassificationReason, delta: f64, confidence: f32) -> Self {
+    pub fn new(
+        priority: Priority,
+        reason: ClassificationReason,
+        delta: f64,
+        confidence: f32,
+    ) -> Self {
         Self {
             priority,
             reason,
@@ -46,14 +51,9 @@ impl Classification {
 #[derive(Debug, Clone, PartialEq)]
 pub enum ClassificationReason {
     /// Value exceeded a critical threshold
-    ThresholdExceeded {
-        threshold: f64,
-        actual: f64,
-    },
+    ThresholdExceeded { threshold: f64, actual: f64 },
     /// Statistical anomaly detected
-    AnomalyDetected {
-        anomaly_type: AnomalyType,
-    },
+    AnomalyDetected { anomaly_type: AnomalyType },
     /// Regular scheduled transmission
     ScheduledTransmission,
     /// Value is essentially the same as predicted
@@ -150,10 +150,9 @@ impl Classifier {
 
     /// Set critical thresholds for a source
     pub fn set_critical_thresholds(&mut self, source_id: u32, min: f64, max: f64) {
-        self.config.critical_thresholds.insert(
-            source_id,
-            CriticalThresholds::new(min, max),
-        );
+        self.config
+            .critical_thresholds
+            .insert(source_id, CriticalThresholds::new(min, max));
     }
 
     /// Classify a data point
@@ -168,11 +167,9 @@ impl Classifier {
         let delta_info = self.calculate_delta(data.value, prediction.value);
 
         // Check critical thresholds first (highest priority)
-        if let Some(classification) = self.check_critical_thresholds(
-            data.value,
-            data.source_id,
-            &delta_info,
-        ) {
+        if let Some(classification) =
+            self.check_critical_thresholds(data.value, data.source_id, &delta_info)
+        {
             return classification;
         }
 
@@ -245,7 +242,12 @@ impl Classifier {
     }
 
     /// Classify normal (non-anomalous) values
-    fn classify_normal(&self, _timestamp: u64, delta: &DeltaInfo, confidence: f32) -> Classification {
+    fn classify_normal(
+        &self,
+        _timestamp: u64,
+        delta: &DeltaInfo,
+        confidence: f32,
+    ) -> Classification {
         // Check if delta is too small to bother sending
         if delta.relative < self.config.minimum_delta_threshold {
             return Classification::new(
