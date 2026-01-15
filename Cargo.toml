@@ -31,7 +31,7 @@ harness = false
 thiserror = "1.0"          # Error handling
 
 # Hashing (pour le contexte)
-xxhash-rust = { version = "0.8", features = ["xxh64"] }
+xxhash-rust = { version = "0.8", features = ["xxh64", "xxh32"] }
 
 # Temps (optionnel, pour timestamps)
 chrono = { version = "0.4", optional = true, default-features = false, features = ["std"] }

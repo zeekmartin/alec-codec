@@ -6,7 +6,11 @@
 //! - Encoding types
 //! - Raw data representation
 
+use crate::error::DecodeError;
 use std::fmt;
+
+/// Checksum size in bytes (xxHash32)
+pub const CHECKSUM_SIZE: usize = 4;
 
 /// Raw data from a sensor or source
 #[derive(Debug, Clone, PartialEq)]
@@ -348,6 +352,49 @@ impl EncodedMessage {
 
         Some(Self { header, payload })
     }
+
+    /// Compute checksum of the message (header + payload)
+    pub fn compute_checksum(&self) -> u32 {
+        use xxhash_rust::xxh32::xxh32;
+
+        let mut data = Vec::with_capacity(MessageHeader::SIZE + self.payload.len());
+        data.extend_from_slice(&self.header.to_bytes());
+        data.extend_from_slice(&self.payload);
+
+        xxh32(&data, 0) // seed = 0
+    }
+
+    /// Serialize message with checksum appended
+    pub fn to_bytes_with_checksum(&self) -> Vec<u8> {
+        let mut bytes = self.to_bytes();
+        let checksum = self.compute_checksum();
+        bytes.extend_from_slice(&checksum.to_be_bytes());
+        bytes
+    }
+
+    /// Deserialize message from bytes with checksum verification
+    pub fn from_bytes_with_checksum(bytes: &[u8]) -> Result<Self, DecodeError> {
+        if bytes.len() < MessageHeader::SIZE + CHECKSUM_SIZE {
+            return Err(DecodeError::BufferTooShort {
+                needed: MessageHeader::SIZE + CHECKSUM_SIZE,
+                available: bytes.len(),
+            });
+        }
+
+        let checksum_offset = bytes.len() - CHECKSUM_SIZE;
+        let expected = u32::from_be_bytes(bytes[checksum_offset..].try_into().unwrap());
+
+        let message =
+            Self::from_bytes(&bytes[..checksum_offset]).ok_or(DecodeError::InvalidHeader)?;
+
+        let actual = message.compute_checksum();
+
+        if actual != expected {
+            return Err(DecodeError::InvalidChecksum { expected, actual });
+        }
+
+        Ok(message)
+    }
 }
 
 /// Decoded data result
@@ -461,5 +508,73 @@ mod tests {
         assert_eq!(data.value, 42.5);
         assert_eq!(data.timestamp, 12345);
         assert_eq!(data.raw_size(), 20);
+    }
+
+    #[test]
+    fn test_checksum_computation() {
+        let message = EncodedMessage {
+            header: MessageHeader::default(),
+            payload: vec![0x00, 0x10, 0x42],
+        };
+
+        let checksum1 = message.compute_checksum();
+        let checksum2 = message.compute_checksum();
+
+        // Same message should produce same checksum
+        assert_eq!(checksum1, checksum2);
+
+        // Different message should produce different checksum
+        let message2 = EncodedMessage {
+            header: MessageHeader::default(),
+            payload: vec![0x00, 0x10, 0x43],
+        };
+        let checksum3 = message2.compute_checksum();
+        assert_ne!(checksum1, checksum3);
+    }
+
+    #[test]
+    fn test_checksum_roundtrip() {
+        let message = EncodedMessage {
+            header: MessageHeader {
+                version: 1,
+                message_type: MessageType::Data,
+                priority: Priority::P2Important,
+                sequence: 42,
+                timestamp: 12345,
+                context_version: 7,
+            },
+            payload: vec![0x00, 0x10, 0x42, 0x55, 0xAA],
+        };
+
+        let bytes = message.to_bytes_with_checksum();
+        let restored = EncodedMessage::from_bytes_with_checksum(&bytes).unwrap();
+
+        assert_eq!(message.header.sequence, restored.header.sequence);
+        assert_eq!(message.header.timestamp, restored.header.timestamp);
+        assert_eq!(message.payload, restored.payload);
+    }
+
+    #[test]
+    fn test_checksum_corruption_detected() {
+        let message = EncodedMessage {
+            header: MessageHeader::default(),
+            payload: vec![0x00, 0x10, 0x42],
+        };
+
+        let mut bytes = message.to_bytes_with_checksum();
+
+        // Corrupt a byte in the payload
+        bytes[MessageHeader::SIZE] ^= 0xFF;
+
+        let result = EncodedMessage::from_bytes_with_checksum(&bytes);
+        assert!(matches!(result, Err(DecodeError::InvalidChecksum { .. })));
+    }
+
+    #[test]
+    fn test_checksum_buffer_too_short() {
+        let short_bytes = vec![0u8; MessageHeader::SIZE]; // No checksum
+
+        let result = EncodedMessage::from_bytes_with_checksum(&short_bytes);
+        assert!(matches!(result, Err(DecodeError::BufferTooShort { .. })));
     }
 }
