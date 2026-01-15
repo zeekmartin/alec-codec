@@ -49,7 +49,7 @@ Objectif : Prouver le concept avec une implémentation minimale.
   - [x] simple_sensor.rs
   - [x] emitter_receiver.rs
 
-### v0.2.0 — Contexte évolutif 🔄 En cours
+### v0.2.0 — Contexte évolutif ✅ Complété
 
 Objectif : Le dictionnaire s'enrichit automatiquement.
 
@@ -57,10 +57,10 @@ Objectif : Le dictionnaire s'enrichit automatiquement.
   - [x] Comptage de fréquence des patterns (Pattern.frequency, last_used)
   - [x] Promotion automatique (fréquent → code court via reorder_patterns)
   - [x] Élagage des patterns rares (prune_patterns)
-- [ ] **Synchronisation manuelle**
-  - [x] Export/import du dictionnaire ✅
-  - [x] Vérification par hash ✅
-  - [ ] Diff de contexte
+- [x] **Synchronisation manuelle** ✅
+  - [x] Export/import du dictionnaire
+  - [x] Vérification par hash
+  - [x] Diff de contexte (SyncDiff)
 - [x] **Modèle prédictif amélioré** ✅
   - [x] Moyenne mobile exponentielle (EMA)
   - [ ] Régression linéaire simple
@@ -69,19 +69,22 @@ Objectif : Le dictionnaire s'enrichit automatiquement.
   - [x] Taille du dictionnaire (pattern_count)
   - [x] Taux de prédiction réussie (prediction_accuracy)
 
-### v0.3.0 — Synchronisation automatique
+### v0.3.0 — Synchronisation automatique 🔄 En cours
 
 Objectif : Les contextes se synchronisent automatiquement.
 
-- [ ] **Sync incrémentale**
-  - [ ] Diff de dictionnaire
-  - [ ] Messages SYNC
-  - [ ] Récupération après divergence
-- [ ] **Requêtes différées**
-  - [ ] REQ_DETAIL
-  - [ ] REQ_RANGE
+- [x] **Sync incrémentale** ✅
+  - [x] Diff de dictionnaire (SyncDiff)
+  - [x] Messages SYNC (SyncMessage, SyncAnnounce, SyncRequest)
+  - [x] Récupération après divergence (SyncState::Diverged)
+  - [x] State machine (Synchronizer)
+  - [x] Sérialisation/désérialisation messages sync
+- [x] **Requêtes différées** ✅
+  - [x] REQ_DETAIL (SyncMessage::ReqDetail)
+  - [x] REQ_RANGE (SyncMessage::ReqRange, RangeRequest)
   - [ ] Rate limiting
 - [ ] **Canal bidirectionnel**
+  - [ ] SyncChannel wrapper
   - [ ] Implémentation MQTT
   - [ ] Implémentation CoAP
 - [ ] **Multi-valeurs**
@@ -147,7 +150,7 @@ Objectif : Prêt pour déploiement en production.
 
 - [x] ~~Setup CI/CD GitHub Actions~~ ✅ (ci.yml + release.yml)
 
-- [x] ~~Écrire tests d'intégration~~ ✅ (57 tests)
+- [x] ~~Écrire tests d'intégration~~ ✅ (77 tests)
 
 - [x] ~~Corriger warnings dans examples~~ ✅
 
@@ -162,6 +165,9 @@ Objectif : Prêt pour déploiement en production.
 - [x] Module `metrics` pour analyse de compression
 - [x] `CompressionMetrics` et `ContextMetrics`
 - [x] Exemple `metrics_demo.rs`
+- [x] Module `sync` pour synchronisation automatique
+- [x] `SyncMessage`, `SyncDiff`, `Synchronizer`
+- [x] Sérialisation messages de sync
 
 ---
 
@@ -238,6 +244,27 @@ Actions :
 
 ## Changelog
 
+### [0.3.0] - 2026-01-15 (En cours)
+
+#### Added
+- Module `sync` pour synchronisation automatique des contextes
+- Types `SyncMessage`, `SyncAnnounce`, `SyncRequest`, `SyncDiff`
+- State machine `Synchronizer` pour gestion des états de sync
+- Messages `ReqDetail` et `ReqRange` pour requêtes différées
+- Sérialisation binaire des messages de synchronisation
+- Méthodes helper Context: `remove_pattern`, `set_pattern`, `has_pattern`, `patterns_iter`, `pattern_ids`, `set_version`
+- 14 nouveaux tests de synchronisation (77 tests total)
+
+### [0.2.0] - 2026-01-15
+
+#### Added
+- Contexte évolutif avec `EvolutionConfig`
+- Pattern scoring et reordering automatique
+- Pruning des patterns peu utilisés
+- Prédiction EMA (Exponential Moving Average)
+- Module `metrics` avec `CompressionMetrics` et `ContextMetrics`
+- Exemple `metrics_demo.rs`
+
 ### [0.1.0] - 2025-01-15
 
 #### Added
@@ -246,6 +273,8 @@ Actions :
 - Classifieur 5 niveaux (P1-P5)
 - Contexte avec dictionnaire et prédiction
 - Channel abstraction (memory, lossy)
+- Vérification checksum xxHash32
+- CI/CD GitHub Actions (ci.yml, release.yml)
 - 44 tests unitaires
 - 2 exemples (simple_sensor, emitter_receiver)
 - Documentation initiale

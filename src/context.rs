@@ -558,6 +558,46 @@ impl Context {
         self.pattern_index.get(&hash).copied()
     }
 
+    // === Synchronization helper methods ===
+
+    /// Remove a pattern by ID
+    pub fn remove_pattern(&mut self, id: u32) {
+        if let Some(pattern) = self.dictionary.remove(&id) {
+            let hash = xxh64(&pattern.data, 0);
+            self.pattern_index.remove(&hash);
+        }
+    }
+
+    /// Set a pattern at a specific ID (for sync)
+    pub fn set_pattern(&mut self, id: u32, pattern: Pattern) {
+        let hash = xxh64(&pattern.data, 0);
+        self.pattern_index.insert(hash, id);
+        self.dictionary.insert(id, pattern);
+        if id >= self.next_code {
+            self.next_code = id + 1;
+        }
+    }
+
+    /// Check if a pattern exists by ID
+    pub fn has_pattern(&self, id: u32) -> bool {
+        self.dictionary.contains_key(&id)
+    }
+
+    /// Iterate over patterns (id, pattern)
+    pub fn patterns_iter(&self) -> impl Iterator<Item = (&u32, &Pattern)> {
+        self.dictionary.iter()
+    }
+
+    /// Get all pattern IDs
+    pub fn pattern_ids(&self) -> impl Iterator<Item = u32> + '_ {
+        self.dictionary.keys().copied()
+    }
+
+    /// Set version directly (for sync)
+    pub fn set_version(&mut self, version: u32) {
+        self.version = version;
+    }
+
     /// Export full context for synchronization
     pub fn export_full(&self) -> Vec<u8> {
         let mut data = Vec::new();
