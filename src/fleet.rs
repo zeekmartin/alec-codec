@@ -12,8 +12,9 @@ use std::collections::HashMap;
 use crate::classifier::Classifier;
 use crate::context::{Context, Pattern};
 use crate::decoder::Decoder;
-use crate::error::Result;
+use crate::error::{ChannelError, Result};
 use crate::protocol::{Priority, RawData};
+use crate::security::{AuditEvent, AuditEventType, SecurityContext, Severity};
 
 /// Unique identifier for an emitter
 pub type EmitterId = u32;
@@ -445,6 +446,65 @@ impl FleetManager {
             means.iter().map(|m| (m - fleet_mean).powi(2)).sum::<f64>() / (means.len() - 1) as f64;
 
         Some(variance.sqrt())
+    }
+
+    /// Process a message with security checks (rate limiting, audit)
+    ///
+    /// This method wraps `process_message` with additional security features:
+    /// - Rate limiting per emitter
+    /// - Audit logging for messages and anomalies
+    pub fn process_message_secure(
+        &mut self,
+        emitter_id: EmitterId,
+        message: &crate::protocol::EncodedMessage,
+        timestamp: u64,
+        security: &mut SecurityContext,
+    ) -> Result<ProcessedMessage> {
+        // Rate limiting check
+        if !security.check_rate_limit(emitter_id, timestamp) {
+            security.audit(
+                AuditEvent::new(
+                    AuditEventType::RateLimitExceeded,
+                    format!("Emitter {} exceeded rate limit", emitter_id),
+                )
+                .with_emitter(emitter_id)
+                .with_severity(Severity::Medium),
+            );
+            return Err(crate::error::AlecError::Channel(
+                ChannelError::RateLimited {
+                    retry_after_ms: 1000,
+                },
+            ));
+        }
+
+        // Audit message reception
+        security.audit(
+            AuditEvent::new(
+                AuditEventType::MessageReceived,
+                format!("Message from emitter {}", emitter_id),
+            )
+            .with_emitter(emitter_id),
+        );
+
+        // Process the message normally
+        let result = self.process_message(emitter_id, message, timestamp)?;
+
+        // Audit anomalies
+        if result.is_cross_fleet_anomaly {
+            security.audit(
+                AuditEvent::new(
+                    AuditEventType::AnomalyDetected,
+                    format!(
+                        "Cross-fleet anomaly from emitter {}: value={:.2}",
+                        emitter_id, result.value
+                    ),
+                )
+                .with_emitter(emitter_id)
+                .with_severity(Severity::High),
+            );
+        }
+
+        Ok(result)
     }
 }
 

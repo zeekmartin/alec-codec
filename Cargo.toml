@@ -47,6 +47,10 @@ chrono = { version = "0.4", optional = true, default-features = false, features 
 # Logging (optionnel)
 log = { version = "0.4", optional = true }
 
+# TLS (optionnel)
+rustls = { version = "0.21", optional = true }
+webpki-roots = { version = "0.25", optional = true }
+
 [dev-dependencies]
 # Tests
 criterion = "0.5"          # Benchmarks
@@ -58,7 +62,8 @@ default = ["std"]
 std = []
 logging = ["log"]
 timestamps = ["chrono"]
-full = ["std", "logging", "timestamps"]
+tls = ["rustls", "webpki-roots"]
+full = ["std", "logging", "timestamps", "tls"]
 
 # Pour embedded (no_std)
 # no_std = []
