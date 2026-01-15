@@ -1,3 +1,9 @@
+// ALEC - Adaptive Lazy Evolving Compression
+// Copyright (c) 2025 David Martin Venti
+//
+// Dual-licensed under AGPL-3.0 and Commercial License.
+// See LICENSE file for details.
+
 //! Automatic recovery mechanisms
 //!
 //! Provides circuit breaker, retry logic, and recovery strategies.
@@ -685,7 +691,8 @@ mod tests {
         let exp = RetryStrategy::exponential(5, Duration::from_millis(50));
         assert_eq!(exp.max_retries(), 5);
 
-        let linear = RetryStrategy::linear(4, Duration::from_millis(100), Duration::from_millis(25));
+        let linear =
+            RetryStrategy::linear(4, Duration::from_millis(100), Duration::from_millis(25));
         assert_eq!(linear.max_retries(), 4);
     }
 

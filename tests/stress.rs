@@ -111,7 +111,10 @@ fn stress_test_fleet() {
     let total_messages = num_emitters * messages_per_emitter;
     let rate = total_messages as f64 / elapsed.as_secs_f64();
 
-    println!("Fleet processed {} messages in {:?}", total_messages, elapsed);
+    println!(
+        "Fleet processed {} messages in {:?}",
+        total_messages, elapsed
+    );
     println!("Rate: {:.0} messages/second", rate);
 
     assert!(
@@ -140,11 +143,17 @@ fn stress_test_context_evolution() {
     for i in 0..iterations {
         // Generate various patterns
         let value = match i % 10 {
-            0 => 0.0,                          // Constant
-            1 => i as f64 * 0.1,               // Linear increase
+            0 => 0.0,                            // Constant
+            1 => i as f64 * 0.1,                 // Linear increase
             2 => (i as f64 * 0.1).sin() * 100.0, // Sine wave
-            3 => if i % 2 == 0 { 10.0 } else { 20.0 }, // Alternating
-            _ => 50.0 + (i % 100) as f64,      // Semi-random
+            3 => {
+                if i % 2 == 0 {
+                    10.0
+                } else {
+                    20.0
+                }
+            } // Alternating
+            _ => 50.0 + (i % 100) as f64,        // Semi-random
         };
 
         let data = RawData::new(value, i as u64);
@@ -184,11 +193,11 @@ fn stress_test_classifier() {
 
     for i in 0..iterations {
         let value = match i % 5 {
-            0 => -100.0, // Critical low
-            1 => 150.0,  // Critical high
+            0 => -100.0,                          // Critical low
+            1 => 150.0,                           // Critical high
             2 => (i as f64 * 0.001).sin() * 10.0, // Normal variation
-            3 => 50.0,   // Constant
-            _ => i as f64 % 100.0, // Various
+            3 => 50.0,                            // Constant
+            _ => i as f64 % 100.0,                // Various
         };
         let data = RawData::new(value, i as u64);
         let _classification = classifier.classify(&data, &context);
@@ -197,10 +206,7 @@ fn stress_test_classifier() {
     let elapsed = start.elapsed();
     let rate = iterations as f64 / elapsed.as_secs_f64();
 
-    println!(
-        "Classified {} messages in {:?}",
-        iterations, elapsed
-    );
+    println!("Classified {} messages in {:?}", iterations, elapsed);
     println!("Rate: {:.0} classifications/second", rate);
 
     assert!(
@@ -233,7 +239,8 @@ fn stress_test_multi_value_encoding() {
         }
 
         // Encode multi-value
-        let message = encoder.encode_multi(&values, i as u32, base_timestamp, Priority::P3Normal, &ctx);
+        let message =
+            encoder.encode_multi(&values, i as u32, base_timestamp, Priority::P3Normal, &ctx);
 
         // Decode and verify
         let decoded = decoder.decode_multi(&message, &ctx).unwrap();

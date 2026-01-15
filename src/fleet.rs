@@ -1,3 +1,9 @@
+// ALEC - Adaptive Lazy Evolving Compression
+// Copyright (c) 2025 David Martin Venti
+//
+// Dual-licensed under AGPL-3.0 and Commercial License.
+// See LICENSE file for details.
+
 //! Fleet management for multi-emitter scenarios
 //!
 //! Manages multiple contexts and provides cross-fleet analytics.

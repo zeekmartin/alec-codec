@@ -1,3 +1,9 @@
+// ALEC - Adaptive Lazy Evolving Compression
+// Copyright (c) 2025 David Martin Venti
+//
+// Dual-licensed under AGPL-3.0 and Commercial License.
+// See LICENSE file for details.
+
 //! Data classification module
 //!
 //! This module determines the priority level (P1-P5) of each data point
