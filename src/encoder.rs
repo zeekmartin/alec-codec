@@ -5,6 +5,7 @@
 
 use crate::classifier::Classification;
 use crate::context::Context;
+use crate::metrics::CompressionMetrics;
 use crate::protocol::{
     EncodedMessage, EncodingType, MessageHeader, MessageType, Priority, RawData,
 };
@@ -64,6 +65,23 @@ impl Encoder {
         } else {
             message.to_bytes()
         }
+    }
+
+    /// Encode data with metrics collection
+    pub fn encode_with_metrics(
+        &mut self,
+        data: &RawData,
+        classification: &Classification,
+        context: &Context,
+        metrics: &mut CompressionMetrics,
+    ) -> EncodedMessage {
+        let message = self.encode(data, classification, context);
+
+        if let Some(encoding) = message.encoding_type() {
+            metrics.record_encode(data.raw_size(), message.len(), encoding);
+        }
+
+        message
     }
 
     /// Encode data with classification into a message

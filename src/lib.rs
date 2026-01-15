@@ -41,6 +41,7 @@
 //! - [`classifier`]: Priority classification
 //! - [`context`]: Shared context (dictionary + prediction model)
 //! - [`channel`]: Communication channel abstraction
+//! - [`metrics`]: Compression statistics and analysis
 
 // Modules
 pub mod channel;
@@ -49,6 +50,7 @@ pub mod context;
 pub mod decoder;
 pub mod encoder;
 pub mod error;
+pub mod metrics;
 pub mod protocol;
 
 // Re-exports for convenient access
@@ -58,6 +60,7 @@ pub use context::Context;
 pub use decoder::Decoder;
 pub use encoder::Encoder;
 pub use error::{AlecError, Result};
+pub use metrics::{CompressionMetrics, ContextMetrics};
 pub use protocol::{EncodedMessage, EncodingType, MessageHeader, MessageType, Priority, RawData};
 
 /// Library version

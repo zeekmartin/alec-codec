@@ -22,6 +22,10 @@ path = "examples/simple_sensor.rs"
 name = "emitter_receiver"
 path = "examples/emitter_receiver.rs"
 
+[[example]]
+name = "metrics_demo"
+path = "examples/metrics_demo.rs"
+
 [[bench]]
 name = "encoding"
 harness = false
