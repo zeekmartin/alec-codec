@@ -3,26 +3,207 @@
 ## Contexte
 
 Toutes les fonctionnalités sont implémentées. Il est temps de préparer la release v1.0.0 :
+- **Dual licensing** (AGPL-3.0 + Commercial)
 - Publication sur crates.io
 - Bindings Python (optionnel)
 - Images Docker
-- Release notes
+- Stratégie commerciale
 
 ## Objectif
 
 Finaliser et publier ALEC v1.0.0 :
-1. Checklist de release
-2. Publication crates.io
-3. Bindings PyO3 (optionnel)
-4. Docker images
+1. Mise en place du dual licensing
+2. Checklist de release
+3. Publication crates.io
+4. Infrastructure de vente
 5. Annonce
 
-## Étapes
+---
 
-### 1. Checklist pré-release
+## PARTIE A : Dual Licensing
+
+### Stratégie de monétisation
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│                    ALEC DUAL LICENSE                        │
+├─────────────────────────┬───────────────────────────────────┤
+│      AGPL-3.0           │       Commercial License          │
+│      (Gratuit)          │          (Payant)                 │
+├─────────────────────────┼───────────────────────────────────┤
+│ ✓ Usage personnel       │ ✓ Usage propriétaire              │
+│ ✓ Recherche/éducation   │ ✓ Firmware closed-source          │
+│ ✓ Projets open source   │ ✓ SaaS sans publication           │
+│ ✓ Évaluation            │ ✓ Support prioritaire             │
+├─────────────────────────┼───────────────────────────────────┤
+│ ✗ Produits propriétaires│ Startup (<1M€): 500€/an           │
+│ ✗ SaaS sans publier     │ Business (<10M€): 2500€/an        │
+│ ✗ Firmware closed       │ Enterprise (>10M€): 10000€/an     │
+│                         │ OEM: Sur devis                    │
+└─────────────────────────┴───────────────────────────────────┘
+```
+
+### Fichiers de licence à créer
+
+1. **`LICENSE`** — Fichier principal expliquant le dual licensing
+2. **`LICENSE-AGPL`** — Texte complet AGPL-3.0
+3. **`LICENSE-COMMERCIAL.md`** — Template de contrat commercial
+
+### Headers dans le code source
+
+Ajouter ce header à TOUS les fichiers `.rs` :
+
+```rust
+// ALEC - Adaptive Lazy Evolving Compression
+// Copyright (c) 2025 [Your Name/Company]
+//
+// This software is dual-licensed:
+//
+// 1. AGPL-3.0 for open source use
+//    See: https://www.gnu.org/licenses/agpl-3.0.html
+//
+// 2. Commercial license for proprietary use
+//    Contact: licensing@your-domain.com
+//
+// See LICENSE file for details.
+```
+
+Script pour ajouter les headers :
+
+```bash
+#!/bin/bash
+HEADER='// ALEC - Adaptive Lazy Evolving Compression
+// Copyright (c) 2025 [Your Name/Company]
+//
+// Dual-licensed under AGPL-3.0 and Commercial License.
+// See LICENSE file for details.
+'
+
+for file in $(find src -name "*.rs"); do
+    if ! grep -q "ALEC - Adaptive" "$file"; then
+        echo "$HEADER" | cat - "$file" > temp && mv temp "$file"
+    fi
+done
+```
+
+### Vérification des dépendances
+
+**IMPORTANT** : Toutes les dépendances doivent être compatibles AGPL.
+
+```bash
+# Installer cargo-license
+cargo install cargo-license
+
+# Vérifier les licences
+cargo license
+
+# Licences OK pour AGPL : MIT, Apache-2.0, BSD, ISC, Zlib, Unlicense
+# Licences problématiques : GPL-2.0-only (incompatible AGPL-3.0)
+```
+
+---
+
+## PARTIE B : Infrastructure de vente
+
+### Phase 1 : Simple (recommandé pour démarrer)
+
+**Outils :**
+- **LemonSqueezy** ou **Paddle** (gèrent TVA mondiale, pas besoin d'entreprise)
+- **Notion** pour tracker les clients
+- **Email** pour le support
+
+**Processus :**
+```
+1. Client visite your-domain.com/pricing
+2. Clic "Buy License" → LemonSqueezy checkout
+3. Paiement par carte
+4. Email automatique avec :
+   - Licence PDF signée numériquement
+   - Lien de téléchargement (si builds privés)
+   - Accès au support
+5. Tu reçois notification + paiement
+```
+
+**Page pricing (exemple)** :
+
+```markdown
+# ALEC Licensing
+
+## Open Source (Free)
+- AGPL-3.0 license
+- Full source code
+- Community support
+- [Download from crates.io]
+
+## Commercial License
+Use ALEC in proprietary products without open-sourcing your code.
+
+| Plan | For | Price |
+|------|-----|-------|
+| **Startup** | Companies <€1M revenue | €500/year |
+| **Business** | Companies <€10M revenue | €2,500/year |
+| **Enterprise** | Larger companies | €10,000/year |
+| **OEM** | Embedded in hardware | Contact us |
+
+All plans include:
+✓ Proprietary use rights
+✓ Email support (48h response)
+✓ Updates for 1 year
+✓ Invoice for accounting
+
+[Buy Startup] [Buy Business] [Contact for Enterprise]
+```
+
+### Phase 2 : Automatisé (quand tu as 10+ clients)
+
+**Ajouter :**
+- Portail client (accès aux téléchargements, licences, factures)
+- Clés de licence (optionnel, pour tracking)
+- Renouvellement automatique
+
+### Génération de licence automatique
+
+Créer un simple service (ou utiliser LemonSqueezy webhooks) :
+
+```python
+# Exemple de génération de licence
+import hashlib
+from datetime import datetime, timedelta
+
+def generate_license(company, tier, email):
+    expiry = datetime.now() + timedelta(days=365)
+    
+    license_text = f"""
+ALEC COMMERCIAL LICENSE
+
+Licensee: {company}
+Email: {email}
+Tier: {tier}
+License ID: {hashlib.sha256(f"{company}{email}".encode()).hexdigest()[:16].upper()}
+Valid Until: {expiry.strftime('%Y-%m-%d')}
+
+This license grants {company} the right to use ALEC 
+in proprietary products per the Commercial License Agreement.
+
+Generated: {datetime.now().isoformat()}
+"""
+    return license_text
+```
+
+---
+
+## PARTIE C : Checklist pré-release
 
 ```markdown
 ## Pre-release Checklist
+
+### Licensing
+- [ ] LICENSE file avec dual licensing explanation
+- [ ] LICENSE-AGPL avec texte complet AGPL-3.0
+- [ ] LICENSE-COMMERCIAL.md template
+- [ ] Headers ajoutés à tous les fichiers .rs
+- [ ] Dépendances vérifiées (cargo license)
+- [ ] Page pricing prête
 
 ### Code Quality
 - [ ] All tests pass: `cargo test`
@@ -32,29 +213,19 @@ Finaliser et publier ALEC v1.0.0 :
 - [ ] Benchmarks acceptable: `cargo bench`
 
 ### Documentation
-- [ ] README.md up to date
+- [ ] README.md avec section licensing
 - [ ] CHANGELOG.md updated
 - [ ] API documentation complete: `cargo doc`
 - [ ] User guide complete: `mdbook build`
-- [ ] Examples all work: `cargo build --examples`
 
-### Versioning
-- [ ] Version bumped in Cargo.toml
-- [ ] Version tag created: `git tag v1.0.0`
-- [ ] CHANGELOG reflects all changes
-
-### Legal
-- [ ] LICENSE file present
-- [ ] All dependencies have compatible licenses
-- [ ] Copyright headers if required
-
-### Metadata
-- [ ] Cargo.toml has all required fields
-- [ ] Repository URL correct
-- [ ] Keywords and categories set
+### Infrastructure
+- [ ] LemonSqueezy/Paddle account setup
+- [ ] Payment receiving configured
+- [ ] Email templates ready
+- [ ] Domain/website live
 ```
 
-### 2. Préparer Cargo.toml pour publication
+### Préparer Cargo.toml pour publication
 
 ```toml
 [package]
@@ -65,10 +236,10 @@ rust-version = "1.70"
 authors = ["Your Name <you@example.com>"]
 description = "Adaptive Lazy Evolving Compression - Smart codec for IoT and constrained environments"
 documentation = "https://docs.rs/alec"
-homepage = "https://github.com/your-org/alec-codec"
+homepage = "https://alec-codec.com"
 repository = "https://github.com/your-org/alec-codec"
 readme = "README.md"
-license = "MIT OR Apache-2.0"
+license = "AGPL-3.0"
 keywords = ["compression", "iot", "codec", "embedded", "sensor"]
 categories = ["compression", "embedded", "encoding"]
 exclude = [
@@ -76,62 +247,42 @@ exclude = [
     "prompts/",
     "benches/",
     ".github/",
+    "LICENSE-COMMERCIAL.md",
 ]
 
 [badges]
 maintenance = { status = "actively-developed" }
 ```
 
-### 3. Mettre à jour CHANGELOG.md
+**Note :** Sur crates.io, on met `license = "AGPL-3.0"`. La licence commerciale est gérée séparément.
+
+### 3. Mettre à jour README.md
+
+Ajouter une section licensing bien visible :
 
 ```markdown
-# Changelog
+## License
 
-All notable changes to this project will be documented in this file.
+ALEC is **dual-licensed**:
 
-The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
-and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
+### Open Source (AGPL-3.0)
+Free for open source projects, research, and personal use.
+You must open-source your code if you distribute ALEC or use it in a network service.
 
-## [1.0.0] - 2025-XX-XX
+### Commercial License
+For proprietary use without open-source obligations.
+Starting at €500/year for startups.
 
-### Added
-- Encoder with multiple encoding strategies (raw, delta, repeated, multi)
-- Decoder with automatic strategy detection
-- Classifier with 5 priority levels (P1-P5)
-- Evolving context with pattern learning
-- Automatic context synchronization
-- Fleet management for multi-emitter scenarios
-- Security module (rate limiting, audit logging, TLS support)
-- Health monitoring and circuit breaker
-- Comprehensive documentation
+👉 **[Get a Commercial License](https://alec-codec.com/pricing)**
 
-### Changed
-- N/A (initial stable release)
-
-### Deprecated
-- N/A
-
-### Removed
-- N/A
-
-### Fixed
-- N/A
-
-### Security
-- Rate limiting to prevent DoS
-- Audit logging for compliance
-- TLS/DTLS support for encryption
-
-## [0.1.0] - 2025-01-15
-
-### Added
-- Initial prototype
-- Basic encoder/decoder
-- Simple classifier
-- Static context
+See [LICENSE](LICENSE) for details.
 ```
 
-### 4. Publier sur crates.io
+---
+
+## PARTIE D : Publication
+
+### 1. Publier sur crates.io
 
 ```bash
 # Vérifier que tout est prêt
@@ -144,132 +295,7 @@ cargo package --list
 cargo publish
 ```
 
-### 5. Créer les bindings Python (optionnel)
-
-Créer `alec-python/` :
-
-```bash
-mkdir alec-python
-cd alec-python
-cargo init --lib
-```
-
-`alec-python/Cargo.toml` :
-
-```toml
-[package]
-name = "alec-python"
-version = "1.0.0"
-edition = "2021"
-
-[lib]
-name = "alec"
-crate-type = ["cdylib"]
-
-[dependencies]
-alec = { path = "../", version = "1.0" }
-pyo3 = { version = "0.20", features = ["extension-module"] }
-```
-
-`alec-python/src/lib.rs` :
-
-```rust
-use pyo3::prelude::*;
-use alec::{Encoder as RustEncoder, Decoder as RustDecoder, 
-           Context as RustContext, Classifier as RustClassifier,
-           RawData as RustRawData};
-
-#[pyclass]
-struct Encoder {
-    inner: RustEncoder,
-}
-
-#[pymethods]
-impl Encoder {
-    #[new]
-    fn new() -> Self {
-        Self { inner: RustEncoder::new() }
-    }
-    
-    fn encode(&mut self, value: f64, timestamp: u64, 
-              classifier: &Classifier, context: &Context) -> Vec<u8> {
-        let data = RustRawData::new(value, timestamp);
-        let classification = classifier.inner.classify(&data, &context.inner);
-        self.inner.encode(&data, &classification, &context.inner).to_bytes()
-    }
-}
-
-#[pyclass]
-struct Decoder {
-    inner: RustDecoder,
-}
-
-#[pymethods]
-impl Decoder {
-    #[new]
-    fn new() -> Self {
-        Self { inner: RustDecoder::new() }
-    }
-    
-    fn decode(&mut self, bytes: Vec<u8>, context: &Context) -> PyResult<(f64, u64)> {
-        let message = alec::EncodedMessage::from_bytes(&bytes)
-            .ok_or_else(|| PyErr::new::<pyo3::exceptions::PyValueError, _>("Invalid message"))?;
-        let decoded = self.inner.decode(&message, &context.inner)
-            .map_err(|e| PyErr::new::<pyo3::exceptions::PyValueError, _>(e.to_string()))?;
-        Ok((decoded.value, decoded.timestamp))
-    }
-}
-
-#[pyclass]
-struct Context {
-    inner: RustContext,
-}
-
-#[pymethods]
-impl Context {
-    #[new]
-    fn new() -> Self {
-        Self { inner: RustContext::new() }
-    }
-    
-    fn observe(&mut self, value: f64, timestamp: u64) {
-        let data = RustRawData::new(value, timestamp);
-        self.inner.observe(&data);
-    }
-}
-
-#[pyclass]
-struct Classifier {
-    inner: RustClassifier,
-}
-
-#[pymethods]
-impl Classifier {
-    #[new]
-    fn new() -> Self {
-        Self { inner: RustClassifier::default() }
-    }
-}
-
-#[pymodule]
-fn alec(_py: Python, m: &PyModule) -> PyResult<()> {
-    m.add_class::<Encoder>()?;
-    m.add_class::<Decoder>()?;
-    m.add_class::<Context>()?;
-    m.add_class::<Classifier>()?;
-    Ok(())
-}
-```
-
-Publier sur PyPI :
-
-```bash
-pip install maturin
-maturin build --release
-maturin publish
-```
-
-### 6. Créer l'image Docker
+### 2. Créer l'image Docker
 
 `Dockerfile` :
 
@@ -296,27 +322,6 @@ EXPOSE 8080
 CMD ["alec"]
 ```
 
-`docker-compose.yml` :
-
-```yaml
-version: '3.8'
-
-services:
-  alec-receiver:
-    build: .
-    ports:
-      - "8080:8080"
-    environment:
-      - ALEC_LOG=info
-      - ALEC_TLS=true
-    volumes:
-      - ./config:/etc/alec
-      - alec-data:/var/lib/alec
-
-volumes:
-  alec-data:
-```
-
 ```bash
 # Build
 docker build -t alec:1.0.0 .
@@ -326,7 +331,18 @@ docker tag alec:1.0.0 ghcr.io/your-org/alec:1.0.0
 docker push ghcr.io/your-org/alec:1.0.0
 ```
 
-### 7. Créer la release GitHub
+### 3. Bindings Python (optionnel)
+
+Créer `alec-python/` avec PyO3 (voir documentation PyO3).
+
+Publication :
+```bash
+pip install maturin
+maturin build --release
+maturin publish  # Sur PyPI
+```
+
+### 4. Créer la release GitHub
 
 ```bash
 # Créer le tag
@@ -349,17 +365,18 @@ We're excited to announce the first stable release of ALEC!
 - 🏭 **Fleet support** - Manage thousands of emitters
 - 📚 **Comprehensive docs** - Guides, API reference, examples
 
+## Licensing
+
+ALEC is dual-licensed:
+- **AGPL-3.0** - Free for open source
+- **Commercial** - For proprietary use ([pricing](https://alec-codec.com/pricing))
+
 ## Installation
 
-### Rust
+### Rust (AGPL-3.0)
 \`\`\`toml
 [dependencies]
 alec = "1.0"
-\`\`\`
-
-### Python
-\`\`\`bash
-pip install alec
 \`\`\`
 
 ### Docker
@@ -384,46 +401,96 @@ let message = encoder.encode(&data, &classification, &context);
 
 ## Documentation
 
-- [User Guide](https://your-org.github.io/alec-codec/)
+- [User Guide](https://alec-codec.com/docs)
 - [API Reference](https://docs.rs/alec)
-- [Examples](https://github.com/your-org/alec-codec/tree/main/examples)
-
-## What's Changed
-
-See [CHANGELOG.md](CHANGELOG.md) for full details.
-
-## Contributors
-
-Thanks to everyone who contributed to this release!
+- [Commercial Licensing](https://alec-codec.com/pricing)
 
 ---
 
 **Full Changelog**: https://github.com/your-org/alec-codec/compare/v0.1.0...v1.0.0
 ```
 
+---
+
+## PARTIE E : Lancement commercial
+
+### Annonce (adapter selon la plateforme)
+
+**LinkedIn/Twitter :**
+```
+🚀 ALEC v1.0 is here!
+
+Smart compression codec for IoT that achieves 90% size reduction 
+for sensor data.
+
+✅ Delta encoding with adaptive context
+✅ Priority classification (P1-P5)
+✅ Fleet management for 1000s of sensors
+✅ Production-ready security
+
+Open source (AGPL) or commercial license.
+
+github.com/your-org/alec-codec
+```
+
+**Hacker News :**
+```
+Show HN: ALEC – Adaptive compression codec for IoT (90% reduction)
+```
+
+**Reddit (r/rust, r/embedded, r/IOT) :**
+```
+[Show] ALEC: Adaptive Lazy Evolving Compression for IoT
+
+Built a compression codec optimized for sensor data. 
+Instead of generic compression, it learns from your data patterns.
+
+Key features:
+- Delta encoding with shared context
+- 5 priority levels for classification
+- Fleet mode for multi-device scenarios
+- Dual licensed (AGPL + Commercial)
+
+Looking for feedback, especially from embedded devs!
+```
+
+### Tracking des premiers clients
+
+Créer un simple tracker (Notion, spreadsheet) :
+
+| Date | Company | Contact | Tier | Status | Revenue |
+|------|---------|---------|------|--------|---------|
+| 2025-02-01 | Acme IoT | john@acme.io | Startup | Signed | €500 |
+
+---
+
 ## Livrables
 
-- [ ] Checklist pré-release complétée
-- [ ] Cargo.toml finalisé
-- [ ] CHANGELOG.md à jour
+- [ ] Fichiers LICENSE, LICENSE-AGPL, LICENSE-COMMERCIAL.md
+- [ ] Headers de licence dans tous les .rs
+- [ ] README.md avec section licensing
+- [ ] Page pricing sur le site
+- [ ] Compte LemonSqueezy/Paddle configuré
 - [ ] Publication crates.io
-- [ ] Bindings Python (optionnel)
-- [ ] Image Docker
+- [ ] Image Docker publiée
 - [ ] Release GitHub avec notes
-- [ ] Annonce (blog, Twitter, Reddit)
+- [ ] Posts d'annonce préparés
 
 ## Critères de succès
 
 ```bash
 cargo publish  # Succès
-pip install alec  # Fonctionne (si Python)
-docker run ghcr.io/your-org/alec:1.0.0  # Démarre
+# Site web live avec pricing
+# Premier email de licensing configuré
 ```
 
 ## 🎉 Félicitations !
 
-ALEC v1.0.0 est publié ! Prochaines étapes suggérées :
-- Surveiller les issues
-- Collecter les retours utilisateurs
-- Planifier v1.1.0 (nouvelles features)
-- Écrire des articles/tutoriels
+ALEC v1.0.0 est publié avec un modèle économique viable !
+
+**Prochaines étapes suggérées :**
+- Répondre aux premiers utilisateurs
+- Collecter les retours et témoignages
+- Optimiser la page pricing (A/B testing)
+- Écrire des articles/tutoriels (SEO)
+- Premier client → case study

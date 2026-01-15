@@ -1,21 +1,51 @@
-MIT License
+# ALEC - Dual Licensing
 
-Copyright (c) 2025 ALEC Contributors
+ALEC is available under two licensing options:
 
-Permission is hereby granted, free of charge, to any person obtaining a copy
-of this software and associated documentation files (the "Software"), to deal
-in the Software without restriction, including without limitation the rights
-to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-copies of the Software, and to permit persons to whom the Software is
-furnished to do so, subject to the following conditions:
+## 1. Open Source License (AGPL-3.0)
 
-The above copyright notice and this permission notice shall be included in all
-copies or substantial portions of the Software.
+For open source projects, personal use, research, and evaluation.
 
-THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
-SOFTWARE.
+The full text of the AGPL-3.0 license is available at:
+https://www.gnu.org/licenses/agpl-3.0.html
+
+### You CAN:
+- Use ALEC for personal projects
+- Use ALEC for research and education
+- Modify and distribute ALEC under AGPL-3.0
+- Use ALEC in open source projects (AGPL-compatible)
+
+### You MUST:
+- Disclose your source code if you distribute ALEC
+- Disclose your source code if you offer ALEC as a network service (SaaS)
+- License your work under AGPL-3.0
+- Include copyright notices
+
+## 2. Commercial License
+
+For proprietary/commercial use without AGPL obligations.
+
+### You CAN:
+- Use ALEC in proprietary products
+- Use ALEC in closed-source firmware
+- Offer ALEC-based services without disclosing source
+- Get priority support
+
+### Pricing
+
+| Tier | Annual Revenue | Price/Year |
+|------|----------------|------------|
+| Startup | < €1M | €500 |
+| Business | < €10M | €2,500 |
+| Enterprise | > €10M | €10,000 |
+| OEM | Embedded/Resale | Custom |
+
+### Contact
+
+For commercial licensing inquiries:
+- Email: licensing@your-domain.com
+- Web: https://your-domain.com/licensing
+
+---
+
+Copyright (c) 2025 [Your Name/Company]

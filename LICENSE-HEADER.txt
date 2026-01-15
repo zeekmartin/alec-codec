@@ -1,0 +1,12 @@
+// ALEC - Adaptive Lazy Evolving Compression
+// Copyright (c) 2025 [Your Name/Company]
+//
+// This software is dual-licensed:
+//
+// 1. AGPL-3.0 for open source use
+//    See: https://www.gnu.org/licenses/agpl-3.0.html
+//
+// 2. Commercial license for proprietary use
+//    Contact: licensing@your-domain.com
+//
+// See LICENSE file for details.
