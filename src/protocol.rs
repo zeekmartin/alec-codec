@@ -46,7 +46,7 @@ impl RawData {
 }
 
 /// Priority levels for data classification
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Default)]
 #[repr(u8)]
 pub enum Priority {
     /// Critical - immediate transmission with acknowledgment required
@@ -54,6 +54,7 @@ pub enum Priority {
     /// Important - immediate transmission
     P2Important = 1,
     /// Normal - standard transmission
+    #[default]
     P3Normal = 2,
     /// Deferred - stored locally, sent on request
     P4Deferred = 3,
@@ -64,7 +65,10 @@ pub enum Priority {
 impl Priority {
     /// Check if this priority level should be transmitted immediately
     pub fn should_transmit(&self) -> bool {
-        matches!(self, Priority::P1Critical | Priority::P2Important | Priority::P3Normal)
+        matches!(
+            self,
+            Priority::P1Critical | Priority::P2Important | Priority::P3Normal
+        )
     }
 
     /// Check if this priority requires acknowledgment
@@ -97,17 +101,12 @@ impl fmt::Display for Priority {
     }
 }
 
-impl Default for Priority {
-    fn default() -> Self {
-        Priority::P3Normal
-    }
-}
-
 /// Message types in the ALEC protocol
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
 #[repr(u8)]
 pub enum MessageType {
     /// Encoded data payload
+    #[default]
     Data = 0,
     /// Context synchronization
     Sync = 1,
@@ -142,17 +141,12 @@ impl MessageType {
     }
 }
 
-impl Default for MessageType {
-    fn default() -> Self {
-        MessageType::Data
-    }
-}
-
 /// Encoding types for data compression
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
 #[repr(u8)]
 pub enum EncodingType {
     /// Raw float64, big-endian (8 bytes)
+    #[default]
     Raw64 = 0x00,
     /// Raw float32, big-endian (4 bytes)
     Raw32 = 0x01,
@@ -204,14 +198,8 @@ impl EncodingType {
             EncodingType::PatternDelta => 3, // varint + 1 byte
             EncodingType::Repeated => 0,
             EncodingType::Interpolated => 0,
-            EncodingType::Multi => 0,        // variable
+            EncodingType::Multi => 0, // variable
         }
-    }
-}
-
-impl Default for EncodingType {
-    fn default() -> Self {
-        EncodingType::Raw64
     }
 }
 

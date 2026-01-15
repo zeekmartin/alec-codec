@@ -51,7 +51,8 @@ impl Decoder {
             return Err(DecodeError::BufferTooShort {
                 needed: 1,
                 available: 0,
-            }.into());
+            }
+            .into());
         }
 
         // Decode source ID (varint)
@@ -61,7 +62,8 @@ impl Decoder {
             return Err(DecodeError::BufferTooShort {
                 needed: offset + 1,
                 available: payload.len(),
-            }.into());
+            }
+            .into());
         }
 
         // Decode encoding type
@@ -70,12 +72,7 @@ impl Decoder {
             .ok_or(DecodeError::UnknownEncodingType(encoding_byte))?;
 
         // Decode value based on encoding type
-        let value = self.decode_value(
-            encoding_type,
-            &payload[offset + 1..],
-            source_id,
-            context,
-        )?;
+        let value = self.decode_value(encoding_type, &payload[offset + 1..], source_id, context)?;
 
         Ok(DecodedData::new(
             source_id,
@@ -87,8 +84,7 @@ impl Decoder {
 
     /// Decode from raw bytes
     pub fn decode_bytes(&mut self, bytes: &[u8], context: &Context) -> Result<DecodedData> {
-        let message = EncodedMessage::from_bytes(bytes)
-            .ok_or(DecodeError::InvalidHeader)?;
+        let message = EncodedMessage::from_bytes(bytes).ok_or(DecodeError::InvalidHeader)?;
         self.decode(&message, context)
     }
 
@@ -103,7 +99,8 @@ impl Decoder {
                 return Err(DecodeError::BufferTooShort {
                     needed: offset + 1,
                     available: buffer.len(),
-                }.into());
+                }
+                .into());
             }
 
             let byte = buffer[offset];
@@ -119,7 +116,8 @@ impl Decoder {
                 return Err(DecodeError::MalformedMessage {
                     offset,
                     reason: "Varint too long".to_string(),
-                }.into());
+                }
+                .into());
             }
         }
 
@@ -147,7 +145,8 @@ impl Decoder {
             EncodingType::Multi => Err(DecodeError::MalformedMessage {
                 offset: 0,
                 reason: "Multi encoding should use decode_multi".to_string(),
-            }.into()),
+            }
+            .into()),
         }
     }
 
@@ -157,7 +156,8 @@ impl Decoder {
             return Err(DecodeError::BufferTooShort {
                 needed: 8,
                 available: data.len(),
-            }.into());
+            }
+            .into());
         }
         let bytes: [u8; 8] = data[..8].try_into().unwrap();
         Ok(f64::from_be_bytes(bytes))
@@ -169,7 +169,8 @@ impl Decoder {
             return Err(DecodeError::BufferTooShort {
                 needed: 4,
                 available: data.len(),
-            }.into());
+            }
+            .into());
         }
         let bytes: [u8; 4] = data[..4].try_into().unwrap();
         Ok(f32::from_be_bytes(bytes) as f64)
@@ -181,14 +182,17 @@ impl Decoder {
             return Err(DecodeError::BufferTooShort {
                 needed: 1,
                 available: 0,
-            }.into());
+            }
+            .into());
         }
 
-        let prediction = context.predict(source_id)
-            .ok_or_else(|| DecodeError::MalformedMessage {
-                offset: 0,
-                reason: "No prediction available for delta decoding".to_string(),
-            })?;
+        let prediction =
+            context
+                .predict(source_id)
+                .ok_or_else(|| DecodeError::MalformedMessage {
+                    offset: 0,
+                    reason: "No prediction available for delta decoding".to_string(),
+                })?;
 
         let delta = data[0] as i8;
         let scale = context.scale_factor() as f64;
@@ -203,14 +207,17 @@ impl Decoder {
             return Err(DecodeError::BufferTooShort {
                 needed: 2,
                 available: data.len(),
-            }.into());
+            }
+            .into());
         }
 
-        let prediction = context.predict(source_id)
-            .ok_or_else(|| DecodeError::MalformedMessage {
-                offset: 0,
-                reason: "No prediction available for delta decoding".to_string(),
-            })?;
+        let prediction =
+            context
+                .predict(source_id)
+                .ok_or_else(|| DecodeError::MalformedMessage {
+                    offset: 0,
+                    reason: "No prediction available for delta decoding".to_string(),
+                })?;
 
         let delta = i16::from_be_bytes([data[0], data[1]]);
         let scale = context.scale_factor() as f64;
@@ -225,14 +232,17 @@ impl Decoder {
             return Err(DecodeError::BufferTooShort {
                 needed: 4,
                 available: data.len(),
-            }.into());
+            }
+            .into());
         }
 
-        let prediction = context.predict(source_id)
-            .ok_or_else(|| DecodeError::MalformedMessage {
-                offset: 0,
-                reason: "No prediction available for delta decoding".to_string(),
-            })?;
+        let prediction =
+            context
+                .predict(source_id)
+                .ok_or_else(|| DecodeError::MalformedMessage {
+                    offset: 0,
+                    reason: "No prediction available for delta decoding".to_string(),
+                })?;
 
         let delta = i32::from_be_bytes([data[0], data[1], data[2], data[3]]);
         let scale = context.scale_factor() as f64;
@@ -243,50 +253,60 @@ impl Decoder {
 
     /// Decode repeated (same as last value)
     fn decode_repeated(&self, source_id: u32, context: &Context) -> Result<f64> {
-        context.last_value(source_id)
-            .ok_or_else(|| DecodeError::MalformedMessage {
+        context.last_value(source_id).ok_or_else(|| {
+            DecodeError::MalformedMessage {
                 offset: 0,
                 reason: "No previous value for repeated decoding".to_string(),
-            }.into())
+            }
+            .into()
+        })
     }
 
     /// Decode interpolated (exact prediction)
     fn decode_interpolated(&self, source_id: u32, context: &Context) -> Result<f64> {
-        let prediction = context.predict(source_id)
-            .ok_or_else(|| DecodeError::MalformedMessage {
-                offset: 0,
-                reason: "No prediction available for interpolated decoding".to_string(),
-            })?;
+        let prediction =
+            context
+                .predict(source_id)
+                .ok_or_else(|| DecodeError::MalformedMessage {
+                    offset: 0,
+                    reason: "No prediction available for interpolated decoding".to_string(),
+                })?;
         Ok(prediction.value)
     }
 
     /// Decode pattern reference
     fn decode_pattern(&self, data: &[u8], context: &Context) -> Result<f64> {
         let (pattern_id, _) = self.decode_varint(data)?;
-        
-        let pattern = context.get_pattern(pattern_id)
+
+        let pattern = context
+            .get_pattern(pattern_id)
             .ok_or(DecodeError::UnknownPattern { pattern_id })?;
-        
-        pattern.value.ok_or_else(|| DecodeError::MalformedMessage {
-            offset: 0,
-            reason: "Pattern has no numeric value".to_string(),
-        }.into())
+
+        pattern.value.ok_or_else(|| {
+            DecodeError::MalformedMessage {
+                offset: 0,
+                reason: "Pattern has no numeric value".to_string(),
+            }
+            .into()
+        })
     }
 
     /// Decode pattern with delta adjustment
     fn decode_pattern_delta(&self, data: &[u8], context: &Context) -> Result<f64> {
         let (pattern_id, offset) = self.decode_varint(data)?;
-        
+
         if offset >= data.len() {
             return Err(DecodeError::BufferTooShort {
                 needed: offset + 1,
                 available: data.len(),
-            }.into());
+            }
+            .into());
         }
 
-        let pattern = context.get_pattern(pattern_id)
+        let pattern = context
+            .get_pattern(pattern_id)
             .ok_or(DecodeError::UnknownPattern { pattern_id })?;
-        
+
         let base_value = pattern.value.ok_or_else(|| DecodeError::MalformedMessage {
             offset: 0,
             reason: "Pattern has no numeric value".to_string(),
@@ -294,7 +314,7 @@ impl Decoder {
 
         let delta = data[offset] as i8;
         let scale = context.scale_factor() as f64;
-        
+
         Ok(base_value + (delta as f64 / scale))
     }
 
@@ -305,26 +325,28 @@ impl Decoder {
         _context: &Context,
     ) -> Result<Vec<(u16, f64)>> {
         let payload = &message.payload;
-        
+
         // Source ID
         let (_source_id, mut offset) = self.decode_varint(payload)?;
-        
+
         // Encoding type (should be Multi)
         if offset >= payload.len() {
             return Err(DecodeError::BufferTooShort {
                 needed: offset + 1,
                 available: payload.len(),
-            }.into());
+            }
+            .into());
         }
-        
+
         let encoding = payload[offset];
         offset += 1;
-        
+
         if encoding != EncodingType::Multi as u8 {
             return Err(DecodeError::MalformedMessage {
                 offset: offset - 1,
                 reason: "Expected Multi encoding".to_string(),
-            }.into());
+            }
+            .into());
         }
 
         // Count
@@ -332,9 +354,10 @@ impl Decoder {
             return Err(DecodeError::BufferTooShort {
                 needed: offset + 1,
                 available: payload.len(),
-            }.into());
+            }
+            .into());
         }
-        
+
         let count = payload[offset] as usize;
         offset += 1;
 
@@ -346,7 +369,8 @@ impl Decoder {
                 return Err(DecodeError::BufferTooShort {
                     needed: offset + 2,
                     available: payload.len(),
-                }.into());
+                }
+                .into());
             }
             let name_id = u16::from_be_bytes([payload[offset], payload[offset + 1]]);
             offset += 2;
@@ -356,7 +380,8 @@ impl Decoder {
                 return Err(DecodeError::BufferTooShort {
                     needed: offset + 1,
                     available: payload.len(),
-                }.into());
+                }
+                .into());
             }
             let value_encoding = payload[offset];
             offset += 1;
@@ -367,7 +392,8 @@ impl Decoder {
                     return Err(DecodeError::BufferTooShort {
                         needed: offset + 4,
                         available: payload.len(),
-                    }.into());
+                    }
+                    .into());
                 }
                 let bytes: [u8; 4] = payload[offset..offset + 4].try_into().unwrap();
                 let value = f32::from_be_bytes(bytes) as f64;
@@ -440,7 +466,7 @@ mod tests {
         let original = RawData::new(21.05, 100);
         let classification = classifier.classify(&original, &ctx_encoder);
         let message = encoder.encode(&original, &classification, &ctx_encoder);
-        
+
         // Verify delta encoding was used
         assert!(matches!(
             message.encoding_type(),
@@ -481,11 +507,7 @@ mod tests {
         let mut decoder = Decoder::new();
         let context = Context::new();
 
-        let values = vec![
-            (1, 22.5),
-            (2, 65.0),
-            (3, 1013.25),
-        ];
+        let values = vec![(1, 22.5), (2, 65.0), (3, 1013.25)];
 
         let message = encoder.encode_multi(
             &values,

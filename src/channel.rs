@@ -122,7 +122,8 @@ impl Channel for MemoryChannel {
         if !self.is_open {
             return Err(ChannelError::Disconnected {
                 reason: "Channel is closed".to_string(),
-            }.into());
+            }
+            .into());
         }
 
         if self.tx_buffer.len() >= self.max_buffer_size {
@@ -131,7 +132,7 @@ impl Channel for MemoryChannel {
 
         let msg_size = message.len();
         self.tx_buffer.push_back(message);
-        
+
         self.metrics.bytes_sent += msg_size as u64;
         self.metrics.messages_sent += 1;
 
@@ -142,7 +143,8 @@ impl Channel for MemoryChannel {
         if !self.is_open {
             return Err(ChannelError::Disconnected {
                 reason: "Channel is closed".to_string(),
-            }.into());
+            }
+            .into());
         }
 
         match self.rx_buffer.pop_front() {
@@ -192,7 +194,7 @@ impl ChannelPair {
         while let Some(msg) = self.emitter_to_receiver.pop_outgoing() {
             self.emitter_to_receiver.push_incoming(msg);
         }
-        
+
         // Move R→E messages
         while let Some(msg) = self.receiver_to_emitter.pop_outgoing() {
             self.receiver_to_emitter.push_incoming(msg);
@@ -339,8 +341,14 @@ mod tests {
         }
 
         // Receive on emitter side (simulating what receiver would see)
-        let msg1 = pair.emitter_to_receiver.receive(Duration::from_secs(1)).unwrap();
-        let msg2 = pair.emitter_to_receiver.receive(Duration::from_secs(1)).unwrap();
+        let msg1 = pair
+            .emitter_to_receiver
+            .receive(Duration::from_secs(1))
+            .unwrap();
+        let msg2 = pair
+            .emitter_to_receiver
+            .receive(Duration::from_secs(1))
+            .unwrap();
 
         assert_eq!(msg1.header.sequence, 1);
         assert_eq!(msg2.header.sequence, 2);
