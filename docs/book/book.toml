@@ -1,0 +1,19 @@
+[book]
+authors = ["ALEC Team"]
+language = "en"
+multilingual = false
+src = "src"
+title = "ALEC User Guide"
+description = "Adaptive Lazy Evolving Compression for IoT/Embedded Systems"
+
+[build]
+build-dir = "../output"
+create-missing = false
+
+[output.html]
+default-theme = "light"
+preferred-dark-theme = "navy"
+git-repository-url = "https://github.com/your-org/alec-codec"
+edit-url-template = "https://github.com/your-org/alec-codec/edit/main/docs/book/{path}"
+site-url = "/alec-codec/"
+cname = ""

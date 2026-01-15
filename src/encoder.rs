@@ -1,7 +1,31 @@
-//! Encoder module
+//! Encoder module for ALEC compression
 //!
 //! This module handles encoding data into compact binary messages
 //! using various encoding strategies based on context and classification.
+//!
+//! # Overview
+//!
+//! The encoder selects the optimal encoding strategy for each message:
+//! - **Delta encoding**: For values close to predictions
+//! - **Repeated encoding**: For unchanged values
+//! - **Pattern encoding**: For known dictionary patterns
+//! - **Raw encoding**: Fallback for unpredictable data
+//!
+//! # Example
+//!
+//! ```
+//! use alec::{Encoder, Classifier, Context, RawData};
+//!
+//! let mut encoder = Encoder::new();
+//! let classifier = Classifier::default();
+//! let context = Context::new();
+//!
+//! let data = RawData::new(22.5, 0);
+//! let classification = classifier.classify(&data, &context);
+//! let message = encoder.encode(&data, &classification, &context);
+//!
+//! assert!(message.len() <= 24); // Compressed or equal to raw
+//! ```
 
 use crate::classifier::Classification;
 use crate::context::Context;
@@ -10,7 +34,16 @@ use crate::protocol::{
     EncodedMessage, EncodingType, MessageHeader, MessageType, Priority, RawData,
 };
 
-/// Encoder for ALEC messages
+/// Encoder for ALEC messages.
+///
+/// The encoder maintains internal state (sequence numbers) and provides
+/// methods to encode sensor data into compact binary messages.
+///
+/// # Thread Safety
+///
+/// `Encoder` is not thread-safe. Each thread should have its own instance.
+/// For multi-threaded scenarios, consider using separate encoders per thread
+/// or wrapping in a `Mutex`.
 #[derive(Debug, Clone)]
 pub struct Encoder {
     /// Next sequence number
@@ -20,7 +53,17 @@ pub struct Encoder {
 }
 
 impl Encoder {
-    /// Create a new encoder
+    /// Create a new encoder with default settings.
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// use alec::Encoder;
+    ///
+    /// let encoder = Encoder::new();
+    /// assert_eq!(encoder.sequence(), 0);
+    /// assert!(!encoder.checksum_enabled());
+    /// ```
     pub fn new() -> Self {
         Self {
             sequence: 0,
@@ -28,7 +71,19 @@ impl Encoder {
         }
     }
 
-    /// Create encoder with checksum enabled
+    /// Create an encoder with checksum verification enabled.
+    ///
+    /// When checksum is enabled, encoded messages include a CRC32
+    /// checksum for integrity verification during decoding.
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// use alec::Encoder;
+    ///
+    /// let encoder = Encoder::with_checksum();
+    /// assert!(encoder.checksum_enabled());
+    /// ```
     pub fn with_checksum() -> Self {
         Self {
             sequence: 0,
@@ -36,22 +91,39 @@ impl Encoder {
         }
     }
 
-    /// Check if checksum is enabled
+    /// Check if checksum is enabled for this encoder.
     pub fn checksum_enabled(&self) -> bool {
         self.include_checksum
     }
 
-    /// Get current sequence number
+    /// Get the current sequence number.
+    ///
+    /// Sequence numbers are used to detect message loss and ordering issues.
     pub fn sequence(&self) -> u32 {
         self.sequence
     }
 
-    /// Reset sequence number
+    /// Reset the sequence number to zero.
+    ///
+    /// Call this when establishing a new connection or after a sync reset.
     pub fn reset_sequence(&mut self) {
         self.sequence = 0;
     }
 
-    /// Encode data and return raw bytes (with or without checksum)
+    /// Encode data and return raw bytes.
+    ///
+    /// This is a convenience method that combines encoding and serialization.
+    /// If checksum is enabled, the returned bytes include the checksum.
+    ///
+    /// # Arguments
+    ///
+    /// * `data` - The raw sensor data to encode
+    /// * `classification` - Priority classification from the classifier
+    /// * `context` - Shared context for predictions and patterns
+    ///
+    /// # Returns
+    ///
+    /// A `Vec<u8>` containing the encoded message bytes.
     pub fn encode_to_bytes(
         &mut self,
         data: &RawData,
@@ -67,7 +139,20 @@ impl Encoder {
         }
     }
 
-    /// Encode data with metrics collection
+    /// Encode data while collecting compression metrics.
+    ///
+    /// Use this method to track compression performance over time.
+    ///
+    /// # Arguments
+    ///
+    /// * `data` - The raw sensor data to encode
+    /// * `classification` - Priority classification
+    /// * `context` - Shared context
+    /// * `metrics` - Metrics collector to update
+    ///
+    /// # Returns
+    ///
+    /// The encoded message.
     pub fn encode_with_metrics(
         &mut self,
         data: &RawData,
@@ -84,7 +169,41 @@ impl Encoder {
         message
     }
 
-    /// Encode data with classification into a message
+    /// Encode data with classification into a compact message.
+    ///
+    /// This method selects the optimal encoding strategy based on the
+    /// context's predictions and the data's characteristics:
+    ///
+    /// - If value equals the last value, uses **repeated** encoding (1 byte)
+    /// - If value is close to prediction, uses **delta** encoding (1-4 bytes)
+    /// - Otherwise, uses **raw** encoding (8 bytes for value)
+    ///
+    /// # Arguments
+    ///
+    /// * `data` - The raw sensor data to encode
+    /// * `classification` - Priority classification from the classifier
+    /// * `context` - Shared context for predictions and patterns
+    ///
+    /// # Returns
+    ///
+    /// An `EncodedMessage` containing the compressed data.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use alec::{Encoder, Classifier, Context, RawData};
+    ///
+    /// let mut encoder = Encoder::new();
+    /// let classifier = Classifier::default();
+    /// let context = Context::new();
+    ///
+    /// let data = RawData::new(22.5, 0);
+    /// let classification = classifier.classify(&data, &context);
+    /// let message = encoder.encode(&data, &classification, &context);
+    ///
+    /// // Message is ready to transmit
+    /// println!("Encoded {} bytes", message.len());
+    /// ```
     pub fn encode(
         &mut self,
         data: &RawData,
