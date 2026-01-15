@@ -740,6 +740,44 @@ impl Default for Context {
     }
 }
 
+// HealthCheckable implementation for Context
+impl crate::health::HealthCheckable for Context {
+    fn health_check(&self) -> crate::health::HealthCheck {
+        use crate::health::{HealthCheck, HealthStatus};
+        use std::time::Instant;
+
+        let start = Instant::now();
+
+        // Check memory usage
+        let memory = self.estimated_memory();
+        let pattern_count = self.pattern_count();
+
+        // Determine health status based on memory and pattern count
+        let status = if memory > 100_000_000 {
+            // Over 100MB is unhealthy
+            HealthStatus::Unhealthy
+        } else if memory > 10_000_000 || pattern_count > 50_000 {
+            // Over 10MB or 50K patterns is degraded
+            HealthStatus::Degraded
+        } else {
+            HealthStatus::Healthy
+        };
+
+        HealthCheck {
+            component: "Context".to_string(),
+            status,
+            last_check: Instant::now(),
+            message: format!(
+                "Memory: {} bytes, Patterns: {}, Sources: {}",
+                memory,
+                pattern_count,
+                self.source_count()
+            ),
+            latency: start.elapsed(),
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
