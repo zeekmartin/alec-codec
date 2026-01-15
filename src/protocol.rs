@@ -4,7 +4,6 @@
 // Dual-licensed under AGPL-3.0 and Commercial License.
 // See LICENSE file for details.
 
-
 //! Protocol definitions for ALEC
 //!
 //! This module defines the core types used in the ALEC protocol:

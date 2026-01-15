@@ -4,7 +4,6 @@
 // Dual-licensed under AGPL-3.0 and Commercial License.
 // See LICENSE file for details.
 
-
 //! Error types for ALEC
 //!
 //! This module defines all error types used throughout the library.

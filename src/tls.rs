@@ -4,7 +4,6 @@
 // Dual-licensed under AGPL-3.0 and Commercial License.
 // See LICENSE file for details.
 
-
 //! TLS wrapper for secure channels
 //!
 //! Provides TLS and DTLS configuration for ALEC channels.

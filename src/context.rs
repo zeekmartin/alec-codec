@@ -4,7 +4,6 @@
 // Dual-licensed under AGPL-3.0 and Commercial License.
 // See LICENSE file for details.
 
-
 //! Shared context module
 //!
 //! This module manages the shared context between emitter and receiver:
@@ -493,9 +492,8 @@ impl Context {
         // Check if evolution is needed
         let evolution = &self.config.evolution;
         if evolution.enabled
-            && self
-                .observation_count
-                .is_multiple_of(evolution.evolution_interval)
+            && evolution.evolution_interval > 0
+            && self.observation_count % evolution.evolution_interval == 0
         {
             self.evolve();
         }

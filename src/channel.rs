@@ -4,7 +4,6 @@
 // Dual-licensed under AGPL-3.0 and Commercial License.
 // See LICENSE file for details.
 
-
 //! Channel abstraction module
 //!
 //! This module provides traits and implementations for communication channels

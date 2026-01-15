@@ -4,7 +4,6 @@
 // Dual-licensed under AGPL-3.0 and Commercial License.
 // See LICENSE file for details.
 
-
 //! Encoder module for ALEC compression
 //!
 //! This module handles encoding data into compact binary messages

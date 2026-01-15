@@ -4,7 +4,6 @@
 // Dual-licensed under AGPL-3.0 and Commercial License.
 // See LICENSE file for details.
 
-
 //! Health monitoring for ALEC components
 //!
 //! Provides health checks and degradation management.
@@ -176,8 +175,14 @@ impl HealthMonitor {
             return;
         }
 
-        let unhealthy = self.checks.iter().any(|c| c.status == HealthStatus::Unhealthy);
-        let degraded = self.checks.iter().any(|c| c.status == HealthStatus::Degraded);
+        let unhealthy = self
+            .checks
+            .iter()
+            .any(|c| c.status == HealthStatus::Unhealthy);
+        let degraded = self
+            .checks
+            .iter()
+            .any(|c| c.status == HealthStatus::Degraded);
 
         self.system_status = if unhealthy {
             HealthStatus::Unhealthy

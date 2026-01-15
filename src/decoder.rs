@@ -4,7 +4,6 @@
 // Dual-licensed under AGPL-3.0 and Commercial License.
 // See LICENSE file for details.
 
-
 //! Decoder module
 //!
 //! This module handles decoding binary messages back into data values
