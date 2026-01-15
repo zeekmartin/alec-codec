@@ -14,8 +14,8 @@ use crate::protocol::{
 pub struct Encoder {
     /// Next sequence number
     sequence: u32,
-    /// Whether to include checksum (reserved for future use)
-    _include_checksum: bool,
+    /// Whether to include checksum in encoded bytes
+    include_checksum: bool,
 }
 
 impl Encoder {
@@ -23,7 +23,7 @@ impl Encoder {
     pub fn new() -> Self {
         Self {
             sequence: 0,
-            _include_checksum: false,
+            include_checksum: false,
         }
     }
 
@@ -31,8 +31,13 @@ impl Encoder {
     pub fn with_checksum() -> Self {
         Self {
             sequence: 0,
-            _include_checksum: true,
+            include_checksum: true,
         }
+    }
+
+    /// Check if checksum is enabled
+    pub fn checksum_enabled(&self) -> bool {
+        self.include_checksum
     }
 
     /// Get current sequence number
@@ -43,6 +48,22 @@ impl Encoder {
     /// Reset sequence number
     pub fn reset_sequence(&mut self) {
         self.sequence = 0;
+    }
+
+    /// Encode data and return raw bytes (with or without checksum)
+    pub fn encode_to_bytes(
+        &mut self,
+        data: &RawData,
+        classification: &Classification,
+        context: &Context,
+    ) -> Vec<u8> {
+        let message = self.encode(data, classification, context);
+
+        if self.include_checksum {
+            message.to_bytes_with_checksum()
+        } else {
+            message.to_bytes()
+        }
     }
 
     /// Encode data with classification into a message

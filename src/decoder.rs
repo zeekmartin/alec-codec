@@ -10,8 +10,8 @@ use crate::protocol::{DecodedData, EncodedMessage, EncodingType};
 /// Decoder for ALEC messages
 #[derive(Debug, Clone)]
 pub struct Decoder {
-    /// Whether to verify checksum (reserved for future use)
-    _verify_checksum: bool,
+    /// Whether to verify checksum on incoming messages
+    verify_checksum: bool,
     /// Last decoded sequence number (for gap detection)
     last_sequence: Option<u32>,
 }
@@ -20,17 +20,22 @@ impl Decoder {
     /// Create a new decoder
     pub fn new() -> Self {
         Self {
-            _verify_checksum: false,
+            verify_checksum: false,
             last_sequence: None,
         }
     }
 
-    /// Create decoder with checksum verification
+    /// Create decoder with checksum verification enabled
     pub fn with_checksum_verification() -> Self {
         Self {
-            _verify_checksum: true,
+            verify_checksum: true,
             last_sequence: None,
         }
+    }
+
+    /// Check if checksum verification is enabled
+    pub fn checksum_verification_enabled(&self) -> bool {
+        self.verify_checksum
     }
 
     /// Decode a message
@@ -82,9 +87,13 @@ impl Decoder {
         ))
     }
 
-    /// Decode from raw bytes
+    /// Decode from raw bytes (with optional checksum verification)
     pub fn decode_bytes(&mut self, bytes: &[u8], context: &Context) -> Result<DecodedData> {
-        let message = EncodedMessage::from_bytes(bytes).ok_or(DecodeError::InvalidHeader)?;
+        let message = if self.verify_checksum {
+            EncodedMessage::from_bytes_with_checksum(bytes)?
+        } else {
+            EncodedMessage::from_bytes(bytes).ok_or(DecodeError::InvalidHeader)?
+        };
         self.decode(&message, context)
     }
 
@@ -583,5 +592,61 @@ mod tests {
         let msg2 = encoder.encode(&data, &classification, &context);
         decoder.decode(&msg2, &context).unwrap();
         assert_eq!(decoder.last_sequence(), Some(1));
+    }
+
+    #[test]
+    fn test_checksum_encode_decode_roundtrip() {
+        let mut encoder = Encoder::with_checksum();
+        let mut decoder = Decoder::with_checksum_verification();
+        let classifier = Classifier::default();
+        let context = Context::new();
+
+        let data = RawData::new(42.5, 12345);
+        let classification = classifier.classify(&data, &context);
+        let bytes = encoder.encode_to_bytes(&data, &classification, &context);
+
+        let decoded = decoder.decode_bytes(&bytes, &context).unwrap();
+        assert!((decoded.value - data.value).abs() < 0.001);
+        assert_eq!(decoded.source_id, data.source_id);
+    }
+
+    #[test]
+    fn test_checksum_corruption_decode_fails() {
+        use crate::error::AlecError;
+
+        let mut encoder = Encoder::with_checksum();
+        let mut decoder = Decoder::with_checksum_verification();
+        let classifier = Classifier::default();
+        let context = Context::new();
+
+        let data = RawData::new(42.5, 12345);
+        let classification = classifier.classify(&data, &context);
+        let mut bytes = encoder.encode_to_bytes(&data, &classification, &context);
+
+        // Corrupt a byte in the middle
+        bytes[5] ^= 0xFF;
+
+        let result = decoder.decode_bytes(&bytes, &context);
+        assert!(matches!(
+            result,
+            Err(AlecError::Decode(
+                crate::error::DecodeError::InvalidChecksum { .. }
+            ))
+        ));
+    }
+
+    #[test]
+    fn test_no_checksum_still_works() {
+        let mut encoder = Encoder::new();
+        let mut decoder = Decoder::new();
+        let classifier = Classifier::default();
+        let context = Context::new();
+
+        let data = RawData::new(123.456, 999);
+        let classification = classifier.classify(&data, &context);
+        let bytes = encoder.encode_to_bytes(&data, &classification, &context);
+
+        let decoded = decoder.decode_bytes(&bytes, &context).unwrap();
+        assert!((decoded.value - data.value).abs() < 0.001);
     }
 }
