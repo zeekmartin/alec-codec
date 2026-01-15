@@ -51,8 +51,10 @@ pub mod decoder;
 pub mod encoder;
 pub mod error;
 pub mod fleet;
+pub mod health;
 pub mod metrics;
 pub mod protocol;
+pub mod recovery;
 pub mod security;
 pub mod sync;
 pub mod tls;
@@ -75,6 +77,11 @@ pub use sync::{
     SyncAnnounce, SyncConfig, SyncDiff, SyncMessage, SyncRequest, SyncState, Synchronizer,
 };
 pub use tls::{DtlsConfig, TlsConfig, TlsState};
+pub use health::{HealthCheck, HealthCheckable, HealthConfig, HealthMonitor, HealthStatus};
+pub use recovery::{
+    CircuitBreaker, CircuitConfig, CircuitState, DegradationLevel, RetryResult, RetryStrategy,
+    with_retry, with_retry_metrics,
+};
 
 /// Library version
 pub const VERSION: &str = env!("CARGO_PKG_VERSION");

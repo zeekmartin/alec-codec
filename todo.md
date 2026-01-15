@@ -119,10 +119,10 @@ Objectif : Prêt pour déploiement en production.
   - [x] Audit logging (AuditLogger, MemoryAuditLogger)
   - [x] Rate limiting (RateLimiter avec token bucket)
   - [x] SecurityContext avec intégration FleetManager
-- [ ] **Robustesse**
-  - [ ] Tests de stress
-  - [ ] Recovery automatique
-  - [ ] Graceful degradation
+- [x] **Robustesse** ✅
+  - [x] Tests de stress (tests/stress.rs - 9 tests)
+  - [x] Recovery automatique (CircuitBreaker, RetryStrategy)
+  - [x] Graceful degradation (DegradationLevel)
 - [ ] **Performance**
   - [ ] Optimisation mémoire émetteur
   - [ ] Benchmarks sur hardware cible
@@ -180,6 +180,11 @@ Objectif : Prêt pour déploiement en production.
 - [x] Module `security` avec rate limiting et audit logging
 - [x] `SecurityContext`, `RateLimiter`, `AuditLogger`
 - [x] Module `tls` avec interfaces TLS/DTLS
+- [x] Module `health` pour monitoring de santé
+- [x] `HealthMonitor`, `HealthCheckable` trait
+- [x] Module `recovery` avec `CircuitBreaker`, `RetryStrategy`
+- [x] `DegradationLevel` pour graceful degradation
+- [x] Tests de stress `tests/stress.rs`
 
 ---
 
@@ -269,7 +274,16 @@ Actions :
 - Module `tls` avec interfaces TLS/DTLS
 - `TlsConfig`, `DtlsConfig`, `TlsState`
 - Feature flag `tls` pour rustls/webpki-roots
-- 16 nouveaux tests security/tls (103 tests total)
+- Module `health` pour monitoring de santé
+- `HealthStatus`, `HealthCheck`, `HealthMonitor`, `HealthConfig`
+- `HealthCheckable` trait avec implementation pour `Context`
+- Module `recovery` pour résilience
+- `CircuitBreaker` avec états Closed/Open/HalfOpen
+- `RetryStrategy` avec Fixed/ExponentialBackoff/LinearBackoff
+- `DegradationLevel` pour graceful degradation
+- `with_retry()` et `with_retry_metrics()` helpers
+- Tests de stress `tests/stress.rs` (9 tests performance)
+- 39 nouveaux tests health/recovery (142 tests total)
 
 ### [0.4.0] - 2026-01-15
 
