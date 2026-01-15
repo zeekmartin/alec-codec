@@ -279,6 +279,11 @@ impl Context {
         self.dictionary.len()
     }
 
+    /// Get number of tracked sources
+    pub fn source_count(&self) -> usize {
+        self.source_stats.len()
+    }
+
     /// Estimate memory usage in bytes
     pub fn memory_usage(&self) -> usize {
         let dict_size: usize = self
@@ -288,6 +293,11 @@ impl Context {
             .sum();
         let stats_size = self.source_stats.len() * 200; // approximate
         dict_size + stats_size + 256 // base overhead
+    }
+
+    /// Alias for memory_usage (for metrics compatibility)
+    pub fn estimated_memory(&self) -> usize {
+        self.memory_usage()
     }
 
     /// Observe a new data point (update statistics)
