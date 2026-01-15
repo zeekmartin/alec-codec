@@ -52,6 +52,7 @@ pub mod encoder;
 pub mod error;
 pub mod metrics;
 pub mod protocol;
+pub mod sync;
 
 // Re-exports for convenient access
 pub use channel::Channel;
@@ -62,6 +63,9 @@ pub use encoder::Encoder;
 pub use error::{AlecError, Result};
 pub use metrics::{CompressionMetrics, ContextMetrics};
 pub use protocol::{EncodedMessage, EncodingType, MessageHeader, MessageType, Priority, RawData};
+pub use sync::{
+    SyncAnnounce, SyncConfig, SyncDiff, SyncMessage, SyncRequest, SyncState, Synchronizer,
+};
 
 /// Library version
 pub const VERSION: &str = env!("CARGO_PKG_VERSION");
