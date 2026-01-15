@@ -50,6 +50,7 @@ pub mod context;
 pub mod decoder;
 pub mod encoder;
 pub mod error;
+pub mod fleet;
 pub mod metrics;
 pub mod protocol;
 pub mod sync;
@@ -61,6 +62,7 @@ pub use context::Context;
 pub use decoder::Decoder;
 pub use encoder::Encoder;
 pub use error::{AlecError, Result};
+pub use fleet::{EmitterId, EmitterState, FleetConfig, FleetManager, FleetStats, ProcessedMessage};
 pub use metrics::{CompressionMetrics, ContextMetrics};
 pub use protocol::{EncodedMessage, EncodingType, MessageHeader, MessageType, Priority, RawData};
 pub use sync::{
