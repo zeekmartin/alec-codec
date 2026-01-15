@@ -91,16 +91,19 @@ Objectif : Les contextes se synchronisent automatiquement.
   - [x] Support capteurs multi-métriques (encode_multi/decode_multi)
   - [ ] Corrélations entre métriques
 
-### v0.4.0 — Mode flotte
+### v0.4.0 — Mode flotte 🔄 En cours
 
 Objectif : Plusieurs émetteurs, un récepteur central.
 
-- [ ] **Gestion multi-émetteurs**
-  - [ ] Contextes par émetteur
-  - [ ] Contexte partagé de flotte
-- [ ] **Apprentissage collectif**
-  - [ ] Patterns communs à la flotte
-  - [ ] Détection d'anomalies par comparaison
+- [x] **Gestion multi-émetteurs** ✅
+  - [x] Contextes par émetteur (EmitterState)
+  - [x] Contexte partagé de flotte (fleet_context)
+  - [x] FleetManager avec configuration
+  - [x] FleetStats pour statistiques
+- [x] **Apprentissage collectif** ✅
+  - [x] Patterns communs à la flotte (sync_fleet_patterns)
+  - [x] Détection d'anomalies par comparaison (cross-fleet)
+  - [x] Fleet mean et std dev
 - [ ] **Dashboard**
   - [ ] Visualisation temps réel
   - [ ] Métriques agrégées
@@ -150,7 +153,7 @@ Objectif : Prêt pour déploiement en production.
 
 - [x] ~~Setup CI/CD GitHub Actions~~ ✅ (ci.yml + release.yml)
 
-- [x] ~~Écrire tests d'intégration~~ ✅ (77 tests)
+- [x] ~~Écrire tests d'intégration~~ ✅ (87 tests)
 
 - [x] ~~Corriger warnings dans examples~~ ✅
 
@@ -168,6 +171,10 @@ Objectif : Prêt pour déploiement en production.
 - [x] Module `sync` pour synchronisation automatique
 - [x] `SyncMessage`, `SyncDiff`, `Synchronizer`
 - [x] Sérialisation messages de sync
+- [x] Module `fleet` pour mode multi-émetteurs
+- [x] `FleetManager`, `EmitterState`, `FleetStats`
+- [x] Détection cross-fleet anomaly
+- [x] Exemple `fleet_demo.rs`
 
 ---
 
@@ -244,7 +251,20 @@ Actions :
 
 ## Changelog
 
-### [0.3.0] - 2026-01-15 (En cours)
+### [0.4.0] - 2026-01-15 (En cours)
+
+#### Added
+- Module `fleet` pour gestion multi-émetteurs
+- `FleetManager` avec contextes par émetteur et contexte partagé
+- `EmitterState` avec statistiques (mean, std_dev, recent_values)
+- `FleetStats` pour métriques fleet-wide
+- Détection cross-fleet anomaly avec z-score
+- Synchronisation patterns communs vers fleet context
+- Méthode `pattern_hashes()` sur Context
+- Exemple `fleet_demo.rs`
+- 10 nouveaux tests fleet (87 tests total)
+
+### [0.3.0] - 2026-01-15
 
 #### Added
 - Module `sync` pour synchronisation automatique des contextes

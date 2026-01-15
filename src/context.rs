@@ -598,6 +598,11 @@ impl Context {
         self.version = version;
     }
 
+    /// Get iterator over pattern hashes (for fleet sync)
+    pub fn pattern_hashes(&self) -> impl Iterator<Item = u64> + '_ {
+        self.pattern_index.keys().copied()
+    }
+
     /// Export full context for synchronization
     pub fn export_full(&self) -> Vec<u8> {
         let mut data = Vec::new();

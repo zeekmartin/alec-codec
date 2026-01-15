@@ -26,6 +26,10 @@ path = "examples/emitter_receiver.rs"
 name = "metrics_demo"
 path = "examples/metrics_demo.rs"
 
+[[example]]
+name = "fleet_demo"
+path = "examples/fleet_demo.rs"
+
 [[bench]]
 name = "encoding"
 harness = false
