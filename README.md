@@ -6,7 +6,7 @@
 
 <p align="center">
   <a href="https://github.com/zeekmartin/alec-codec/actions/workflows/ci.yml"><img src="https://github.com/zeekmartin/alec-codec/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
-  <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-blue.svg" alt="License"></a>
+  <a href="LICENSE"><img src="https://img.shields.io/badge/license-AGPL--3.0-blue.svg" alt="License"></a>
   <a href="https://crates.io/crates/alec"><img src="https://img.shields.io/crates/v/alec.svg" alt="Crates.io"></a>
 </p>
 
@@ -114,7 +114,7 @@ Un satellite photographie la Terre. Il n'envoie que les changements significatif
 
 ```bash
 # Cloner le repo
-git clone https://github.com/votre-org/alec-codec.git
+git clone https://github.com/zeekmartin/alec-codec.git
 cd alec-codec
 
 # Compiler
@@ -190,11 +190,11 @@ Résultats sur dataset de référence (capteur température, 24h, 1 mesure/min) 
 
 ## Roadmap
 
-- [x] **v0.1** — Prototype fonctionnel
-- [ ] **v0.2** — Contexte évolutif
-- [ ] **v0.3** — Synchronisation automatique
-- [ ] **v0.4** — Mode flotte
-- [ ] **v1.0** — Production ready
+- [x] **v0.1** — Prototype fonctionnel ✅
+- [x] **v0.2** — Contexte évolutif ✅
+- [x] **v0.3** — Synchronisation automatique ✅
+- [x] **v0.4** — Mode flotte ✅
+- [x] **v1.0** — Production ready ✅
 
 ➡️ [Voir la roadmap complète](todo.md)
 
@@ -218,9 +218,28 @@ Les contributions sont les bienvenues ! Consultez :
 
 ---
 
-## Licence
+## License
 
-Ce projet est sous licence MIT. Voir [LICENSE](LICENSE) pour plus de détails.
+ALEC is **dual-licensed**:
+
+### Open Source (AGPL-3.0)
+
+Free for open source projects, research, and personal use.
+You must open-source your code if you distribute ALEC or use it in a network service.
+
+```toml
+[dependencies]
+alec = "1.0"
+```
+
+### Commercial License
+
+For proprietary use without open-source obligations.
+Starting at $500/year for startups.
+
+👉 **[Get a Commercial License](https://alec-codec.com/pricing)**
+
+See [LICENSE](LICENSE) for details.
 
 ---
 

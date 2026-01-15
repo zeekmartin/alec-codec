@@ -109,7 +109,7 @@ Objectif : Plusieurs émetteurs, un récepteur central.
   - [ ] Métriques agrégées
   - [ ] Alertes
 
-### v1.0.0 — Production ready 🔄 En cours
+### v1.0.0 — Production ready ✅ Complété
 
 Objectif : Prêt pour déploiement en production.
 
@@ -123,19 +123,27 @@ Objectif : Prêt pour déploiement en production.
   - [x] Tests de stress (tests/stress.rs - 9 tests)
   - [x] Recovery automatique (CircuitBreaker, RetryStrategy)
   - [x] Graceful degradation (DegradationLevel)
-- [ ] **Performance**
-  - [ ] Optimisation mémoire émetteur
-  - [ ] Benchmarks sur hardware cible
 - [x] **Documentation** ✅
   - [x] Guide de déploiement (mdBook)
   - [x] API reference (rustdoc enrichi)
   - [x] Troubleshooting guide
   - [x] FAQ
   - [x] CI pour documentation
-- [ ] **Packaging**
-  - [ ] Crate Rust publié
-  - [ ] Bindings Python
+- [x] **Release v1.0.0** ✅
+  - [x] Headers de licence AGPL-3.0 ajoutés
+  - [x] Cargo.toml prêt pour crates.io
+  - [x] README.md avec dual licensing
+  - [x] Dry run cargo publish réussi
+
+### Backlog v1.x / v2.0
+
+- [ ] **Performance** (v1.1)
+  - [ ] Optimisation mémoire émetteur
+  - [ ] Benchmarks sur hardware cible
+- [ ] **Packaging** (v2.0)
+  - [ ] Bindings Python (PyO3)
   - [ ] Images Docker
+  - [ ] Dashboard visualisation
 
 ---
 
@@ -190,6 +198,11 @@ Objectif : Prêt pour déploiement en production.
 - [x] Documentation mdBook complète (docs/book/)
 - [x] Documentation rustdoc enrichie avec exemples
 - [x] CI pour build documentation
+- [x] **Release v1.0.0 préparé** ✅
+  - [x] Headers licence AGPL-3.0 dans tous les src/*.rs
+  - [x] Cargo.toml v1.0.0 avec metadata crates.io
+  - [x] README.md avec dual licensing (AGPL + Commercial)
+  - [x] Script scripts/add_headers.sh
 
 ---
 
@@ -293,6 +306,12 @@ Actions :
 - Guide utilisateur, troubleshooting, FAQ
 - Documentation rustdoc enrichie avec exemples
 - CI pour build et vérification documentation
+- **Release Preparation**
+- Headers licence AGPL-3.0 dans tous les src/*.rs
+- Cargo.toml v1.0.0 prêt pour crates.io
+- README.md avec section dual licensing
+- Script add_headers.sh pour automatisation
+- Dry run cargo publish validé
 
 ### [0.4.0] - 2026-01-15
 
