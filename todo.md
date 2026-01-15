@@ -136,7 +136,7 @@ Objectif : Prêt pour déploiement en production.
 - [x] ~~Implémenter `src/encoder.rs`~~ ✅
 - [x] ~~Implémenter `src/decoder.rs`~~ ✅
 - [x] ~~Implémenter `src/classifier.rs`~~ ✅
-- [ ] Implémenter vérification checksum (encoder/decoder)
+- [x] ~~Implémenter vérification checksum (encoder/decoder)~~ ✅ xxHash32
 - [ ] Implémenter scheduling dans classifier
 
 ### Moyenne priorité
@@ -145,21 +145,23 @@ Objectif : Prêt pour déploiement en production.
   - Assigné : —
   - Estimé : 0.5 jour
 
-- [ ] Setup CI/CD GitHub Actions
-  - Assigné : —
-  - Estimé : 0.5 jour
+- [x] ~~Setup CI/CD GitHub Actions~~ ✅ (ci.yml + release.yml)
 
-- [x] ~~Écrire tests d'intégration~~ ✅ (44 tests)
+- [x] ~~Écrire tests d'intégration~~ ✅ (57 tests)
 
-- [ ] Corriger warnings dans examples
-  - simple_sensor.rs: unused import Priority
-  - emitter_receiver.rs: unused variable pair
+- [x] ~~Corriger warnings dans examples~~ ✅
 
 ### Basse priorité
 
 - [ ] Logo et assets graphiques
 - [ ] Page de documentation (mdbook ou similar)
 - [ ] Exemple vidéo/démo
+
+### Ajouts récents ✅
+
+- [x] Module `metrics` pour analyse de compression
+- [x] `CompressionMetrics` et `ContextMetrics`
+- [x] Exemple `metrics_demo.rs`
 
 ---
 
