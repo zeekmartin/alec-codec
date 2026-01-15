@@ -11,34 +11,45 @@ Créer un codec de compression adaptatif qui combine :
 
 ## Roadmap
 
-### v0.1.0 — Prototype fonctionnel 🎯 Actuel
+### v0.1.0 — Prototype fonctionnel ✅ Complété
 
 Objectif : Prouver le concept avec une implémentation minimale.
 
 - [x] Architecture documentée
 - [x] Interfaces définies
 - [x] Templates de prompts créés
-- [ ] **Encodeur basique**
-  - [ ] Encodage raw (fallback)
-  - [ ] Encodage delta (i8, i16)
-  - [ ] Format de message binaire
-- [ ] **Décodeur basique**
-  - [ ] Décodage raw
-  - [ ] Décodage delta
-- [ ] **Classifieur simple**
-  - [ ] Classification par seuils fixes
-  - [ ] 5 niveaux de priorité
-- [ ] **Contexte statique**
-  - [ ] Dictionnaire prédéfini
-  - [ ] Prédiction par dernière valeur
-- [ ] **Tests unitaires**
-  - [ ] Roundtrip encoding/decoding
-  - [ ] Classification edge cases
-- [ ] **Exemple de démonstration**
-  - [ ] Capteur de température simulé
-  - [ ] Émetteur + Récepteur en local
+- [x] **Encodeur basique**
+  - [x] Encodage raw (fallback Raw32, Raw64)
+  - [x] Encodage delta (i8, i16, i32)
+  - [x] Encodage repeated (0 octet)
+  - [x] Format de message binaire (varint)
+  - [x] Encodage multi-valeurs
+- [x] **Décodeur basique**
+  - [x] Décodage raw
+  - [x] Décodage delta
+  - [x] Décodage repeated
+  - [x] Décodage multi-valeurs
+  - [x] Tracking des séquences
+- [x] **Classifieur simple**
+  - [x] Classification par seuils fixes
+  - [x] 5 niveaux de priorité (P1-P5)
+  - [x] Détection d'anomalies
+  - [x] Seuils critiques configurables
+- [x] **Contexte statique**
+  - [x] Dictionnaire de patterns
+  - [x] Prédiction par dernière valeur
+  - [x] Export/Import du contexte
+  - [x] Hash de vérification
+- [x] **Tests unitaires** (44 tests)
+  - [x] Roundtrip encoding/decoding
+  - [x] Classification edge cases
+  - [x] Varint encoding
+  - [x] Channel tests
+- [x] **Exemple de démonstration**
+  - [x] simple_sensor.rs
+  - [x] emitter_receiver.rs
 
-### v0.2.0 — Contexte évolutif
+### v0.2.0 — Contexte évolutif 🎯 Prochain
 
 Objectif : Le dictionnaire s'enrichit automatiquement.
 
@@ -47,8 +58,9 @@ Objectif : Le dictionnaire s'enrichit automatiquement.
   - [ ] Promotion automatique (fréquent → code court)
   - [ ] Élagage des patterns rares
 - [ ] **Synchronisation manuelle**
-  - [ ] Export/import du dictionnaire
-  - [ ] Vérification par hash
+  - [ ] Export/import du dictionnaire (partiellement fait)
+  - [ ] Vérification par hash (fait)
+  - [ ] Diff de contexte
 - [ ] **Modèle prédictif amélioré**
   - [ ] Moyenne mobile
   - [ ] Régression linéaire simple
@@ -73,7 +85,7 @@ Objectif : Les contextes se synchronisent automatiquement.
   - [ ] Implémentation MQTT
   - [ ] Implémentation CoAP
 - [ ] **Multi-valeurs**
-  - [ ] Support capteurs multi-métriques
+  - [x] Support capteurs multi-métriques (encode_multi/decode_multi)
   - [ ] Corrélations entre métriques
 
 ### v0.4.0 — Mode flotte
@@ -121,20 +133,11 @@ Objectif : Prêt pour déploiement en production.
 
 ### Haute priorité
 
-- [ ] Implémenter `src/encoder.rs`
-  - Assigné : —
-  - Estimé : 2 jours
-  - Bloqué par : —
-
-- [ ] Implémenter `src/decoder.rs`
-  - Assigné : —
-  - Estimé : 1 jour
-  - Bloqué par : encoder.rs
-
-- [ ] Implémenter `src/classifier.rs`
-  - Assigné : —
-  - Estimé : 1 jour
-  - Bloqué par : —
+- [x] ~~Implémenter `src/encoder.rs`~~ ✅
+- [x] ~~Implémenter `src/decoder.rs`~~ ✅
+- [x] ~~Implémenter `src/classifier.rs`~~ ✅
+- [ ] Implémenter vérification checksum (encoder/decoder)
+- [ ] Implémenter scheduling dans classifier
 
 ### Moyenne priorité
 
@@ -146,10 +149,11 @@ Objectif : Prêt pour déploiement en production.
   - Assigné : —
   - Estimé : 0.5 jour
 
-- [ ] Écrire tests d'intégration
-  - Assigné : —
-  - Estimé : 1 jour
-  - Bloqué par : encoder, decoder
+- [x] ~~Écrire tests d'intégration~~ ✅ (44 tests)
+
+- [ ] Corriger warnings dans examples
+  - simple_sensor.rs: unused import Priority
+  - emitter_receiver.rs: unused variable pair
 
 ### Basse priorité
 
@@ -189,7 +193,7 @@ Objectif : Prêt pour déploiement en production.
 
 ## Bugs connus
 
-Aucun bug connu pour l'instant (projet en démarrage).
+- ~~Bug #1: choose_encoding vérifie Delta avant Repeated~~ ✅ Corrigé 2025-01-15
 
 ---
 
@@ -199,8 +203,7 @@ Aucun bug connu pour l'instant (projet en démarrage).
 
 | Question | Options | Pour | Contre | Décision |
 |----------|---------|------|--------|----------|
-| Langage principal | Rust vs C | Rust: sécurité mémoire, C: portabilité | Rust: learning curve | Rust ✓ |
-| Format binaire | Custom vs Protobuf vs CBOR | Custom: optimal, Standards: tooling | Custom: maintenance | À décider |
+| Format binaire | Custom vs Protobuf vs CBOR | Custom: optimal, Standards: tooling | Custom: maintenance | Custom ✓ |
 | Transport | MQTT vs CoAP vs Custom | MQTT: écosystème, CoAP: UDP natif | — | Les deux |
 
 ### Décidées
@@ -208,6 +211,7 @@ Aucun bug connu pour l'instant (projet en démarrage).
 - **Rust** pour le cœur du codec (sécurité, performance)
 - **Asymétrie** par défaut : émetteur léger, récepteur puissant
 - **5 niveaux de priorité** : P1-P5 (extensible si besoin)
+- **Format binaire custom** avec varint encoding
 
 ---
 
@@ -223,27 +227,29 @@ Points discutés :
 - Prochaine étape : implémentation v0.1
 
 Actions :
-- [ ] Créer repo GitHub
-- [ ] Setup environnement de dev
-- [ ] Premier commit avec structure
+- [x] Créer repo GitHub
+- [x] Setup environnement de dev
+- [x] Premier commit avec structure
+- [x] Implémentation v0.1.0 complète
 
 ---
 
 ## Changelog
 
-### [Unreleased]
+### [0.1.0] - 2025-01-15
 
 #### Added
-- Documentation initiale (architecture, sécurité, non-régression)
-- Templates de prompts (feature, refactor, bugfix, security, tests)
-- Exemples de workflow
-- Charte graphique
-
-#### Changed
-- Rien
+- Encodeur complet (raw, delta, repeated, multi)
+- Décodeur complet avec roundtrip vérifié
+- Classifieur 5 niveaux (P1-P5)
+- Contexte avec dictionnaire et prédiction
+- Channel abstraction (memory, lossy)
+- 44 tests unitaires
+- 2 exemples (simple_sensor, emitter_receiver)
+- Documentation initiale
 
 #### Fixed
-- Rien
+- Bug choose_encoding : Repeated vérifié avant Delta
 
 ---
 

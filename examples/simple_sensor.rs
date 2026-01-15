@@ -4,7 +4,7 @@
 //!
 //! Run with: `cargo run --example simple_sensor`
 
-use alec::{Classifier, Context, Decoder, Encoder, Priority, RawData};
+use alec::{Classifier, Context, Decoder, Encoder, RawData};
 
 fn main() {
     println!("=== ALEC Simple Sensor Example ===\n");

@@ -82,7 +82,7 @@ fn main() {
     println!("=== ALEC Emitter-Receiver Example ===\n");
 
     // Create channel pair
-    let mut pair = ChannelPair::new();
+    let _pair = ChannelPair::new();
     
     // Create emitter and receiver with their respective channels
     let mut emitter = Emitter::new(MemoryChannel::new());
