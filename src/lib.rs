@@ -15,8 +15,8 @@
 //! use alec::{Encoder, Decoder, Context, Classifier, RawData};
 //!
 //! // Create components
-//! let encoder = Encoder::new();
-//! let decoder = Decoder::new();
+//! let mut encoder = Encoder::new();
+//! let mut decoder = Decoder::new();
 //! let classifier = Classifier::default();
 //! let mut context = Context::new();
 //!
@@ -85,8 +85,8 @@ mod tests {
 
     #[test]
     fn test_basic_roundtrip() {
-        let encoder = Encoder::new();
-        let decoder = Decoder::new();
+        let mut encoder = Encoder::new();
+        let mut decoder = Decoder::new();
         let classifier = Classifier::default();
         let mut context = Context::new();
 

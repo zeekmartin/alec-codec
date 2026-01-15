@@ -128,7 +128,7 @@ impl Default for ClassifierConfig {
 #[derive(Debug, Clone)]
 pub struct Classifier {
     config: ClassifierConfig,
-    last_scheduled: HashMap<u32, u64>,
+    _last_scheduled: HashMap<u32, u64>,
 }
 
 impl Classifier {
@@ -136,7 +136,7 @@ impl Classifier {
     pub fn new() -> Self {
         Self {
             config: ClassifierConfig::default(),
-            last_scheduled: HashMap::new(),
+            _last_scheduled: HashMap::new(),
         }
     }
 
@@ -144,7 +144,7 @@ impl Classifier {
     pub fn with_config(config: ClassifierConfig) -> Self {
         Self {
             config,
-            last_scheduled: HashMap::new(),
+            _last_scheduled: HashMap::new(),
         }
     }
 
@@ -303,7 +303,6 @@ struct DeltaInfo {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::context::Prediction;
 
     fn make_context_with_prediction(value: f64) -> Context {
         let mut ctx = Context::new();

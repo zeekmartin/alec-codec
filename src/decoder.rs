@@ -5,13 +5,13 @@
 
 use crate::context::Context;
 use crate::error::{DecodeError, Result};
-use crate::protocol::{DecodedData, EncodedMessage, EncodingType, MessageHeader};
+use crate::protocol::{DecodedData, EncodedMessage, EncodingType};
 
 /// Decoder for ALEC messages
 #[derive(Debug, Clone)]
 pub struct Decoder {
-    /// Whether to verify checksum
-    verify_checksum: bool,
+    /// Whether to verify checksum (reserved for future use)
+    _verify_checksum: bool,
     /// Last decoded sequence number (for gap detection)
     last_sequence: Option<u32>,
 }
@@ -20,7 +20,7 @@ impl Decoder {
     /// Create a new decoder
     pub fn new() -> Self {
         Self {
-            verify_checksum: false,
+            _verify_checksum: false,
             last_sequence: None,
         }
     }
@@ -28,7 +28,7 @@ impl Decoder {
     /// Create decoder with checksum verification
     pub fn with_checksum_verification() -> Self {
         Self {
-            verify_checksum: true,
+            _verify_checksum: true,
             last_sequence: None,
         }
     }
@@ -302,7 +302,7 @@ impl Decoder {
     pub fn decode_multi(
         &mut self,
         message: &EncodedMessage,
-        context: &Context,
+        _context: &Context,
     ) -> Result<Vec<(u16, f64)>> {
         let payload = &message.payload;
         
@@ -403,7 +403,7 @@ mod tests {
     use super::*;
     use crate::classifier::Classifier;
     use crate::encoder::Encoder;
-    use crate::protocol::RawData;
+    use crate::protocol::{MessageHeader, RawData};
 
     #[test]
     fn test_roundtrip_raw() {

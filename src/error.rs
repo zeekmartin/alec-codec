@@ -2,7 +2,6 @@
 //!
 //! This module defines all error types used throughout the library.
 
-use std::fmt;
 use thiserror::Error;
 
 /// Result type alias for ALEC operations

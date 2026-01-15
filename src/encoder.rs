@@ -5,7 +5,6 @@
 
 use crate::classifier::Classification;
 use crate::context::Context;
-use crate::error::{EncodeError, Result};
 use crate::protocol::{
     EncodedMessage, EncodingType, MessageHeader, MessageType, Priority, RawData,
 };
@@ -15,8 +14,8 @@ use crate::protocol::{
 pub struct Encoder {
     /// Next sequence number
     sequence: u32,
-    /// Whether to include checksum
-    include_checksum: bool,
+    /// Whether to include checksum (reserved for future use)
+    _include_checksum: bool,
 }
 
 impl Encoder {
@@ -24,7 +23,7 @@ impl Encoder {
     pub fn new() -> Self {
         Self {
             sequence: 0,
-            include_checksum: false,
+            _include_checksum: false,
         }
     }
 
@@ -32,7 +31,7 @@ impl Encoder {
     pub fn with_checksum() -> Self {
         Self {
             sequence: 0,
-            include_checksum: true,
+            _include_checksum: true,
         }
     }
 
@@ -114,6 +113,13 @@ impl Encoder {
 
     /// Choose the best encoding for this value
     fn choose_encoding(&self, data: &RawData, context: &Context) -> (EncodingType, Vec<u8>) {
+        // Check if value matches last value exactly (repeated) — MOST COMPACT
+        if let Some(last) = context.last_value(data.source_id) {
+            if (data.value - last).abs() < f64::EPSILON {
+                return (EncodingType::Repeated, vec![]);
+            }
+        }
+
         // Try to get prediction for delta encoding
         if let Some(prediction) = context.predict(data.source_id) {
             let delta = data.value - prediction.value;
@@ -136,13 +142,6 @@ impl Encoder {
             if scaled_delta >= i32::MIN as f64 && scaled_delta <= i32::MAX as f64 {
                 let delta_i32 = scaled_delta as i32;
                 return (EncodingType::Delta32, delta_i32.to_be_bytes().to_vec());
-            }
-        }
-
-        // Check if value matches last value exactly (repeated)
-        if let Some(last) = context.last_value(data.source_id) {
-            if (data.value - last).abs() < f64::EPSILON {
-                return (EncodingType::Repeated, vec![]);
             }
         }
 
