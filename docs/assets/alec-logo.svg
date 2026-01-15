@@ -1,0 +1,28 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 200" width="200" height="200">
+  <defs>
+    <linearGradient id="grad1" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#2563EB;stop-opacity:1" />
+      <stop offset="100%" style="stop-color:#1E3A5F;stop-opacity:1" />
+    </linearGradient>
+  </defs>
+  
+  <!-- Cercle émetteur -->
+  <circle cx="70" cy="100" r="50" fill="none" stroke="#2563EB" stroke-width="4" opacity="0.8"/>
+  
+  <!-- Cercle récepteur -->
+  <circle cx="130" cy="100" r="50" fill="none" stroke="#10B981" stroke-width="4" opacity="0.8"/>
+  
+  <!-- Zone de chevauchement (contexte partagé) -->
+  <path d="M100,60 A50,50 0 0,1 100,140 A50,50 0 0,1 100,60" 
+        fill="url(#grad1)" opacity="0.3"/>
+  
+  <!-- Flèche de transmission -->
+  <path d="M85,100 L115,100" stroke="#1E3A5F" stroke-width="3" stroke-linecap="round"/>
+  <path d="M108,93 L115,100 L108,107" fill="none" stroke="#1E3A5F" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+  
+  <!-- Point central (donnée compressée) -->
+  <circle cx="100" cy="100" r="6" fill="#2563EB"/>
+  
+  <!-- Texte ALEC -->
+  <text x="100" y="175" text-anchor="middle" font-family="Arial, sans-serif" font-size="24" font-weight="bold" fill="#1E3A5F">ALEC</text>
+</svg>
