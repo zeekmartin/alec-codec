@@ -61,3 +61,28 @@ jobs:
 
       - name: Check formatting
         run: cargo fmt -- --check
+
+  docs:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Build rustdoc
+        run: cargo doc --no-deps
+
+      - name: Run doc tests
+        run: cargo test --doc
+
+      - name: Install mdBook
+        run: |
+          mkdir -p ~/.local/bin
+          curl -sSL https://github.com/rust-lang/mdBook/releases/download/v0.4.36/mdbook-v0.4.36-x86_64-unknown-linux-gnu.tar.gz | tar -xz -C ~/.local/bin
+
+      - name: Build book
+        run: |
+          export PATH="$HOME/.local/bin:$PATH"
+          cd docs/book
+          mdbook build

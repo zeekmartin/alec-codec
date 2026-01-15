@@ -126,10 +126,12 @@ Objectif : Prêt pour déploiement en production.
 - [ ] **Performance**
   - [ ] Optimisation mémoire émetteur
   - [ ] Benchmarks sur hardware cible
-- [ ] **Documentation**
-  - [ ] Guide de déploiement
-  - [ ] API reference
-  - [ ] Troubleshooting guide
+- [x] **Documentation** ✅
+  - [x] Guide de déploiement (mdBook)
+  - [x] API reference (rustdoc enrichi)
+  - [x] Troubleshooting guide
+  - [x] FAQ
+  - [x] CI pour documentation
 - [ ] **Packaging**
   - [ ] Crate Rust publié
   - [ ] Bindings Python
@@ -162,7 +164,7 @@ Objectif : Prêt pour déploiement en production.
 ### Basse priorité
 
 - [ ] Logo et assets graphiques
-- [ ] Page de documentation (mdbook ou similar)
+- [x] ~~Page de documentation (mdbook ou similar)~~ ✅
 - [ ] Exemple vidéo/démo
 
 ### Ajouts récents ✅
@@ -185,6 +187,9 @@ Objectif : Prêt pour déploiement en production.
 - [x] Module `recovery` avec `CircuitBreaker`, `RetryStrategy`
 - [x] `DegradationLevel` pour graceful degradation
 - [x] Tests de stress `tests/stress.rs`
+- [x] Documentation mdBook complète (docs/book/)
+- [x] Documentation rustdoc enrichie avec exemples
+- [x] CI pour build documentation
 
 ---
 
@@ -284,6 +289,10 @@ Actions :
 - `with_retry()` et `with_retry_metrics()` helpers
 - Tests de stress `tests/stress.rs` (9 tests performance)
 - 39 nouveaux tests health/recovery (142 tests total)
+- Documentation mdBook complète (docs/book/)
+- Guide utilisateur, troubleshooting, FAQ
+- Documentation rustdoc enrichie avec exemples
+- CI pour build et vérification documentation
 
 ### [0.4.0] - 2026-01-15
 
