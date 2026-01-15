@@ -109,14 +109,16 @@ Objectif : Plusieurs émetteurs, un récepteur central.
   - [ ] Métriques agrégées
   - [ ] Alertes
 
-### v1.0.0 — Production ready
+### v1.0.0 — Production ready 🔄 En cours
 
 Objectif : Prêt pour déploiement en production.
 
-- [ ] **Sécurité**
-  - [ ] TLS/DTLS
-  - [ ] Authentification mTLS
-  - [ ] Audit logging
+- [x] **Sécurité** ✅
+  - [x] TLS/DTLS (TlsConfig, DtlsConfig interfaces)
+  - [x] Authentification mTLS (SecurityConfig, validate_fingerprint)
+  - [x] Audit logging (AuditLogger, MemoryAuditLogger)
+  - [x] Rate limiting (RateLimiter avec token bucket)
+  - [x] SecurityContext avec intégration FleetManager
 - [ ] **Robustesse**
   - [ ] Tests de stress
   - [ ] Recovery automatique
@@ -153,7 +155,7 @@ Objectif : Prêt pour déploiement en production.
 
 - [x] ~~Setup CI/CD GitHub Actions~~ ✅ (ci.yml + release.yml)
 
-- [x] ~~Écrire tests d'intégration~~ ✅ (87 tests)
+- [x] ~~Écrire tests d'intégration~~ ✅ (103 tests)
 
 - [x] ~~Corriger warnings dans examples~~ ✅
 
@@ -175,6 +177,9 @@ Objectif : Prêt pour déploiement en production.
 - [x] `FleetManager`, `EmitterState`, `FleetStats`
 - [x] Détection cross-fleet anomaly
 - [x] Exemple `fleet_demo.rs`
+- [x] Module `security` avec rate limiting et audit logging
+- [x] `SecurityContext`, `RateLimiter`, `AuditLogger`
+- [x] Module `tls` avec interfaces TLS/DTLS
 
 ---
 
@@ -251,7 +256,22 @@ Actions :
 
 ## Changelog
 
-### [0.4.0] - 2026-01-15 (En cours)
+### [1.0.0] - 2026-01-15 (En cours)
+
+#### Added
+- Module `security` pour sécurité production
+- `SecurityConfig` pour configuration TLS/mTLS/audit
+- `AuditLogger` trait avec `MemoryAuditLogger` implementation
+- `AuditEvent` et `AuditEventType` pour audit logging
+- `RateLimiter` avec algorithme token bucket
+- `SecurityContext` pour intégration session
+- `process_message_secure()` sur FleetManager
+- Module `tls` avec interfaces TLS/DTLS
+- `TlsConfig`, `DtlsConfig`, `TlsState`
+- Feature flag `tls` pour rustls/webpki-roots
+- 16 nouveaux tests security/tls (103 tests total)
+
+### [0.4.0] - 2026-01-15
 
 #### Added
 - Module `fleet` pour gestion multi-émetteurs

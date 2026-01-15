@@ -53,7 +53,9 @@ pub mod error;
 pub mod fleet;
 pub mod metrics;
 pub mod protocol;
+pub mod security;
 pub mod sync;
+pub mod tls;
 
 // Re-exports for convenient access
 pub use channel::Channel;
@@ -65,9 +67,14 @@ pub use error::{AlecError, Result};
 pub use fleet::{EmitterId, EmitterState, FleetConfig, FleetManager, FleetStats, ProcessedMessage};
 pub use metrics::{CompressionMetrics, ContextMetrics};
 pub use protocol::{EncodedMessage, EncodingType, MessageHeader, MessageType, Priority, RawData};
+pub use security::{
+    AuditEvent, AuditEventType, AuditFilter, AuditLogger, CertValidation, MemoryAuditLogger,
+    RateLimiter, SecurityConfig, SecurityContext, Severity,
+};
 pub use sync::{
     SyncAnnounce, SyncConfig, SyncDiff, SyncMessage, SyncRequest, SyncState, Synchronizer,
 };
+pub use tls::{DtlsConfig, TlsConfig, TlsState};
 
 /// Library version
 pub const VERSION: &str = env!("CARGO_PKG_VERSION");
