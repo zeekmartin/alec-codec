@@ -49,25 +49,25 @@ Objectif : Prouver le concept avec une implémentation minimale.
   - [x] simple_sensor.rs
   - [x] emitter_receiver.rs
 
-### v0.2.0 — Contexte évolutif 🎯 Prochain
+### v0.2.0 — Contexte évolutif 🔄 En cours
 
 Objectif : Le dictionnaire s'enrichit automatiquement.
 
-- [ ] **Contexte dynamique**
-  - [ ] Comptage de fréquence des patterns
-  - [ ] Promotion automatique (fréquent → code court)
-  - [ ] Élagage des patterns rares
+- [x] **Contexte dynamique** ✅
+  - [x] Comptage de fréquence des patterns (Pattern.frequency, last_used)
+  - [x] Promotion automatique (fréquent → code court via reorder_patterns)
+  - [x] Élagage des patterns rares (prune_patterns)
 - [ ] **Synchronisation manuelle**
-  - [ ] Export/import du dictionnaire (partiellement fait)
-  - [ ] Vérification par hash (fait)
+  - [x] Export/import du dictionnaire ✅
+  - [x] Vérification par hash ✅
   - [ ] Diff de contexte
-- [ ] **Modèle prédictif amélioré**
-  - [ ] Moyenne mobile
+- [x] **Modèle prédictif amélioré** ✅
+  - [x] Moyenne mobile exponentielle (EMA)
   - [ ] Régression linéaire simple
-- [ ] **Métriques**
-  - [ ] Ratio de compression
-  - [ ] Taille du dictionnaire
-  - [ ] Taux de prédiction réussie
+- [x] **Métriques** ✅
+  - [x] Ratio de compression (CompressionMetrics)
+  - [x] Taille du dictionnaire (pattern_count)
+  - [x] Taux de prédiction réussie (prediction_accuracy)
 
 ### v0.3.0 — Synchronisation automatique
 
@@ -136,7 +136,7 @@ Objectif : Prêt pour déploiement en production.
 - [x] ~~Implémenter `src/encoder.rs`~~ ✅
 - [x] ~~Implémenter `src/decoder.rs`~~ ✅
 - [x] ~~Implémenter `src/classifier.rs`~~ ✅
-- [ ] Implémenter vérification checksum (encoder/decoder)
+- [x] ~~Implémenter vérification checksum (encoder/decoder)~~ ✅ xxHash32
 - [ ] Implémenter scheduling dans classifier
 
 ### Moyenne priorité
@@ -145,21 +145,23 @@ Objectif : Prêt pour déploiement en production.
   - Assigné : —
   - Estimé : 0.5 jour
 
-- [ ] Setup CI/CD GitHub Actions
-  - Assigné : —
-  - Estimé : 0.5 jour
+- [x] ~~Setup CI/CD GitHub Actions~~ ✅ (ci.yml + release.yml)
 
-- [x] ~~Écrire tests d'intégration~~ ✅ (44 tests)
+- [x] ~~Écrire tests d'intégration~~ ✅ (57 tests)
 
-- [ ] Corriger warnings dans examples
-  - simple_sensor.rs: unused import Priority
-  - emitter_receiver.rs: unused variable pair
+- [x] ~~Corriger warnings dans examples~~ ✅
 
 ### Basse priorité
 
 - [ ] Logo et assets graphiques
 - [ ] Page de documentation (mdbook ou similar)
 - [ ] Exemple vidéo/démo
+
+### Ajouts récents ✅
+
+- [x] Module `metrics` pour analyse de compression
+- [x] `CompressionMetrics` et `ContextMetrics`
+- [x] Exemple `metrics_demo.rs`
 
 ---
 
