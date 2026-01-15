@@ -1,0 +1,65 @@
+[package]
+name = "alec"
+version = "0.1.0"
+edition = "2021"
+authors = ["ALEC Contributors"]
+description = "Adaptive Lazy Evolving Compression - Smart codec for constrained environments"
+license = "MIT"
+repository = "https://github.com/votre-org/alec-codec"
+keywords = ["compression", "iot", "codec", "embedded", "protocol"]
+categories = ["compression", "embedded", "network-programming"]
+readme = "README.md"
+
+[lib]
+name = "alec"
+path = "src/lib.rs"
+
+[[example]]
+name = "simple_sensor"
+path = "examples/simple_sensor.rs"
+
+[[example]]
+name = "emitter_receiver"
+path = "examples/emitter_receiver.rs"
+
+[[bench]]
+name = "encoding"
+harness = false
+
+[dependencies]
+# Serialization
+thiserror = "1.0"          # Error handling
+
+# Hashing (pour le contexte)
+xxhash-rust = { version = "0.8", features = ["xxh64"] }
+
+# Temps (optionnel, pour timestamps)
+chrono = { version = "0.4", optional = true, default-features = false, features = ["std"] }
+
+# Logging (optionnel)
+log = { version = "0.4", optional = true }
+
+[dev-dependencies]
+# Tests
+criterion = "0.5"          # Benchmarks
+rand = "0.8"               # Génération de données de test
+approx = "0.5"             # Comparaison de floats
+
+[features]
+default = ["std"]
+std = []
+logging = ["log"]
+timestamps = ["chrono"]
+full = ["std", "logging", "timestamps"]
+
+# Pour embedded (no_std)
+# no_std = []
+
+[profile.release]
+lto = true
+codegen-units = 1
+opt-level = 3
+
+[profile.bench]
+lto = true
+codegen-units = 1

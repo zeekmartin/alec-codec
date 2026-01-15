@@ -20,3 +20,8 @@ Thumbs.db
 # Tests
 /coverage/
 *.profraw
+
+
+# Added by cargo
+
+/target
