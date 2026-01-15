@@ -49,25 +49,25 @@ Objectif : Prouver le concept avec une implémentation minimale.
   - [x] simple_sensor.rs
   - [x] emitter_receiver.rs
 
-### v0.2.0 — Contexte évolutif 🎯 Prochain
+### v0.2.0 — Contexte évolutif 🔄 En cours
 
 Objectif : Le dictionnaire s'enrichit automatiquement.
 
-- [ ] **Contexte dynamique**
-  - [ ] Comptage de fréquence des patterns
-  - [ ] Promotion automatique (fréquent → code court)
-  - [ ] Élagage des patterns rares
+- [x] **Contexte dynamique** ✅
+  - [x] Comptage de fréquence des patterns (Pattern.frequency, last_used)
+  - [x] Promotion automatique (fréquent → code court via reorder_patterns)
+  - [x] Élagage des patterns rares (prune_patterns)
 - [ ] **Synchronisation manuelle**
-  - [ ] Export/import du dictionnaire (partiellement fait)
-  - [ ] Vérification par hash (fait)
+  - [x] Export/import du dictionnaire ✅
+  - [x] Vérification par hash ✅
   - [ ] Diff de contexte
-- [ ] **Modèle prédictif amélioré**
-  - [ ] Moyenne mobile
+- [x] **Modèle prédictif amélioré** ✅
+  - [x] Moyenne mobile exponentielle (EMA)
   - [ ] Régression linéaire simple
-- [ ] **Métriques**
-  - [ ] Ratio de compression
-  - [ ] Taille du dictionnaire
-  - [ ] Taux de prédiction réussie
+- [x] **Métriques** ✅
+  - [x] Ratio de compression (CompressionMetrics)
+  - [x] Taille du dictionnaire (pattern_count)
+  - [x] Taux de prédiction réussie (prediction_accuracy)
 
 ### v0.3.0 — Synchronisation automatique
 

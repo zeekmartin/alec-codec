@@ -44,13 +44,15 @@ pub enum PredictionModel {
     Periodic,
 }
 
-/// Statistics for a single source
+/// Statistics for a single source with EMA prediction
 #[derive(Debug, Clone)]
 struct SourceStats {
     /// Last observed value
     last_value: f64,
-    /// Sum of recent values (for moving average)
-    sum: f64,
+    /// Exponential moving average
+    ema: f64,
+    /// EMA alpha (smoothing factor, 0-1)
+    ema_alpha: f64,
     /// Number of observations
     count: u64,
     /// Sum of squared differences (for variance)
@@ -64,10 +66,11 @@ struct SourceStats {
 }
 
 impl SourceStats {
-    fn new(max_history: usize) -> Self {
+    fn new(max_history: usize, ema_alpha: f64) -> Self {
         Self {
             last_value: 0.0,
-            sum: 0.0,
+            ema: 0.0,
+            ema_alpha,
             count: 0,
             sum_sq_diff: 0.0,
             mean: 0.0,
@@ -80,13 +83,18 @@ impl SourceStats {
         self.count += 1;
         self.last_value = value;
 
+        // Update EMA
+        if self.count == 1 {
+            self.ema = value;
+        } else {
+            self.ema = self.ema_alpha * value + (1.0 - self.ema_alpha) * self.ema;
+        }
+
         // Update running statistics (Welford's algorithm)
         let delta = value - self.mean;
         self.mean += delta / self.count as f64;
         let delta2 = value - self.mean;
         self.sum_sq_diff += delta * delta2;
-
-        self.sum += value;
 
         // Update history
         if self.history.len() >= self.max_history {
@@ -100,7 +108,7 @@ impl SourceStats {
             return None;
         }
 
-        // Simple prediction: use last value with confidence based on variance
+        // Calculate variance for confidence
         let variance = if self.count > 1 {
             self.sum_sq_diff / (self.count - 1) as f64
         } else {
@@ -118,16 +126,15 @@ impl SourceStats {
             0.50
         };
 
-        let model_type = if self.count < 5 {
-            PredictionModel::LastValue
-        } else if variance < 0.01 {
-            PredictionModel::MovingAverage
+        // Use EMA for prediction after enough observations
+        let (predicted_value, model_type) = if self.count < 3 {
+            (self.last_value, PredictionModel::LastValue)
         } else {
-            PredictionModel::LastValue
+            (self.ema, PredictionModel::MovingAverage)
         };
 
         Some(Prediction {
-            value: self.last_value,
+            value: predicted_value,
             confidence: confidence as f32,
             model_type,
         })
@@ -144,15 +151,19 @@ impl SourceStats {
     }
 }
 
-/// A pattern in the dictionary
+/// A pattern in the dictionary with usage statistics
 #[derive(Debug, Clone, PartialEq)]
 pub struct Pattern {
     /// Raw bytes of the pattern
     pub data: Vec<u8>,
     /// Associated value (if numeric pattern)
     pub value: Option<f64>,
-    /// Usage count
+    /// Usage frequency counter
     pub frequency: u64,
+    /// Last time this pattern was used (observation count)
+    pub last_used: u64,
+    /// When the pattern was created (observation count)
+    pub created_at: u64,
 }
 
 impl Pattern {
@@ -161,7 +172,20 @@ impl Pattern {
         Self {
             data,
             value: None,
-            frequency: 0,
+            frequency: 1,
+            last_used: 0,
+            created_at: 0,
+        }
+    }
+
+    /// Create a new pattern with timestamp
+    pub fn with_timestamp(data: Vec<u8>, timestamp: u64) -> Self {
+        Self {
+            data,
+            value: None,
+            frequency: 1,
+            last_used: timestamp,
+            created_at: timestamp,
         }
     }
 
@@ -170,7 +194,62 @@ impl Pattern {
         Self {
             data: value.to_be_bytes().to_vec(),
             value: Some(value),
-            frequency: 0,
+            frequency: 1,
+            last_used: 0,
+            created_at: 0,
+        }
+    }
+
+    /// Create a numeric pattern with timestamp
+    pub fn numeric_with_timestamp(value: f64, timestamp: u64) -> Self {
+        Self {
+            data: value.to_be_bytes().to_vec(),
+            value: Some(value),
+            frequency: 1,
+            last_used: timestamp,
+            created_at: timestamp,
+        }
+    }
+
+    /// Update usage statistics
+    pub fn touch(&mut self, timestamp: u64) {
+        self.frequency = self.frequency.saturating_add(1);
+        self.last_used = timestamp;
+    }
+
+    /// Calculate a score for this pattern (higher = more valuable)
+    /// Score combines frequency and recency
+    pub fn score(&self, current_time: u64) -> f64 {
+        let age = current_time.saturating_sub(self.last_used) as f64;
+        let recency = 1.0 / (1.0 + age / 1000.0);
+        let freq_score = (self.frequency as f64 + 1.0).ln();
+        freq_score * recency
+    }
+}
+
+/// Configuration for context evolution
+#[derive(Debug, Clone)]
+pub struct EvolutionConfig {
+    /// Minimum frequency to keep a pattern during pruning
+    pub min_frequency: u64,
+    /// Maximum age (in observations) before pruning
+    pub max_age: u64,
+    /// How often to run evolution (every N observations)
+    pub evolution_interval: u64,
+    /// Threshold for promotion (frequency)
+    pub promotion_threshold: u64,
+    /// Whether evolution is enabled
+    pub enabled: bool,
+}
+
+impl Default for EvolutionConfig {
+    fn default() -> Self {
+        Self {
+            min_frequency: 2,
+            max_age: 10000,
+            evolution_interval: 100,
+            promotion_threshold: 10,
+            enabled: true,
         }
     }
 }
@@ -184,8 +263,10 @@ pub struct ContextConfig {
     pub max_memory: usize,
     /// History size per source for predictions
     pub history_size: usize,
-    /// Minimum frequency before pattern promotion
-    pub promotion_threshold: u64,
+    /// EMA alpha (smoothing factor for predictions)
+    pub ema_alpha: f64,
+    /// Evolution configuration
+    pub evolution: EvolutionConfig,
 }
 
 impl Default for ContextConfig {
@@ -194,7 +275,8 @@ impl Default for ContextConfig {
             max_patterns: MAX_PATTERNS,
             max_memory: DEFAULT_MEMORY_LIMIT,
             history_size: 100,
-            promotion_threshold: 10,
+            ema_alpha: 0.3,
+            evolution: EvolutionConfig::default(),
         }
     }
 }
@@ -204,6 +286,8 @@ impl Default for ContextConfig {
 pub struct Context {
     /// Current version number
     version: u32,
+    /// Total observation count (used for timestamps)
+    observation_count: u64,
     /// Dictionary: code -> pattern
     dictionary: HashMap<u32, Pattern>,
     /// Reverse lookup: pattern hash -> code
@@ -223,6 +307,7 @@ impl Context {
     pub fn new() -> Self {
         Self {
             version: 0,
+            observation_count: 0,
             dictionary: HashMap::new(),
             pattern_index: HashMap::new(),
             next_code: 0,
@@ -236,6 +321,7 @@ impl Context {
     pub fn with_config(config: ContextConfig) -> Self {
         Self {
             version: 0,
+            observation_count: 0,
             dictionary: HashMap::new(),
             pattern_index: HashMap::new(),
             next_code: 0,
@@ -243,6 +329,20 @@ impl Context {
             config,
             scale_factor: crate::DEFAULT_SCALE_FACTOR,
         }
+    }
+
+    /// Create context with evolution configuration
+    pub fn with_evolution(evolution_config: EvolutionConfig) -> Self {
+        let config = ContextConfig {
+            evolution: evolution_config,
+            ..Default::default()
+        };
+        Self::with_config(config)
+    }
+
+    /// Get observation count
+    pub fn observation_count(&self) -> u64 {
+        self.observation_count
     }
 
     /// Get current version
@@ -300,15 +400,98 @@ impl Context {
         self.memory_usage()
     }
 
-    /// Observe a new data point (update statistics)
+    /// Run context evolution (pruning + reordering)
+    pub fn evolve(&mut self) {
+        let current_time = self.observation_count;
+
+        // 1. Prune old/unused patterns
+        self.prune_patterns(current_time);
+
+        // 2. Reorder by score (frequent patterns get lower IDs)
+        self.reorder_patterns(current_time);
+
+        // 3. Increment version
+        self.version += 1;
+    }
+
+    /// Prune patterns that are old or rarely used
+    fn prune_patterns(&mut self, current_time: u64) {
+        let config = &self.config.evolution;
+        let min_freq = config.min_frequency;
+        let max_age = config.max_age;
+
+        // Collect patterns to remove
+        let to_remove: Vec<u32> = self
+            .dictionary
+            .iter()
+            .filter(|(_, pattern)| {
+                let age = current_time.saturating_sub(pattern.last_used);
+                pattern.frequency < min_freq || age > max_age
+            })
+            .map(|(code, _)| *code)
+            .collect();
+
+        // Remove patterns and their index entries
+        for code in to_remove {
+            if let Some(pattern) = self.dictionary.remove(&code) {
+                let hash = xxh64(&pattern.data, 0);
+                self.pattern_index.remove(&hash);
+            }
+        }
+    }
+
+    /// Reorder patterns by score (best patterns get lowest IDs)
+    fn reorder_patterns(&mut self, current_time: u64) {
+        if self.dictionary.is_empty() {
+            return;
+        }
+
+        // Collect and sort by score (descending)
+        let mut entries: Vec<_> = self.dictionary.drain().collect();
+        entries.sort_by(|a, b| {
+            b.1.score(current_time)
+                .partial_cmp(&a.1.score(current_time))
+                .unwrap_or(std::cmp::Ordering::Equal)
+        });
+
+        // Clear pattern index
+        self.pattern_index.clear();
+
+        // Reassign IDs (best patterns get lowest IDs)
+        self.next_code = 0;
+        for (_, pattern) in entries {
+            let new_id = self.next_code;
+            let hash = xxh64(&pattern.data, 0);
+            self.pattern_index.insert(hash, new_id);
+            self.dictionary.insert(new_id, pattern);
+            self.next_code += 1;
+        }
+    }
+
+    /// Observe a new data point (update statistics and trigger evolution)
     pub fn observe(&mut self, data: &RawData) {
+        self.observation_count += 1;
+
+        // Update source statistics
+        let ema_alpha = self.config.ema_alpha;
+        let history_size = self.config.history_size;
         let stats = self
             .source_stats
             .entry(data.source_id)
-            .or_insert_with(|| SourceStats::new(self.config.history_size));
+            .or_insert_with(|| SourceStats::new(history_size, ema_alpha));
 
         stats.observe(data.value);
         self.version += 1;
+
+        // Check if evolution is needed
+        let evolution = &self.config.evolution;
+        if evolution.enabled
+            && self
+                .observation_count
+                .is_multiple_of(evolution.evolution_interval)
+        {
+            self.evolve();
+        }
     }
 
     /// Get prediction for a source
@@ -485,6 +668,7 @@ impl Context {
         self.source_stats.clear();
         self.next_code = 0;
         self.version = 0;
+        self.observation_count = 0;
     }
 
     /// Verify hash matches
@@ -529,14 +713,16 @@ mod tests {
         // No prediction initially
         assert!(ctx.predict(0).is_none());
 
-        // Observe some values
+        // Observe some values (20.0, 20.1, 20.2, ... 20.9)
         for i in 0..10 {
             ctx.observe(&RawData::new(20.0 + i as f64 * 0.1, i as u64));
         }
 
-        // Should have prediction now
+        // Should have prediction now (using EMA)
         let pred = ctx.predict(0).unwrap();
-        assert!((pred.value - 20.9).abs() < 0.1);
+        // EMA with alpha=0.3 will be between first and last value
+        // It should be somewhere in the range [20.0, 21.0]
+        assert!(pred.value > 20.0 && pred.value < 21.0);
         assert!(pred.confidence > 0.0);
     }
 
@@ -614,5 +800,161 @@ mod tests {
 
         ctx.observe(&RawData::new(43.0, 1));
         assert_eq!(ctx.last_value(0), Some(43.0));
+    }
+
+    // === Evolution Tests ===
+
+    #[test]
+    fn test_pattern_pruning() {
+        let mut config = ContextConfig::default();
+        config.evolution = EvolutionConfig {
+            min_frequency: 3,
+            max_age: 50,
+            evolution_interval: 10,
+            promotion_threshold: 5,
+            enabled: false, // Manual control
+        };
+
+        let mut ctx = Context::with_config(config);
+
+        // Add pattern used only once
+        let mut pattern = Pattern::new(vec![42]);
+        pattern.frequency = 1;
+        pattern.last_used = 0;
+        ctx.register_pattern(pattern).unwrap();
+
+        assert_eq!(ctx.pattern_count(), 1);
+
+        // Simulate time passing
+        ctx.observation_count = 100;
+        ctx.evolve();
+
+        // Pattern should be pruned (frequency < 3 or age > 50)
+        assert_eq!(ctx.pattern_count(), 0);
+    }
+
+    #[test]
+    fn test_pattern_kept_if_frequent() {
+        let mut config = ContextConfig::default();
+        config.evolution = EvolutionConfig {
+            min_frequency: 2,
+            max_age: 1000,
+            evolution_interval: 10,
+            promotion_threshold: 5,
+            enabled: false,
+        };
+
+        let mut ctx = Context::with_config(config);
+
+        // Add frequently used pattern
+        let mut pattern = Pattern::new(vec![42]);
+        pattern.frequency = 10;
+        pattern.last_used = 50;
+        ctx.register_pattern(pattern).unwrap();
+
+        // Update the pattern's stats
+        if let Some(p) = ctx.dictionary.get_mut(&0) {
+            p.frequency = 10;
+            p.last_used = 50;
+        }
+
+        ctx.observation_count = 100;
+        ctx.evolve();
+
+        // Pattern should be kept (frequency >= 2 and age <= 1000)
+        assert_eq!(ctx.pattern_count(), 1);
+    }
+
+    #[test]
+    fn test_pattern_reordering() {
+        let mut config = ContextConfig::default();
+        config.evolution.enabled = false;
+
+        let mut ctx = Context::with_config(config);
+
+        // Add two patterns with different frequencies
+        ctx.register_pattern(Pattern::with_timestamp(vec![1], 0))
+            .unwrap();
+        ctx.register_pattern(Pattern::with_timestamp(vec![2], 0))
+            .unwrap();
+
+        // Make second pattern more frequent
+        if let Some(p) = ctx.dictionary.get_mut(&1) {
+            p.frequency = 100;
+            p.last_used = 10;
+        }
+        if let Some(p) = ctx.dictionary.get_mut(&0) {
+            p.frequency = 1;
+            p.last_used = 0;
+        }
+
+        ctx.observation_count = 10;
+        ctx.evolve();
+
+        // More frequent pattern should now have ID 0
+        let pattern_0 = ctx.get_pattern(0).unwrap();
+        assert_eq!(pattern_0.frequency, 100);
+    }
+
+    #[test]
+    fn test_ema_prediction() {
+        let mut ctx = Context::new();
+
+        // Observe trending values (increasing)
+        for i in 0..20 {
+            ctx.observe(&RawData::new(20.0 + i as f64, i as u64));
+        }
+
+        // EMA should predict around recent values
+        let prediction = ctx.predict(0).unwrap();
+
+        // With alpha=0.3, EMA should be between last value (39) and mean
+        // EMA gives more weight to recent values
+        assert!(prediction.value > 30.0 && prediction.value < 40.0);
+        assert_eq!(prediction.model_type, PredictionModel::MovingAverage);
+    }
+
+    #[test]
+    fn test_evolution_triggered_automatically() {
+        let mut config = ContextConfig::default();
+        config.evolution = EvolutionConfig {
+            min_frequency: 1,
+            max_age: 10000,
+            evolution_interval: 5, // Evolve every 5 observations
+            promotion_threshold: 5,
+            enabled: true,
+        };
+
+        let mut ctx = Context::with_config(config);
+
+        // Add a pattern
+        ctx.register_pattern(Pattern::new(vec![1, 2, 3])).unwrap();
+
+        let initial_version = ctx.version();
+
+        // Make 5 observations to trigger evolution
+        for i in 0..5 {
+            ctx.observe(&RawData::new(20.0, i as u64));
+        }
+
+        // Version should have increased from observations + evolution
+        assert!(ctx.version() > initial_version);
+        assert_eq!(ctx.observation_count(), 5);
+    }
+
+    #[test]
+    fn test_pattern_score() {
+        let mut pattern = Pattern::new(vec![1, 2, 3]);
+        pattern.frequency = 100;
+        pattern.last_used = 900;
+
+        // Score at time 1000 (age = 100)
+        let score_recent = pattern.score(1000);
+
+        // Score at time 2000 (age = 1100)
+        let score_old = pattern.score(2000);
+
+        // More recent should have higher score
+        assert!(score_recent > score_old);
     }
 }
