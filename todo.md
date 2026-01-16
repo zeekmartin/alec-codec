@@ -146,8 +146,10 @@ Objectif : Compression optimale dès le premier octet grâce aux fichiers preloa
   - [x] Checksum CRC32 pour intégrité des fichiers
   - [x] `VersionCheckResult` pour vérification de synchronisation
   - [x] 12 tests d'intégration (tests/preload_tests.rs)
-- [ ] **Phase 2 : Validation**
-  - [ ] Création de preloads de démonstration (temperature, humidity, counter)
+- [x] **Phase 2 : Demo Preloads** ✅
+  - [x] Création de preloads de démonstration (temperature, humidity, counter)
+  - [x] Générateur `examples/generate_preloads.rs`
+  - [x] Vérification automatique des preloads générés
   - [ ] Validation avec données réelles de capteurs
   - [ ] Documentation des best practices
 - [ ] **Phase 3 : Industry Preloads**
@@ -229,6 +231,11 @@ Objectif : Compression optimale dès le premier octet grâce aux fichiers preloa
   - [x] `Context::save_to_file()` et `Context::load_from_file()`
   - [x] `VersionCheckResult` pour sync checking
   - [x] 12 tests d'intégration preload
+- [x] **Preload System Phase 2 - Demo Preloads** ✅
+  - [x] `examples/generate_preloads.rs` générateur
+  - [x] `demo_temperature_v1.alec-context` (20-25°C, MovingAverage)
+  - [x] `demo_humidity_v1.alec-context` (40-60%, Periodic)
+  - [x] `demo_counter_v1.alec-context` (monotonic, Linear)
 
 ---
 
@@ -318,6 +325,11 @@ Actions :
 - Checksum CRC32 pour intégrité des fichiers preload
 - Dépendance `crc32fast` pour checksums
 - 12 tests d'intégration `tests/preload_tests.rs`
+- Exemple `generate_preloads.rs` pour générer des preloads de démo
+- 3 preloads de démonstration dans `contexts/demo/`:
+  - `demo_temperature_v1.alec-context` (capteur température 20-25°C)
+  - `demo_humidity_v1.alec-context` (capteur humidité 40-60%)
+  - `demo_counter_v1.alec-context` (compteur monotonic)
 
 ### [1.0.0] - 2026-01-15
 
