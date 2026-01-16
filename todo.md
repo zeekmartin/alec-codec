@@ -135,9 +135,29 @@ Objectif : Prêt pour déploiement en production.
   - [x] README.md avec dual licensing
   - [x] Dry run cargo publish réussi
 
+### v1.1.0 — Preload System 🔄 En cours
+
+Objectif : Compression optimale dès le premier octet grâce aux fichiers preload.
+
+- [x] **Phase 1 : Foundation** ✅
+  - [x] Structure `PreloadFile` avec sérialisation binaire
+  - [x] Format `.alec-context` (header 64 bytes + dictionary + stats + prediction)
+  - [x] `save_to_file()` et `load_from_file()` sur Context
+  - [x] Checksum CRC32 pour intégrité des fichiers
+  - [x] `VersionCheckResult` pour vérification de synchronisation
+  - [x] 12 tests d'intégration (tests/preload_tests.rs)
+- [ ] **Phase 2 : Validation**
+  - [ ] Création de preloads de démonstration (temperature, humidity, counter)
+  - [ ] Validation avec données réelles de capteurs
+  - [ ] Documentation des best practices
+- [ ] **Phase 3 : Industry Preloads**
+  - [ ] Agriculture (soil moisture, temperature, humidity)
+  - [ ] HVAC (temperature, pressure, flow)
+  - [ ] Energy (voltage, current, power)
+
 ### Backlog v1.x / v2.0
 
-- [ ] **Performance** (v1.1)
+- [ ] **Performance** (v1.2)
   - [ ] Optimisation mémoire émetteur
   - [ ] Benchmarks sur hardware cible
 - [ ] **Packaging** (v2.0)
@@ -203,6 +223,12 @@ Objectif : Prêt pour déploiement en production.
   - [x] Cargo.toml v1.0.0 avec metadata crates.io
   - [x] README.md avec dual licensing (AGPL + Commercial)
   - [x] Script scripts/add_headers.sh
+- [x] **Preload System Phase 1** ✅
+  - [x] Module `context/preload.rs` avec `PreloadFile`
+  - [x] Format binaire `.alec-context` avec CRC32
+  - [x] `Context::save_to_file()` et `Context::load_from_file()`
+  - [x] `VersionCheckResult` pour sync checking
+  - [x] 12 tests d'intégration preload
 
 ---
 
@@ -279,7 +305,21 @@ Actions :
 
 ## Changelog
 
-### [1.0.0] - 2026-01-15 (En cours)
+### [1.1.0] - 2026-01-16 (En cours)
+
+#### Added
+- Module `context/preload` pour fichiers preload
+- `PreloadFile` struct avec sérialisation binaire `.alec-context`
+- `PreloadDictEntry`, `PreloadStatistics`, `PreloadPredictionModel`
+- `Context::save_to_file()` pour exporter un contexte entraîné
+- `Context::load_from_file()` pour charger un preload
+- `Context::context_version()` et `Context::check_version()`
+- `VersionCheckResult` enum pour vérification de sync
+- Checksum CRC32 pour intégrité des fichiers preload
+- Dépendance `crc32fast` pour checksums
+- 12 tests d'intégration `tests/preload_tests.rs`
+
+### [1.0.0] - 2026-01-15
 
 #### Added
 - Module `security` pour sécurité production
