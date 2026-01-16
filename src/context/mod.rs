@@ -10,6 +10,11 @@
 //! - Dictionary of patterns for compression
 //! - Predictive model for delta encoding
 //! - Synchronization mechanisms
+//! - Preload file support for instant optimal compression
+
+mod preload;
+
+pub use preload::*;
 
 use crate::error::{ContextError, Result};
 use crate::protocol::RawData;
@@ -735,6 +740,110 @@ impl Context {
             // Simplified: return LastValue
             // In real impl, could track which model performs best
             PredictionModel::LastValue
+        }
+    }
+
+    // === Preload File Support ===
+
+    /// Save current context state to a preload file
+    ///
+    /// This allows the context to be loaded later for instant optimal compression.
+    ///
+    /// # Arguments
+    ///
+    /// * `path` - Path to save the preload file
+    /// * `sensor_type` - Identifier for the sensor type (e.g., "temperature", "humidity")
+    ///
+    /// # Example
+    ///
+    /// ```no_run
+    /// use alec::context::Context;
+    /// use std::path::Path;
+    ///
+    /// let mut ctx = Context::new();
+    /// // ... train the context with data ...
+    /// ctx.save_to_file(Path::new("temperature.alec-context"), "temperature").unwrap();
+    /// ```
+    pub fn save_to_file(&self, path: &std::path::Path, sensor_type: &str) -> Result<()> {
+        let preload = PreloadFile::from_context(self, sensor_type);
+        preload.save_to_file(path)
+    }
+
+    /// Load a preload file and initialize context
+    ///
+    /// This allows achieving optimal compression from the first byte
+    /// by loading a pre-trained context.
+    ///
+    /// # Arguments
+    ///
+    /// * `path` - Path to the preload file
+    ///
+    /// # Returns
+    ///
+    /// A new Context initialized with the preload data
+    ///
+    /// # Example
+    ///
+    /// ```no_run
+    /// use alec::context::Context;
+    /// use std::path::Path;
+    ///
+    /// let ctx = Context::load_from_file(Path::new("temperature.alec-context")).unwrap();
+    /// assert!(ctx.pattern_count() > 0);
+    /// ```
+    pub fn load_from_file(path: &std::path::Path) -> Result<Self> {
+        let preload = PreloadFile::load_from_file(path)?;
+        Self::from_preload(&preload)
+    }
+
+    /// Create a context from a preload file
+    fn from_preload(preload: &PreloadFile) -> Result<Self> {
+        let mut ctx = Self::new();
+
+        // Restore version
+        ctx.version = preload.context_version;
+
+        // Restore dictionary
+        for entry in &preload.dictionary {
+            let pattern = Pattern {
+                data: entry.pattern.clone(),
+                value: None,
+                frequency: entry.frequency as u64,
+                last_used: 0,
+                created_at: 0,
+            };
+            let code = entry.code as u32;
+            let hash = xxh64(&pattern.data, 0);
+            ctx.pattern_index.insert(hash, code);
+            ctx.dictionary.insert(code, pattern);
+            if code >= ctx.next_code {
+                ctx.next_code = code + 1;
+            }
+        }
+
+        Ok(ctx)
+    }
+
+    /// Get context version for sync checking
+    ///
+    /// This version should be included in message headers to allow
+    /// the decoder to verify it has the correct context.
+    pub fn context_version(&self) -> u32 {
+        self.version
+    }
+
+    /// Check if context version matches expected version
+    ///
+    /// Returns a `VersionCheckResult` indicating whether versions match
+    /// or providing details about the mismatch.
+    pub fn check_version(&self, message_version: u32) -> VersionCheckResult {
+        if self.version == message_version {
+            VersionCheckResult::Match
+        } else {
+            VersionCheckResult::Mismatch {
+                expected: self.version,
+                actual: message_version,
+            }
         }
     }
 }
