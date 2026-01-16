@@ -10,116 +10,121 @@ et ce projet adhère au [Semantic Versioning](https://semver.org/lang/fr/).
 ## [Unreleased]
 
 ### Added
-- Documentation complète du projet
-  - Architecture et principes fondamentaux (`docs/architecture.md`)
-  - Guide de sécurité (`docs/security.md`)
-  - Stratégie de tests (`docs/non-regression.md`)
-  - Charte graphique (`docs/graphic-charter.md`)
-  - Communication inter-composants (`docs/intra-application.md`)
-  - Applications et cas d'usage détaillés (`docs/applications.md`)
-  - Guide de démarrage (`docs/getting-started.md`)
-  - Référence du protocole (`docs/protocol-reference.md`)
-  - FAQ (`docs/faq.md`)
-  - Glossaire (`docs/glossary.md`)
-- Templates de prompts pour développement assisté par IA
-  - Template feature (`prompts/feature.prompt.md`)
-  - Template refactoring (`prompts/refactor.prompt.md`)
-  - Template bugfix (`prompts/bugfix.prompt.md`)
-  - Template security review (`prompts/security-review.prompt.md`)
-  - Template tests (`prompts/non-regression.prompt.md`)
-- Exemples de workflows
-  - Itération de fonctionnalité (`examples/01-feature-iteration.md`)
-  - Refactoring (`examples/02-refactor.md`)
-  - Correction de bug (`examples/03-bugfix.md`)
-- README principal avec présentation du projet
-- Guide de contribution (CONTRIBUTING.md)
-- Roadmap et todo list (todo.md)
-- Licence MIT
+- Rien
 
 ### Changed
 - Rien
 
-### Deprecated
-- Rien
+---
 
-### Removed
-- Rien
+## [0.2.0-alpha] - 2025-01-16
 
-### Fixed
-- Rien
+### Added
+- **Système de Preload** : Sauvegarde et chargement de contextes pré-entraînés
+  - `Context::save_to_file()` - Export du contexte entraîné vers fichier binaire
+  - `Context::load_from_file()` - Import de fichier preload
+  - Vérification de version entre encodeur/décodeur
+  - Validation par checksum CRC32
+  - Détection de corruption de fichier
+- **Preloads de démonstration** :
+  - `demo_temperature_v1.alec-context` - Capteurs température (20-25°C)
+  - `demo_humidity_v1.alec-context` - Capteurs humidité (40-60%)
+  - `demo_counter_v1.alec-context` - Compteurs monotoniques
+- 12 nouveaux tests d'intégration pour le système preload
+- Module `context::preload` avec structures `PreloadFile`, `DictEntry`, `SourceStatistics`, `PredictionModel`
 
-### Security
-- Rien
+### Changed
+- Le contexte suit maintenant un numéro de version pour la synchronisation
 
 ---
 
-## [0.1.0] - À venir
+## [0.1.0] - 2025-01-10
 
-### Prévu
-- Implémentation de l'encodeur basique
+### Added
+- **Encodeur complet**
   - Encodage raw (fallback)
   - Encodage delta (i8, i16)
-  - Format de message binaire
-- Implémentation du décodeur basique
-  - Décodage raw
-  - Décodage delta
-- Implémentation du classifieur simple
-  - Classification par seuils fixes
-  - 5 niveaux de priorité (P1-P5)
-- Contexte statique
-  - Dictionnaire prédéfini
-  - Prédiction par dernière valeur
-- Tests unitaires
-  - Roundtrip encoding/decoding
-  - Classification edge cases
-- Exemple de démonstration
-  - Capteur de température simulé
-  - Émetteur + Récepteur en local
+  - Encodage repeated (valeurs identiques)
+  - Support multi-valeurs
+  - Checksum optionnel
+  - Numéros de séquence
+- **Décodeur complet**
+  - Décodage de tous les types d'encodage
+  - Vérification de checksum
+  - Suivi de séquence
+- **Classifieur de priorité**
+  - Classification par déviation statistique
+  - 6 niveaux de priorité (P0-P5)
+  - Seuils configurables
+- **Contexte partagé adaptatif**
+  - Dictionnaire de patterns dynamique
+  - Prédiction EMA (Exponential Moving Average)
+  - Évolution automatique du dictionnaire
+  - Scoring et pruning des patterns
+  - Export/Import du contexte
+- **Protocole de synchronisation**
+  - Messages ANNOUNCE, REQUEST, DIFF
+  - Synchronisation incrémentale
+  - Détection de divergence
+- **Gestion de flotte**
+  - FleetManager pour gérer multiple émetteurs
+  - Détection d'anomalies cross-fleet
+  - Statistiques par émetteur
+- **Sécurité**
+  - Rate limiting par émetteur
+  - Audit logging avec niveaux de sévérité
+  - Validation des fingerprints
+  - Configuration sécurisée
+- **Monitoring de santé**
+  - Health checks configurables
+  - Statuts Healthy/Degraded/Unhealthy
+  - Rapports de santé
+- **Récupération d'erreurs**
+  - Circuit breaker
+  - Stratégies de retry (fixed, linear, exponential)
+  - Niveaux de dégradation
+- **Support TLS/DTLS**
+  - Configuration TLS
+  - Support mutual TLS
+  - Configuration DTLS pour UDP
+- **Métriques**
+  - Ratio de compression
+  - Distribution des encodages
+  - Précision des prédictions
+  - Génération de rapports
+- **Canaux de communication**
+  - Abstraction Channel trait
+  - Implémentation mémoire pour tests
+  - Support canaux avec perte
+- **Documentation complète**
+  - Architecture (`docs/architecture.md`)
+  - Sécurité (`docs/security.md`)
+  - Tests (`docs/non-regression.md`)
+  - Getting started (`docs/getting-started.md`)
+  - Référence protocole (`docs/protocol-reference.md`)
+  - FAQ et Glossaire
+- **148 tests unitaires et d'intégration**
+- **9 tests de stress** (ignorés par défaut)
 
 ---
 
-## [0.2.0] - Planifié
+## Roadmap
 
-### Prévu
-- Contexte dynamique
-  - Comptage de fréquence des patterns
-  - Promotion automatique
-  - Élagage des patterns rares
-- Synchronisation manuelle du contexte
-- Modèle prédictif amélioré
-  - Moyenne mobile
-  - Régression linéaire simple
-- Métriques de performance
+### [0.3.0] - Planifié
+- CLI tools (`alec-train`, `alec-info`, `alec-validate`)
+- Preloads validés sur données réelles (agriculture, HVAC)
+- Amélioration de la documentation API
 
----
-
-## [0.3.0] - Planifié
-
-### Prévu
-- Synchronisation automatique du contexte
-- Requêtes différées (REQ_DETAIL, REQ_RANGE)
-- Implémentation MQTT et CoAP
-- Support multi-valeurs
-
----
-
-## [0.4.0] - Planifié
-
-### Prévu
-- Mode flotte
-- Apprentissage collectif
+### [0.4.0] - Planifié
+- Bibliothèque de preloads par industrie
 - Dashboard de visualisation
+- Intégrations cloud (AWS IoT, Azure)
 
----
-
-## [1.0.0] - Planifié
-
-### Prévu
-- Sécurité production (TLS/DTLS)
-- Tests de stress complets
-- Documentation API complète
-- Packaging (crate Rust, bindings Python)
+### [1.0.0] - Planifié
+- Publication sur crates.io
+- API stable et garantie de rétrocompatibilité
 - Certification pour cas d'usage industriel
+- Bindings Python
 
 ---
 
@@ -136,5 +141,6 @@ et ce projet adhère au [Semantic Versioning](https://semver.org/lang/fr/).
 
 ## Liens
 
-- [Comparer les versions](https://github.com/votre-org/alec-codec/compare)
-- [Toutes les releases](https://github.com/votre-org/alec-codec/releases)
+- [Repository](https://github.com/davidmartinventi/alec-codec)
+- [Comparer les versions](https://github.com/davidmartinventi/alec-codec/compare)
+- [Toutes les releases](https://github.com/davidmartinventi/alec-codec/releases)
