@@ -46,6 +46,10 @@ path = "examples/metrics_demo.rs"
 name = "fleet_demo"
 path = "examples/fleet_demo.rs"
 
+[[example]]
+name = "generate_preloads"
+path = "examples/generate_preloads.rs"
+
 [[bench]]
 name = "encoding"
 harness = false
