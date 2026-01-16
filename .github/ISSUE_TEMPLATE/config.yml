@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Documentation
+    url: https://alec-codec.com/docs
+    about: Check the documentation before opening an issue
+  - name: Commercial Licensing
+    url: https://alec-codec.com/#pricing
+    about: For commercial license inquiries
