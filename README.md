@@ -11,153 +11,153 @@
 </p>
 
 <p align="center">
-  <strong>Un codec de compression intelligent pour les environnements contraints</strong>
+  <strong>A smart compression codec for bandwidth-constrained environments</strong>
 </p>
 
 <p align="center">
-  <a href="#caractéristiques">Caractéristiques</a> •
-  <a href="#cas-dusage">Cas d'usage</a> •
-  <a href="#démarrage-rapide">Démarrage rapide</a> •
+  <a href="#features">Features</a> •
+  <a href="#use-cases">Use Cases</a> •
+  <a href="#quick-start">Quick Start</a> •
   <a href="#documentation">Documentation</a> •
-  <a href="#contribuer">Contribuer</a>
+  <a href="#contributing">Contributing</a>
 </p>
 
 ---
 
-## Pourquoi ALEC ?
+## Why ALEC?
 
-Dans de nombreux environnements, **chaque bit compte** :
-- 🛰️ Communications spatiales à quelques kbps
-- 🌿 Capteurs IoT sur batterie pendant des années
-- 🌍 Zones rurales avec connectivité satellite limitée
-- 🌊 Liaisons acoustiques sous-marines
-- 🏭 Réseaux industriels à bande passante restreinte
+In many environments, **every bit counts**:
+- 🛰️ Satellite communications at a few kbps
+- 🌿 Battery-powered IoT sensors lasting years
+- 🌍 Rural areas with limited satellite connectivity
+- 🌊 Underwater acoustic links
+- 🏭 Industrial networks with restricted bandwidth
 
-ALEC répond à ces défis avec une approche innovante : **ne transmettre que ce qui a de la valeur**.
-
----
-
-## Caractéristiques
-
-### 🦥 Compression Paresseuse (Lazy)
-
-ALEC ne transmet pas toutes les données — il transmet d'abord **la décision**, puis les détails seulement si nécessaire.
-
-```
-Sans ALEC:  [Données complètes] ───────────────────▶ 1000 octets
-Avec ALEC:  [Alerte: anomalie détectée] ───────────▶ 12 octets
-            [Détails sur demande] ─────────────────▶ 500 octets (si demandé)
-```
-
-### 🔄 Contexte Évolutif (Evolving)
-
-Émetteur et récepteur construisent un **dictionnaire partagé** qui s'enrichit avec le temps.
-
-```
-Semaine 1:  "température=22.3°C" ──────────────────▶ 20 octets
-Semaine 4:  [code_7][+0.3] ────────────────────────▶ 3 octets
-```
-
-### ⚖️ Asymétrie Intelligente
-
-L'effort de calcul est placé **là où les ressources existent**.
-
-| Mode | Émetteur | Récepteur | Usage |
-|------|----------|-----------|-------|
-| Standard | Léger | Lourd | Capteurs IoT, drones |
-| Inversé | Lourd | Léger | Diffusion broadcast |
-
-### 📊 Classification par Priorité
-
-Chaque donnée reçoit une priorité qui détermine son traitement :
-
-| Priorité | Comportement | Exemple |
-|----------|--------------|---------|
-| P1 CRITIQUE | Envoi immédiat + accusé | Alerte incendie |
-| P2 IMPORTANT | Envoi immédiat | Anomalie détectée |
-| P3 NORMAL | Envoi standard | Mesure périodique |
-| P4 DIFFÉRÉ | Sur demande uniquement | Historique détaillé |
-| P5 JETABLE | Jamais envoyé | Logs de debug |
+ALEC addresses these challenges with an innovative approach: **transmit only what has value**.
 
 ---
 
-## Cas d'usage
+## Features
 
-### 🚜 Agriculture connectée
+### 🦥 Lazy Compression
 
-Des capteurs dans les champs surveillent humidité, température et nutriments. Avec ALEC, ils fonctionnent 10 ans sur batterie en ne transmettant que les alertes et anomalies.
+ALEC doesn't transmit all data — it first sends **the decision**, then details only if needed.
 
-### 🏥 Télémédecine rurale
+```
+Without ALEC:  [Complete data] ──────────────────────▶ 1000 bytes
+With ALEC:     [Alert: anomaly detected] ────────────▶ 12 bytes
+               [Details on demand] ──────────────────▶ 500 bytes (if requested)
+```
 
-Un échographe portable en zone isolée envoie d'abord "anomalie cardiaque suspectée" en 50 octets. Le médecin distant décide s'il a besoin de l'image complète.
+### 🔄 Evolving Context
 
-### 🚛 Flottes de véhicules
+Encoder and decoder build a **shared dictionary** that improves over time.
 
-500 camions remontent leur position. Après quelques semaines, le système connaît les routes habituelles et ne transmet que les écarts.
+```
+Week 1:  "temperature=22.3°C" ──────────────────────▶ 20 bytes
+Week 4:  [code_7][+0.3] ───────────────────────────▶ 3 bytes
+```
 
-### 🛰️ Observation spatiale
+### ⚖️ Smart Asymmetry
 
-Un satellite photographie la Terre. Il n'envoie que les changements significatifs par rapport aux images précédentes.
+Computational effort is placed **where resources exist**.
 
-➡️ [Voir tous les cas d'usage détaillés](docs/applications.md)
+| Mode | Encoder | Decoder | Use Case |
+|------|---------|---------|----------|
+| Standard | Light | Heavy | IoT sensors, drones |
+| Reversed | Heavy | Light | Broadcast distribution |
+
+### 📊 Priority Classification
+
+Each data point receives a priority that determines its handling:
+
+| Priority | Behavior | Example |
+|----------|----------|---------|
+| P1 CRITICAL | Immediate send + acknowledgment | Fire alert |
+| P2 IMPORTANT | Immediate send | Anomaly detected |
+| P3 NORMAL | Standard send | Periodic measurement |
+| P4 DEFERRED | On demand only | Detailed history |
+| P5 DISPOSABLE | Never sent | Debug logs |
 
 ---
 
-## Démarrage rapide
+## Use Cases
 
-### Prérequis
+### 🚜 Connected Agriculture
 
-- Rust 1.70+ (émetteur et récepteur)
-- Ou : C compiler (émetteur embarqué uniquement)
+Field sensors monitor moisture, temperature, and nutrients. With ALEC, they run 10 years on battery by transmitting only alerts and anomalies.
+
+### 🏥 Rural Telemedicine
+
+A portable ultrasound in a remote area first sends "suspected cardiac anomaly" in 50 bytes. The remote doctor decides if they need the full image.
+
+### 🚛 Vehicle Fleets
+
+500 trucks report their position. After a few weeks, the system knows the usual routes and only transmits deviations.
+
+### 🛰️ Space Observation
+
+A satellite photographs Earth. It only sends significant changes compared to previous images.
+
+➡️ [See all detailed use cases](docs/applications.md)
+
+---
+
+## Quick Start
+
+### Prerequisites
+
+- Rust 1.70+ (encoder and decoder)
+- Or: C compiler (embedded encoder only)
 
 ### Installation
 
 ```bash
-# Cloner le repo
+# Clone the repo
 git clone https://github.com/zeekmartin/alec-codec.git
 cd alec-codec
 
-# Compiler
+# Build
 cargo build --release
 
-# Lancer les tests
+# Run tests
 cargo test
 ```
 
-### Premier exemple
+### First Example
 
 ```rust
 use alec::{Encoder, Decoder, Context, RawData};
 
 fn main() {
-    // Créer encodeur et décodeur avec contexte partagé
+    // Create encoder and decoder with shared context
     let mut ctx_emitter = Context::new();
     let mut ctx_receiver = Context::new();
     
     let encoder = Encoder::new();
     let decoder = Decoder::new();
     
-    // Simuler des mesures
+    // Simulate measurements
     for i in 0..100 {
         let data = RawData::new(20.0 + (i as f64 * 0.1), i);
         
-        // Encoder
+        // Encode
         let message = encoder.encode(&data, &ctx_emitter);
         ctx_emitter.observe(&data);
         
-        // ... transmettre message ...
+        // ... transmit message ...
         
-        // Décoder
+        // Decode
         let decoded = decoder.decode(&message, &ctx_receiver).unwrap();
         ctx_receiver.observe(&decoded);
         
-        println!("Original: {:.1}, Taille: {} octets", 
+        println!("Original: {:.1}, Size: {} bytes", 
                  data.value, message.len());
     }
 }
 ```
 
-➡️ [Guide de démarrage complet](docs/getting-started.md)
+➡️ [Complete getting started guide](docs/getting-started.md)
 
 ---
 
@@ -165,55 +165,55 @@ fn main() {
 
 | Document | Description |
 |----------|-------------|
-| [Architecture](docs/architecture.md) | Vue d'ensemble technique |
-| [Applications](docs/applications.md) | Cas d'usage détaillés |
-| [Getting Started](docs/getting-started.md) | Guide de démarrage |
-| [Protocol Reference](docs/protocol-reference.md) | Spécification du protocole |
-| [Security](docs/security.md) | Considérations de sécurité |
-| [API Reference](docs/intra-application.md) | Interfaces et APIs |
-| [FAQ](docs/faq.md) | Questions fréquentes |
-| [Glossary](docs/glossary.md) | Glossaire des termes |
+| [Architecture](docs/architecture.md) | Technical overview |
+| [Applications](docs/applications.md) | Detailed use cases |
+| [Getting Started](docs/getting-started.md) | Getting started guide |
+| [Protocol Reference](docs/protocol-reference.md) | Protocol specification |
+| [Security](docs/security.md) | Security considerations |
+| [API Reference](docs/intra-application.md) | Interfaces and APIs |
+| [FAQ](docs/faq.md) | Frequently asked questions |
+| [Glossary](docs/glossary.md) | Glossary of terms |
 
 ---
 
-## Performances
+## Performance
 
-Résultats sur dataset de référence (capteur température, 24h, 1 mesure/min) :
+Results on reference dataset (temperature sensor, 24h, 1 measurement/min):
 
-| Métrique | Sans contexte | Après rodage | Objectif |
-|----------|---------------|--------------|----------|
-| Ratio compression | 0.65 | 0.08 | < 0.10 ✅ |
-| Latence P1 | 45ms | 42ms | < 100ms ✅ |
-| RAM émetteur | 12KB | 28KB | < 64KB ✅ |
+| Metric | Without context | After warm-up | Target |
+|--------|-----------------|---------------|--------|
+| Compression ratio | 0.65 | 0.08 | < 0.10 ✅ |
+| P1 Latency | 45ms | 42ms | < 100ms ✅ |
+| Encoder RAM | 12KB | 28KB | < 64KB ✅ |
 
 ---
 
 ## Roadmap
 
-- [x] **v0.1** — Prototype fonctionnel ✅
-- [x] **v0.2** — Contexte évolutif ✅
-- [x] **v0.3** — Synchronisation automatique ✅
-- [x] **v0.4** — Mode flotte ✅
+- [x] **v0.1** — Functional prototype ✅
+- [x] **v0.2** — Evolving context ✅
+- [x] **v0.3** — Automatic synchronization ✅
+- [x] **v0.4** — Fleet mode ✅
 - [x] **v1.0** — Production ready ✅
 
-➡️ [Voir la roadmap complète](todo.md)
+➡️ [See the complete roadmap](todo.md)
 
 ---
 
-## Contribuer
+## Contributing
 
-Les contributions sont les bienvenues ! Consultez :
+Contributions are welcome! See:
 
-- [CONTRIBUTING.md](CONTRIBUTING.md) — Guide de contribution
-- [prompts/](prompts/) — Templates pour features, bugfixes, etc.
-- [examples/](examples/) — Exemples de workflows
+- [CONTRIBUTING.md](CONTRIBUTING.md) — Contribution guide
+- [prompts/](prompts/) — Templates for features, bugfixes, etc.
+- [examples/](examples/) — Example workflows
 
 ```bash
-# Workflow typique
-1. Fork le repo
-2. Créer une branche: git checkout -b feature/ma-feature
-3. Suivre le template approprié dans prompts/
-4. Soumettre une PR
+# Typical workflow
+1. Fork the repo
+2. Create a branch: git checkout -b feature/my-feature
+3. Follow the appropriate template in prompts/
+4. Submit a PR
 ```
 
 ---
@@ -243,15 +243,15 @@ See [LICENSE](LICENSE) for details.
 
 ---
 
-## Remerciements
+## Acknowledgments
 
-ALEC s'inspire des travaux sur :
-- Les codes correcteurs de la NASA (turbo codes, LDPC)
-- La compression par dictionnaire (LZ77, LZ78)
-- Les protocoles IoT efficients (CoAP, MQTT-SN)
+ALEC draws inspiration from:
+- NASA error-correcting codes (turbo codes, LDPC)
+- Dictionary compression (LZ77, LZ78)
+- Efficient IoT protocols (CoAP, MQTT-SN)
 
 ---
 
 <p align="center">
-  <sub>Fait avec ❤️ pour un monde où chaque bit compte</sub>
+  <sub>Made with ❤️ for a world where every bit counts</sub>
 </p>
