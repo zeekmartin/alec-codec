@@ -1,3 +1,7 @@
+[workspace]
+members = [".", "alec-ffi"]
+resolver = "2"
+
 [package]
 name = "alec"
 version = "1.0.0"
