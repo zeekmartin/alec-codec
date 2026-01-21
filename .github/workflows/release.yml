@@ -3,30 +3,163 @@ name: Release
 on:
   push:
     tags:
-      - 'v*'
+      - 'v*'           # Legacy: v1.2.0 (codec only)
+      - 'codec-*'      # New: codec-1.2.0
+      - 'ffi-*'        # New: ffi-1.0.0
+      - 'gateway-*'    # New: gateway-0.1.0
 
 env:
   CARGO_TERM_COLOR: always
 
 jobs:
+  # Parse tag to determine what to release
+  prepare:
+    runs-on: ubuntu-latest
+    outputs:
+      crate: ${{ steps.parse.outputs.crate }}
+      version: ${{ steps.parse.outputs.version }}
+      is_prerelease: ${{ steps.parse.outputs.is_prerelease }}
+      crate_dir: ${{ steps.parse.outputs.crate_dir }}
+      release_name: ${{ steps.parse.outputs.release_name }}
+    steps:
+      - name: Parse tag
+        id: parse
+        run: |
+          TAG=${GITHUB_REF#refs/tags/}
+          echo "tag=$TAG" >> $GITHUB_OUTPUT
+          
+          # Determine crate and version from tag format
+          if [[ "$TAG" == v* ]]; then
+            # Legacy format: v1.2.0 -> codec
+            CRATE="codec"
+            VERSION="${TAG#v}"
+            CRATE_DIR="."
+            RELEASE_NAME="ALEC $VERSION"
+          else
+            # New format: crate-version (e.g., ffi-1.0.0)
+            CRATE=$(echo $TAG | sed 's/-[0-9].*//')
+            VERSION=$(echo $TAG | sed "s/^${CRATE}-//")
+            RELEASE_NAME="ALEC ${CRATE^} $VERSION"
+            
+            case $CRATE in
+              codec)   CRATE_DIR="." ;;
+              ffi)     CRATE_DIR="alec-ffi" ;;
+              gateway) CRATE_DIR="alec-gateway" ;;
+              *)       CRATE_DIR="." ;;
+            esac
+          fi
+          
+          echo "crate=$CRATE" >> $GITHUB_OUTPUT
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+          echo "crate_dir=$CRATE_DIR" >> $GITHUB_OUTPUT
+          echo "release_name=$RELEASE_NAME" >> $GITHUB_OUTPUT
+          
+          # Check if prerelease (alpha, beta, rc)
+          if [[ "$VERSION" == *"alpha"* ]] || [[ "$VERSION" == *"beta"* ]] || [[ "$VERSION" == *"rc"* ]]; then
+            echo "is_prerelease=true" >> $GITHUB_OUTPUT
+          else
+            echo "is_prerelease=false" >> $GITHUB_OUTPUT
+          fi
+          
+          echo "📦 Release: $RELEASE_NAME"
+          echo "   Crate: $CRATE"
+          echo "   Version: $VERSION"
+          echo "   Directory: $CRATE_DIR"
+
+  # Build and test
+  build:
+    needs: prepare
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+        
+      - name: Cache cargo
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: ${{ runner.os }}-cargo-release-${{ hashFiles('**/Cargo.lock') }}
+          
+      - name: Build release
+        run: cargo build --release
+        
+      - name: Run tests
+        run: cargo test --release
+
+  # Create GitHub Release
   release:
+    needs: [prepare, build]
     runs-on: ubuntu-latest
     permissions:
       contents: write
     steps:
       - uses: actions/checkout@v4
-
-      - name: Install Rust
-        uses: dtolnay/rust-toolchain@stable
-
-      - name: Build release
+        with:
+          fetch-depth: 0
+          
+      - name: Extract changelog
+        id: changelog
+        run: |
+          TAG=${GITHUB_REF#refs/tags/}
+          
+          # Try to extract changelog section
+          if [ -f CHANGELOG.md ]; then
+            CHANGELOG=$(awk "/^## \[${TAG}\]/{flag=1; next} /^## \[/{flag=0} flag" CHANGELOG.md | head -50)
+          fi
+          
+          if [ -z "$CHANGELOG" ]; then
+            CHANGELOG="Release ${{ needs.prepare.outputs.release_name }}"
+          fi
+          
+          echo "$CHANGELOG" > release_notes.md
+          
+      - name: Build release artifacts
         run: cargo build --release
-
-      - name: Run tests
-        run: cargo test --release
-
-      - name: Create release
+          
+      - name: Create GitHub Release
         uses: softprops/action-gh-release@v1
         with:
-          files: target/release/alec*
-          generate_release_notes: true
+          name: "${{ needs.prepare.outputs.release_name }}"
+          body_path: release_notes.md
+          prerelease: ${{ needs.prepare.outputs.is_prerelease }}
+          files: |
+            target/release/libalec*
+            target/release/alec*
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  # Publish to crates.io (stable releases only)
+  publish:
+    needs: [prepare, build, release]
+    runs-on: ubuntu-latest
+    if: needs.prepare.outputs.is_prerelease == 'false'
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+        
+      - name: Publish to crates.io
+        env:
+          CARGO_REGISTRY_TOKEN: ${{ secrets.CRATES_IO_TOKEN }}
+        run: |
+          CRATE_DIR="${{ needs.prepare.outputs.crate_dir }}"
+          
+          echo "📦 Publishing from $CRATE_DIR..."
+          
+          if [ "$CRATE_DIR" != "." ]; then
+            cd "$CRATE_DIR"
+          fi
+          
+          # Dry run first
+          cargo publish --dry-run
+          
+          # Publish
+          cargo publish
+          
+          echo "✅ Published to crates.io"
