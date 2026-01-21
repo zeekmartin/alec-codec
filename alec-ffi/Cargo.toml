@@ -16,7 +16,7 @@ name = "alec_ffi"
 crate-type = ["staticlib", "cdylib"]
 
 [dependencies]
-alec = { path = ".." }
+alec = { path = "..", version = "1.0" }
 
 [build-dependencies]
 cbindgen = "0.26"

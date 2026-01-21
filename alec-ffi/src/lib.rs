@@ -351,7 +351,10 @@ pub extern "C" fn alec_encoder_save_context(
         Err(_) => return AlecResult::ErrorInvalidUtf8,
     };
 
-    match enc.context.save_to_file(Path::new(path_str), sensor_type_str) {
+    match enc
+        .context
+        .save_to_file(Path::new(path_str), sensor_type_str)
+    {
         Ok(()) => AlecResult::Ok,
         Err(_) => AlecResult::ErrorFileIo,
     }
