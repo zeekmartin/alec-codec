@@ -157,12 +157,38 @@ Objectif : Compression optimale dès le premier octet grâce aux fichiers preloa
   - [ ] HVAC (temperature, pressure, flow)
   - [ ] Energy (voltage, current, power)
 
+### v1.2.0 — C/C++ FFI Bindings ✅ Complété
+
+Objectif : Permettre l'intégration avec des projets C/C++.
+
+- [x] **Phase 1 : Core FFI** ✅
+  - [x] Crate `alec-ffi` avec structure complète
+  - [x] `AlecEncoder` / `AlecDecoder` opaque handles
+  - [x] `alec_encode_value()` et `alec_encode_multi()`
+  - [x] `alec_decode_value()` et `alec_decode_multi()`
+  - [x] Support checksum (encoder/decoder with_checksum)
+  - [x] `AlecResult` enum avec codes d'erreur
+- [x] **Phase 2 : Context Support** ✅
+  - [x] `alec_encoder_save_context()` pour export preload
+  - [x] `alec_encoder_load_context()` pour import preload
+  - [x] `alec_decoder_load_context()`
+  - [x] `alec_encoder_context_version()` / `alec_decoder_context_version()`
+- [x] **Phase 3 : Build & Distribution** ✅
+  - [x] Build static library (`libalec.a`)
+  - [x] Build shared library (`libalec.so` / `libalec.dylib`)
+  - [x] Header C (`include/alec.h`) avec documentation
+  - [x] cbindgen pour génération automatique
+  - [x] Exemple C (`examples/example.c`)
+  - [x] 11 tests Rust FFI
+  - [x] README avec instructions de build et linking
+
 ### Backlog v1.x / v2.0
 
-- [ ] **Performance** (v1.2)
+- [ ] **Performance** (v1.3)
   - [ ] Optimisation mémoire émetteur
   - [ ] Benchmarks sur hardware cible
 - [ ] **Packaging** (v2.0)
+  - [x] Bindings C/C++ (alec-ffi) ✅
   - [ ] Bindings Python (PyO3)
   - [ ] Images Docker
   - [ ] Dashboard visualisation
@@ -236,6 +262,15 @@ Objectif : Compression optimale dès le premier octet grâce aux fichiers preloa
   - [x] `demo_temperature_v1.alec-context` (20-25°C, MovingAverage)
   - [x] `demo_humidity_v1.alec-context` (40-60%, Periodic)
   - [x] `demo_counter_v1.alec-context` (monotonic, Linear)
+- [x] **C/C++ FFI Bindings** ✅
+  - [x] Crate `alec-ffi/` avec build system
+  - [x] `AlecEncoder` / `AlecDecoder` opaque handles
+  - [x] Encode/decode single + multi values
+  - [x] Context save/load pour preloads
+  - [x] Header C `include/alec.h` documenté
+  - [x] Exemple C `examples/example.c`
+  - [x] Static (`libalec.a`) et shared (`libalec.so`) libraries
+  - [x] 11 tests FFI Rust
 
 ---
 
@@ -312,7 +347,24 @@ Actions :
 
 ## Changelog
 
-### [1.1.0] - 2026-01-16 (En cours)
+### [1.2.0] - 2026-01-21 (En cours)
+
+#### Added
+- Crate `alec-ffi` pour bindings C/C++
+- `AlecEncoder` et `AlecDecoder` opaque handles
+- `alec_encode_value()` et `alec_encode_multi()` pour encodage
+- `alec_decode_value()` et `alec_decode_multi()` pour décodage
+- `alec_encoder_save_context()` et `alec_encoder_load_context()` pour preloads
+- `alec_decoder_load_context()` pour preloads décodeur
+- `AlecResult` enum avec codes d'erreur (ALEC_OK, ALEC_ERROR_*)
+- Support checksum via `alec_encoder_new_with_checksum()`
+- Header C complet `alec-ffi/include/alec.h` avec documentation
+- Build script cbindgen pour génération automatique de headers
+- Exemple C `alec-ffi/examples/example.c`
+- Static library `libalec.a` et shared library `libalec.so`
+- 11 tests FFI Rust
+
+### [1.1.0] - 2026-01-16
 
 #### Added
 - Module `context/preload` pour fichiers preload

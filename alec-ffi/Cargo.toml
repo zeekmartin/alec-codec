@@ -1,0 +1,25 @@
+[package]
+name = "alec-ffi"
+version = "1.0.0"
+edition = "2021"
+rust-version = "1.70"
+authors = ["David Martin Venti <contact@alec-codec.com>"]
+description = "C/C++ bindings for ALEC compression library"
+license = "AGPL-3.0"
+repository = "https://github.com/zeekmartin/alec-codec"
+readme = "README.md"
+keywords = ["compression", "iot", "ffi", "c-bindings", "embedded"]
+categories = ["compression", "external-ffi-bindings"]
+
+[lib]
+name = "alec_ffi"
+crate-type = ["staticlib", "cdylib"]
+
+[dependencies]
+alec = { path = ".." }
+
+[build-dependencies]
+cbindgen = "0.26"
+
+[dev-dependencies]
+tempfile = "3.10"
