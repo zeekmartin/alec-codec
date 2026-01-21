@@ -12,7 +12,7 @@ keywords = ["compression", "iot", "ffi", "c-bindings", "embedded"]
 categories = ["compression", "external-ffi-bindings"]
 
 [lib]
-name = "alec"
+name = "alec_ffi"
 crate-type = ["staticlib", "cdylib"]
 
 [dependencies]
