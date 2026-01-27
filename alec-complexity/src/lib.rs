@@ -149,7 +149,7 @@ pub use snapshot::ComplexitySnapshot;
 
 // Gateway-specific re-exports
 #[cfg(feature = "gateway")]
-pub use input::gateway::{GatewayInput, MetricsSnapshotExt};
+pub use input::{GatewayInput, MetricsSnapshotExt};
 
 /// Crate version.
 pub const VERSION: &str = env!("CARGO_PKG_VERSION");
