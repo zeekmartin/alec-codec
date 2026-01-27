@@ -6,12 +6,12 @@
 //! Run with: cargo run --example complexity_demo --features complexity
 
 #[cfg(feature = "complexity")]
-use alec_complexity::{ComplexityConfig, ComplexityEngine, GenericInput};
-#[cfg(feature = "complexity")]
 use alec_complexity::config::BaselineConfig;
+#[cfg(feature = "complexity")]
+use alec_complexity::{ComplexityConfig, ComplexityEngine, GenericInput};
 
-use alec_testdata::{generate_dataset, GeneratorConfig};
 use alec_testdata::industries::agriculture::{create_farm_sensors, AgriculturalScenario};
+use alec_testdata::{generate_dataset, GeneratorConfig};
 
 fn main() {
     println!("ALEC Complexity Demo");
@@ -120,10 +120,7 @@ fn demo_sensor_failure() {
     // Show the stuck values
     let moisture_col = dataset.column("soil_moisture");
     if moisture_col.len() > 510 {
-        println!(
-            "  Soil moisture at 499: {:?}",
-            moisture_col[499]
-        );
+        println!("  Soil moisture at 499: {:?}", moisture_col[499]);
         println!(
             "  Soil moisture at 500 (failure start): {:?}",
             moisture_col[500]
@@ -144,12 +141,10 @@ fn demo_sensor_failure() {
                 event.severity, event.event_type, event.message
             );
         }
-        if events.iter().any(|e| {
-            matches!(
-                e.event_type,
-                alec_complexity::EventType::StructureBreak
-            )
-        }) {
+        if events
+            .iter()
+            .any(|e| matches!(e.event_type, alec_complexity::EventType::StructureBreak))
+        {
             println!("  ✓ Sensor failure detected!\n");
         } else {
             println!("  (Note: Structure break detection may require tuning)\n");
@@ -184,10 +179,7 @@ fn run_complexity_analysis(
     for row in dataset.rows() {
         // Create input from dataset row
         // We'll compute a simple "entropy" approximation based on value spread
-        let values: Vec<f64> = row
-            .iter()
-            .filter_map(|(_, v)| v)
-            .collect();
+        let values: Vec<f64> = row.iter().filter_map(|(_, v)| v).collect();
 
         if values.is_empty() {
             continue;
@@ -195,8 +187,8 @@ fn run_complexity_analysis(
 
         // Simple h_bytes approximation
         let mean: f64 = values.iter().sum::<f64>() / values.len() as f64;
-        let variance: f64 = values.iter().map(|v| (v - mean).powi(2)).sum::<f64>()
-            / values.len() as f64;
+        let variance: f64 =
+            values.iter().map(|v| (v - mean).powi(2)).sum::<f64>() / values.len() as f64;
         let h_bytes = (variance.sqrt() + 1.0).log2() * 2.0; // Rough approximation
 
         let input = GenericInput::new(row.timestamp_ms, h_bytes)

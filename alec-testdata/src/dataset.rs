@@ -232,9 +232,7 @@ impl Dataset {
         let mut lines = reader.lines();
 
         // Parse header
-        let header = lines
-            .next()
-            .ok_or(DatasetError::Empty)??;
+        let header = lines.next().ok_or(DatasetError::Empty)??;
         let columns: Vec<&str> = header.split(',').collect();
 
         if columns.is_empty() || columns[0] != "timestamp_ms" {
@@ -301,11 +299,7 @@ impl Dataset {
 
     /// Calculate basic statistics for a sensor.
     pub fn stats(&self, sensor_id: &str) -> Option<SensorStats> {
-        let values: Vec<f64> = self
-            .column(sensor_id)
-            .into_iter()
-            .flatten()
-            .collect();
+        let values: Vec<f64> = self.column(sensor_id).into_iter().flatten().collect();
 
         if values.is_empty() {
             return None;

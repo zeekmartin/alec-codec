@@ -11,6 +11,7 @@
 use crate::anomalies::{AnomalyConfig, AnomalyType};
 use crate::generator::SensorConfig;
 use crate::patterns::SignalPattern;
+use std::f64::consts::PI;
 
 /// Agricultural scenario types.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -63,11 +64,11 @@ pub fn create_farm_sensors(scenario: AgriculturalScenario) -> Vec<SensorConfig> 
                     SignalPattern::Step {
                         levels: vec![
                             (0, 45.0),
-                            (60 * 60_000, 75.0),      // Irrigation at 1h
-                            (180 * 60_000, 70.0),     // Decay
-                            (240 * 60_000, 80.0),     // Irrigation at 4h
-                            (360 * 60_000, 72.0),     // Decay
-                            (420 * 60_000, 78.0),     // Irrigation at 7h
+                            (60 * 60_000, 75.0),  // Irrigation at 1h
+                            (180 * 60_000, 70.0), // Decay
+                            (240 * 60_000, 80.0), // Irrigation at 4h
+                            (360 * 60_000, 72.0), // Decay
+                            (420 * 60_000, 78.0), // Irrigation at 7h
                         ],
                     },
                     SignalPattern::Decay {
@@ -104,14 +105,12 @@ fn base_farm_sensors() -> Vec<SensorConfig> {
             "°C",
             10.0,
             35.0,
-            SignalPattern::Composite(vec![
-                SignalPattern::Diurnal {
-                    min: 15.0,
-                    max: 28.0,
-                    peak_hour: 15.0, // Lags air temp
-                    spread: 5.0,
-                },
-            ]),
+            SignalPattern::Composite(vec![SignalPattern::Diurnal {
+                min: 15.0,
+                max: 28.0,
+                peak_hour: 15.0, // Lags air temp
+                spread: 5.0,
+            }]),
         )
         .with_noise(0.5),
         // Soil moisture - step changes (irrigation) + slow drift
@@ -125,7 +124,7 @@ fn base_farm_sensors() -> Vec<SensorConfig> {
                 SignalPattern::Sine {
                     amplitude: 5.0,
                     period_ms: 86_400_000,
-                    phase: 3.14,
+                    phase: PI,
                     offset: 0.0,
                 },
             ]),

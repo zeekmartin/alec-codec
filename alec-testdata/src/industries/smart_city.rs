@@ -39,26 +39,32 @@ pub fn create_city_sensors(scenario: SmartCityScenario) -> Vec<SensorConfig> {
         SmartCityScenario::Accident => {
             // Traffic speed drops, count increases
             if let Some(speed) = sensors.iter_mut().find(|s| s.id == "traffic_speed") {
-                speed.anomaly = Some(AnomalyConfig::new(
-                    AnomalyType::BiasShift { offset: -30.0 },
-                    720, // At noon
-                ).with_duration(60)); // 1 hour
+                speed.anomaly = Some(
+                    AnomalyConfig::new(
+                        AnomalyType::BiasShift { offset: -30.0 },
+                        720, // At noon
+                    )
+                    .with_duration(60),
+                ); // 1 hour
             }
             if let Some(count) = sensors.iter_mut().find(|s| s.id == "traffic_count") {
-                count.anomaly = Some(AnomalyConfig::new(
-                    AnomalyType::BiasShift { offset: 20.0 },
-                    720,
-                ).with_duration(60));
+                count.anomaly = Some(
+                    AnomalyConfig::new(AnomalyType::BiasShift { offset: 20.0 }, 720)
+                        .with_duration(60),
+                );
             }
         }
         SmartCityScenario::Festival => {
             // All counts elevated
             for sensor in &mut sensors {
                 if sensor.id == "pedestrian_count" || sensor.id == "traffic_count" {
-                    sensor.anomaly = Some(AnomalyConfig::new(
-                        AnomalyType::BiasShift { offset: 50.0 },
-                        600, // Evening start
-                    ).with_duration(360)); // 6 hours
+                    sensor.anomaly = Some(
+                        AnomalyConfig::new(
+                            AnomalyType::BiasShift { offset: 50.0 },
+                            600, // Evening start
+                        )
+                        .with_duration(360),
+                    ); // 6 hours
                 }
             }
         }
@@ -161,9 +167,9 @@ fn weekday_city_sensors() -> Vec<SensorConfig> {
             1.0,
             SignalPattern::Step {
                 levels: vec![
-                    (0, 1.0),                  // On at midnight
-                    (6 * 3_600_000, 0.0),      // Off at 6am
-                    (18 * 3_600_000, 1.0),     // On at 6pm
+                    (0, 1.0),              // On at midnight
+                    (6 * 3_600_000, 0.0),  // Off at 6am
+                    (18 * 3_600_000, 1.0), // On at 6pm
                 ],
             },
         ),
@@ -275,7 +281,7 @@ fn weekend_city_sensors() -> Vec<SensorConfig> {
             SignalPattern::Step {
                 levels: vec![
                     (0, 1.0),
-                    (7 * 3_600_000, 0.0),  // Later off on weekend
+                    (7 * 3_600_000, 0.0), // Later off on weekend
                     (18 * 3_600_000, 1.0),
                 ],
             },

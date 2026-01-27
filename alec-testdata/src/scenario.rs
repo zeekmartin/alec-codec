@@ -86,7 +86,7 @@ pub struct ExpectedEvent {
 }
 
 /// Validation criteria for scenario testing.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct ScenarioValidation {
     /// R should decrease during anomaly.
     #[serde(default)]
@@ -286,18 +286,6 @@ impl AnomalyScenario {
                 r_should_decrease: true,
                 ..Default::default()
             }),
-        }
-    }
-}
-
-impl Default for ScenarioValidation {
-    fn default() -> Self {
-        Self {
-            r_should_decrease: false,
-            r_should_increase: false,
-            tc_should_change: false,
-            h_bytes_should_increase: false,
-            min_z_score: None,
         }
     }
 }

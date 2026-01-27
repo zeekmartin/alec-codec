@@ -36,7 +36,10 @@ pub fn create_factory_sensors(scenario: ManufacturingScenario) -> Vec<SensorConf
         ManufacturingScenario::MachineCycle => {
             // Shorter cycle for demo
             for sensor in &mut sensors {
-                if let SignalPattern::MachineState { cycle_period_ms, .. } = &mut sensor.pattern {
+                if let SignalPattern::MachineState {
+                    cycle_period_ms, ..
+                } = &mut sensor.pattern
+                {
                     *cycle_period_ms = 3_600_000; // 1 hour cycle
                 }
             }

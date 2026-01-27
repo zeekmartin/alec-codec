@@ -222,10 +222,8 @@ pub fn generate_dataset(config: &GeneratorConfig, sensors: &[SensorConfig]) -> D
         .collect();
 
     // History for correlations
-    let mut history: HashMap<String, Vec<f64>> = sensors
-        .iter()
-        .map(|s| (s.id.clone(), Vec::new()))
-        .collect();
+    let mut history: HashMap<String, Vec<f64>> =
+        sensors.iter().map(|s| (s.id.clone(), Vec::new())).collect();
 
     // Generate samples
     for i in 0..config.num_samples {
@@ -248,16 +246,11 @@ pub fn generate_dataset(config: &GeneratorConfig, sensors: &[SensorConfig]) -> D
         // Second pass: generate correlated values
         for sensor in sensors {
             if let Some(ref corr) = sensor.correlation {
-                let source_history = history.get(&corr.source_id);
-                let source_value = if corr.lag_samples > 0 && source_history.is_some() {
-                    let hist = source_history.unwrap();
-                    if hist.len() > corr.lag_samples {
+                let source_value = match (corr.lag_samples > 0, history.get(&corr.source_id)) {
+                    (true, Some(hist)) if hist.len() > corr.lag_samples => {
                         hist[hist.len() - corr.lag_samples - 1]
-                    } else {
-                        *base_values.get(&corr.source_id).unwrap_or(&0.0)
                     }
-                } else {
-                    *base_values.get(&corr.source_id).unwrap_or(&0.0)
+                    _ => *base_values.get(&corr.source_id).unwrap_or(&0.0),
                 };
 
                 // Apply correlation
@@ -434,9 +427,7 @@ mod tests {
 
     #[test]
     fn test_generate_constant() {
-        let config = GeneratorConfig::new()
-            .with_num_samples(10)
-            .with_seed(42);
+        let config = GeneratorConfig::new().with_num_samples(10).with_seed(42);
 
         let sensors = vec![SensorConfig::new(
             "temp",
@@ -457,9 +448,7 @@ mod tests {
 
     #[test]
     fn test_generate_with_noise() {
-        let config = GeneratorConfig::new()
-            .with_num_samples(100)
-            .with_seed(42);
+        let config = GeneratorConfig::new().with_num_samples(100).with_seed(42);
 
         let sensors = vec![SensorConfig::new(
             "temp",
@@ -486,9 +475,7 @@ mod tests {
 
     #[test]
     fn test_generate_with_anomaly() {
-        let config = GeneratorConfig::new()
-            .with_num_samples(100)
-            .with_seed(42);
+        let config = GeneratorConfig::new().with_num_samples(100).with_seed(42);
 
         let anomaly = AnomalyConfig::new(AnomalyType::Stuck, 50).with_duration(30);
 
@@ -553,11 +540,7 @@ mod tests {
     #[test]
     fn test_dataset_builder() {
         let dataset = DatasetBuilder::new()
-            .with_config(
-                GeneratorConfig::new()
-                    .with_num_samples(10)
-                    .with_seed(42),
-            )
+            .with_config(GeneratorConfig::new().with_num_samples(10).with_seed(42))
             .add_sensor(SensorConfig::new(
                 "temp",
                 "°C",
@@ -576,9 +559,7 @@ mod tests {
 
     #[test]
     fn test_reproducibility() {
-        let config = GeneratorConfig::new()
-            .with_num_samples(10)
-            .with_seed(12345);
+        let config = GeneratorConfig::new().with_num_samples(10).with_seed(12345);
 
         let sensors = vec![SensorConfig::new(
             "temp",

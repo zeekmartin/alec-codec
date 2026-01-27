@@ -53,11 +53,7 @@ impl AnomalyConfig {
 
     /// Get samples since anomaly start.
     pub fn samples_since_start(&self, sample_idx: usize) -> usize {
-        if sample_idx < self.start_sample {
-            0
-        } else {
-            sample_idx - self.start_sample
-        }
+        sample_idx.saturating_sub(self.start_sample)
     }
 }
 
@@ -308,7 +304,12 @@ impl AnomalyBuilder {
 
     /// Build a gradual drift anomaly.
     pub fn gradual_drift(self, total_samples: usize, rate: f64) -> AnomalyConfig {
-        self.build(total_samples, AnomalyType::Drift { rate_per_sample: rate })
+        self.build(
+            total_samples,
+            AnomalyType::Drift {
+                rate_per_sample: rate,
+            },
+        )
     }
 
     /// Build a sudden spike anomaly.
@@ -337,8 +338,8 @@ impl Default for AnomalyBuilder {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use rand::SeedableRng;
     use rand::rngs::StdRng;
+    use rand::SeedableRng;
 
     fn test_rng() -> StdRng {
         StdRng::seed_from_u64(42)
@@ -408,7 +409,9 @@ mod tests {
     fn test_drift_anomaly() {
         let mut rng = test_rng();
         let mut state = AnomalyState::default();
-        let anomaly = AnomalyType::Drift { rate_per_sample: 0.5 };
+        let anomaly = AnomalyType::Drift {
+            rate_per_sample: 0.5,
+        };
 
         let v1 = state.apply(&anomaly, 50.0, 0, &mut rng);
         assert_eq!(v1, Some(50.5));
@@ -471,7 +474,10 @@ mod tests {
             "PAYLOAD_ENTROPY_SPIKE"
         );
         assert_eq!(
-            AnomalyType::Drift { rate_per_sample: 0.1 }.expected_event(),
+            AnomalyType::Drift {
+                rate_per_sample: 0.1
+            }
+            .expected_event(),
             "COMPLEXITY_SURGE"
         );
     }

@@ -11,6 +11,7 @@
 use crate::anomalies::{AnomalyConfig, AnomalyType};
 use crate::generator::SensorConfig;
 use crate::patterns::SignalPattern;
+use std::f64::consts::PI;
 
 /// Energy/Grid scenario types.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -41,10 +42,13 @@ pub fn create_grid_sensors(scenario: EnergyScenario) -> Vec<SensorConfig> {
         EnergyScenario::PhaseImbalance => {
             // One phase voltage differs
             if let Some(v1) = sensors.iter_mut().find(|s| s.id == "voltage_l1") {
-                v1.anomaly = Some(AnomalyConfig::new(
-                    AnomalyType::BiasShift { offset: -8.0 }, // Low voltage
-                    400,
-                ).with_duration(200));
+                v1.anomaly = Some(
+                    AnomalyConfig::new(
+                        AnomalyType::BiasShift { offset: -8.0 }, // Low voltage
+                        400,
+                    )
+                    .with_duration(200),
+                );
             }
         }
         EnergyScenario::HarmonicEvent => {
@@ -164,7 +168,7 @@ fn base_grid_sensors() -> Vec<SensorConfig> {
                 SignalPattern::Sine {
                     amplitude: 0.03,
                     period_ms: 86_400_000,
-                    phase: 3.14, // Worst at peak
+                    phase: PI, // Worst at peak
                     offset: 0.0,
                 },
             ]),
@@ -299,7 +303,7 @@ fn industrial_grid_sensors() -> Vec<SensorConfig> {
             SignalPattern::MachineState {
                 idle_value: 5.0,
                 running_value: 42.0,
-                startup_duration_ms: 1_800_000, // 30 min ramp
+                startup_duration_ms: 1_800_000,  // 30 min ramp
                 running_duration_ms: 28_800_000, // 8 hour shift
                 shutdown_duration_ms: 1_800_000,
                 cycle_period_ms: 86_400_000,

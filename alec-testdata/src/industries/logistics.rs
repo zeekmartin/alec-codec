@@ -41,13 +41,13 @@ pub fn create_logistics_sensors(scenario: LogisticsScenario) -> Vec<SensorConfig
                 door.pattern = SignalPattern::Step {
                     levels: vec![
                         (0, 0.0),
-                        (60 * 60_000, 1.0),      // Stop 1
+                        (60 * 60_000, 1.0), // Stop 1
                         (65 * 60_000, 0.0),
-                        (180 * 60_000, 1.0),     // Stop 2
+                        (180 * 60_000, 1.0), // Stop 2
                         (185 * 60_000, 0.0),
-                        (300 * 60_000, 1.0),     // Stop 3
+                        (300 * 60_000, 1.0), // Stop 3
                         (310 * 60_000, 0.0),
-                        (420 * 60_000, 1.0),     // Stop 4
+                        (420 * 60_000, 1.0), // Stop 4
                         (430 * 60_000, 0.0),
                     ],
                 };
@@ -78,10 +78,13 @@ pub fn create_logistics_sensors(scenario: LogisticsScenario) -> Vec<SensorConfig
         LogisticsScenario::RouteDeviation => {
             // GPS suddenly deviates
             if let Some(lat) = sensors.iter_mut().find(|s| s.id == "gps_lat") {
-                lat.anomaly = Some(AnomalyConfig::new(
-                    AnomalyType::BiasShift { offset: 0.1 }, // ~10km deviation
-                    200,
-                ).with_duration(100));
+                lat.anomaly = Some(
+                    AnomalyConfig::new(
+                        AnomalyType::BiasShift { offset: 0.1 }, // ~10km deviation
+                        200,
+                    )
+                    .with_duration(100),
+                );
             }
         }
         LogisticsScenario::FuelTheft => {
@@ -139,7 +142,7 @@ fn base_logistics_sensors() -> Vec<SensorConfig> {
             -90.0,
             90.0,
             SignalPattern::Linear {
-                start: 48.8566, // Paris
+                start: 48.8566,             // Paris
                 slope_per_ms: 0.0000000015, // Moving north
             },
         )

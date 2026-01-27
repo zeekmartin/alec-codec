@@ -157,18 +157,17 @@ impl DatasetManifest {
 
     /// Save to JSON file.
     pub fn to_json_file(&self, path: impl AsRef<std::path::Path>) -> Result<(), std::io::Error> {
-        let json = self.to_json().map_err(|e| {
-            std::io::Error::new(std::io::ErrorKind::InvalidData, e)
-        })?;
+        let json = self
+            .to_json()
+            .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidData, e))?;
         std::fs::write(path, json)
     }
 
     /// Load from JSON file.
     pub fn from_json_file(path: impl AsRef<std::path::Path>) -> Result<Self, std::io::Error> {
         let json = std::fs::read_to_string(path)?;
-        serde_json::from_str(&json).map_err(|e| {
-            std::io::Error::new(std::io::ErrorKind::InvalidData, e)
-        })
+        serde_json::from_str(&json)
+            .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidData, e))
     }
 }
 

@@ -6,12 +6,12 @@
 //! Run with: cargo run --example run_through_gateway --features gateway
 
 #[cfg(feature = "gateway")]
-use alec_gateway::{ChannelConfig, Gateway, GatewayConfig};
-#[cfg(feature = "gateway")]
 use alec_gateway::metrics::MetricsConfig;
+#[cfg(feature = "gateway")]
+use alec_gateway::{ChannelConfig, Gateway, GatewayConfig};
 
-use alec_testdata::{generate_dataset, GeneratorConfig};
 use alec_testdata::industries::agriculture::{create_farm_sensors, AgriculturalScenario};
+use alec_testdata::{generate_dataset, GeneratorConfig};
 
 fn main() {
     println!("ALEC Gateway Integration Example");

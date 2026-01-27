@@ -20,9 +20,7 @@ use std::f64::consts::PI;
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum SignalPattern {
     /// Constant value with optional noise.
-    Constant {
-        value: f64,
-    },
+    Constant { value: f64 },
 
     /// Sinusoidal wave.
     ///
@@ -37,24 +35,16 @@ pub enum SignalPattern {
     /// Linear trend.
     ///
     /// `value = start + slope_per_ms * t`
-    Linear {
-        start: f64,
-        slope_per_ms: f64,
-    },
+    Linear { start: f64, slope_per_ms: f64 },
 
     /// Random walk (Brownian motion).
-    RandomWalk {
-        start: f64,
-        step_std: f64,
-    },
+    RandomWalk { start: f64, step_std: f64 },
 
     /// Step function with predefined level changes.
     ///
     /// Levels are (timestamp_ms, value) pairs. The value persists
     /// until the next timestamp.
-    Step {
-        levels: Vec<(u64, f64)>,
-    },
+    Step { levels: Vec<(u64, f64)> },
 
     /// Exponential decay toward target.
     ///
@@ -83,16 +73,10 @@ pub enum SignalPattern {
     },
 
     /// Log-normal distributed values (good for wind, traffic).
-    LogNormal {
-        mu: f64,
-        sigma: f64,
-    },
+    LogNormal { mu: f64, sigma: f64 },
 
     /// Poisson events (good for rain, sparse events).
-    Poisson {
-        lambda: f64,
-        scale: f64,
-    },
+    Poisson { lambda: f64, scale: f64 },
 
     /// Diurnal pattern (24-hour cycle with customizable shape).
     Diurnal {
@@ -181,9 +165,10 @@ impl SignalPattern {
                 offset + amplitude * (2.0 * PI * t / period + phase).sin()
             }
 
-            SignalPattern::Linear { start, slope_per_ms } => {
-                start + slope_per_ms * timestamp_ms as f64
-            }
+            SignalPattern::Linear {
+                start,
+                slope_per_ms,
+            } => start + slope_per_ms * timestamp_ms as f64,
 
             SignalPattern::RandomWalk { start, step_std } => {
                 // For stateless evaluation, we return start + noise
@@ -248,7 +233,7 @@ impl SignalPattern {
                     return 0.0;
                 }
                 let dist = Poisson::new(*lambda).unwrap();
-                dist.sample(rng) as f64 * scale
+                dist.sample(rng) * scale
             }
 
             SignalPattern::Diurnal {
@@ -288,7 +273,11 @@ impl SignalPattern {
                 min + (max - min) * factor
             }
 
-            SignalPattern::Binary { initial: _, p_on, p_off } => {
+            SignalPattern::Binary {
+                initial: _,
+                p_on,
+                p_off,
+            } => {
                 // Stateless approximation - use probability
                 let steady_state = p_on / (p_on + p_off);
                 if rng.gen::<f64>() < steady_state {
@@ -427,7 +416,12 @@ impl PatternState {
     }
 
     /// Evaluate pattern with state update.
-    pub fn evaluate(&mut self, pattern: &SignalPattern, timestamp_ms: u64, rng: &mut (impl Rng + ?Sized)) -> f64 {
+    pub fn evaluate(
+        &mut self,
+        pattern: &SignalPattern,
+        timestamp_ms: u64,
+        rng: &mut (impl Rng + ?Sized),
+    ) -> f64 {
         match pattern {
             SignalPattern::RandomWalk { step_std, .. } => {
                 let normal = Normal::new(0.0, *step_std).unwrap();
@@ -525,8 +519,8 @@ fn interpolate_path(waypoints: &[(f64, f64)], progress: f64) -> (f64, f64) {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use rand::SeedableRng;
     use rand::rngs::StdRng;
+    use rand::SeedableRng;
 
     fn test_rng() -> StdRng {
         StdRng::seed_from_u64(42)
