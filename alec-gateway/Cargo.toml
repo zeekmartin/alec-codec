@@ -1,0 +1,19 @@
+[package]
+name = "alec-gateway"
+version = "0.1.0-alpha"
+edition = "2021"
+rust-version = "1.70"
+authors = ["David Martin Venti <contact@alec-codec.com>"]
+description = "Multi-sensor orchestration layer for ALEC compression"
+license = "AGPL-3.0"
+repository = "https://github.com/zeekmartin/alec-codec"
+readme = "README.md"
+keywords = ["compression", "iot", "gateway", "sensor", "orchestration"]
+categories = ["compression", "embedded"]
+
+[dependencies]
+alec = { path = "..", version = "1.1" }
+thiserror = "1.0"
+
+[dev-dependencies]
+tempfile = "3.10"
