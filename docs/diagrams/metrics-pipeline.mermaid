@@ -1,0 +1,60 @@
+%% Metrics Computation Pipeline
+flowchart TD
+    subgraph Input
+        Raw[Raw Sensor Values]
+        Frame[Compressed Frame]
+    end
+
+    subgraph "Signal Metrics"
+        Window[Sliding Window]
+        Align[Alignment]
+        Norm[Normalization]
+        Cov[Covariance Matrix]
+        Hi[H_i per channel]
+        Hjoint[H_joint]
+        TC[Total Correlation]
+    end
+
+    subgraph "Payload Metrics"
+        Hist[Byte Histogram]
+        Hbytes[H_bytes]
+    end
+
+    subgraph "Resilience Metrics"
+        R[R = TC / Σ H_i]
+        Zone[Zone Classification]
+        Crit[Criticality ΔR_k]
+    end
+
+    subgraph Output
+        Snapshot[MetricsSnapshot]
+    end
+
+    Raw --> Window
+    Window --> Align
+    Align --> Norm
+    Norm --> Cov
+    Cov --> Hi
+    Cov --> Hjoint
+    Hi --> TC
+    Hjoint --> TC
+
+    Frame --> Hist
+    Hist --> Hbytes
+
+    TC --> R
+    Hi --> R
+    R --> Zone
+    R --> Crit
+
+    Hi --> Snapshot
+    Hjoint --> Snapshot
+    TC --> Snapshot
+    Hbytes --> Snapshot
+    R --> Snapshot
+    Zone --> Snapshot
+    Crit --> Snapshot
+
+    style TC fill:#f9f,stroke:#333
+    style R fill:#bbf,stroke:#333
+    style Snapshot fill:#bfb,stroke:#333

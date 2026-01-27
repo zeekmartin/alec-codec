@@ -10,10 +10,53 @@ et ce projet adhère au [Semantic Versioning](https://semver.org/lang/fr/).
 ## [Unreleased]
 
 ### Added
-- Rien
+
+#### ALEC Gateway (v0.1.0-alpha)
+- **Multi-channel management**: Handle dozens of sensor channels
+- **Priority-based aggregation**: Numeric priority (0 = highest)
+- **Frame packing**: Optimize for LoRaWAN/MQTT payload limits
+- **Preload support**: Load pre-trained contexts per channel
+- **LoRaWAN presets**: Built-in configurations for DR0-DR5
+
+#### ALEC Metrics (Gateway feature: `metrics`)
+- **Signal entropy**: Per-channel (H_i) and joint (H_joint) entropy
+- **Total Correlation (TC)**: Redundancy measure across channels
+- **Payload entropy**: Compressed frame randomness (H_bytes)
+- **Resilience Index (R)**: Normalized redundancy (0-1)
+- **Criticality ranking**: Leave-one-out ΔR for sensor importance
+- **Zone classification**: healthy / attention / critical
+- **Configurable alignment**: Sample-and-hold, nearest, linear interpolation
+- **Sliding window**: Time-based or sample-count-based
+
+#### ALEC Complexity (v0.1.0-alpha)
+- **Baseline learning**: Statistical summary of nominal operation
+- **Delta/Z-score computation**: Deviation from baseline with smoothing
+- **S-lite structure analysis**: Lightweight pairwise channel dependency graph
+- **Anomaly event detection**: With persistence and cooldown
+  - PayloadEntropySpike
+  - StructureBreak
+  - RedundancyDrop
+  - ComplexitySurge
+  - SensorCriticalityShift
+- **GenericInput adapter**: JSON-based input for standalone usage
+- **GatewayInput adapter**: Direct MetricsSnapshot consumption (feature-gated)
+- **Baseline update modes**: Frozen, EMA, Rolling
+
+#### Documentation
+- `docs/ARCHITECTURE.md`: System design and ADRs
+- `docs/GATEWAY.md`: Gateway module documentation
+- `docs/METRICS.md`: Metrics module documentation
+- `docs/COMPLEXITY.md`: Complexity module documentation
+- `docs/CONFIGURATION.md`: Complete configuration reference
+- `docs/JSON_SCHEMAS.md`: Snapshot JSON schemas
+- `docs/INTEGRATION.md`: Integration patterns
+- `docs/FAQ.md`: Frequently asked questions (English)
+- `docs/diagrams/`: Mermaid architecture and data flow diagrams
+- `alec-gateway/README.md`: Crate-specific documentation
+- `alec-complexity/README.md`: Crate-specific documentation
 
 ### Changed
-- Rien
+- Workspace now includes `alec-gateway` and `alec-complexity` crates
 
 ---
 

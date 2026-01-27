@@ -1,0 +1,57 @@
+%% ALEC Architecture Overview
+graph TB
+    subgraph "ALEC Ecosystem"
+        subgraph "Core Codec"
+            Encoder[Encoder]
+            Decoder[Decoder]
+            Context[Context]
+            Preloads[Preloads]
+        end
+
+        subgraph "alec-gateway"
+            CM[Channel Manager]
+            Agg[Aggregator]
+            FB[Frame Builder]
+
+            subgraph "Metrics Module"
+                Signal[Signal Entropy]
+                Payload[Payload Entropy]
+                Resilience[Resilience R]
+                Criticality[Criticality ΔR]
+            end
+        end
+
+        subgraph "alec-complexity"
+            Baseline[Baseline Learning]
+            Delta[Delta/Z-Score]
+            SLite[S-lite Structure]
+            Anomaly[Anomaly Detection]
+        end
+
+        subgraph "alec-ffi"
+            FFI[C/C++ Bindings]
+        end
+    end
+
+    Encoder --> Context
+    Decoder --> Context
+    Context --> Preloads
+
+    CM --> Agg
+    Agg --> FB
+    FB --> Encoder
+
+    Agg --> Signal
+    Agg --> Payload
+    Signal --> Resilience
+    Resilience --> Criticality
+
+    Signal --> Baseline
+    Payload --> Baseline
+    Resilience --> Baseline
+    Baseline --> Delta
+    Delta --> Anomaly
+    Signal --> SLite
+
+    Encoder --> FFI
+    Decoder --> FFI

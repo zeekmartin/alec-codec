@@ -205,13 +205,63 @@ match gateway.push("temp", 22.5, timestamp) {
 }
 ```
 
-## Future Roadmap
+## Metrics (Optional Feature)
 
-- **Phase 2**: Context Library, hot-plug channels, auto-detection
-- **Phase 3**: Complexity monitoring, anomaly detection
-- **Phase 4**: QoS & scheduling, bandwidth limiting
-- **Phase 5**: Cloud decoder, error recovery, logging
+Enable the `metrics` feature for entropy-based observability:
+
+```toml
+[dependencies]
+alec-gateway = { version = "0.1", features = ["metrics"] }
+```
+
+```rust
+use alec_gateway::metrics::{MetricsConfig, ResilienceConfig};
+
+// Enable metrics
+gateway.enable_metrics(MetricsConfig {
+    enabled: true,
+    resilience: ResilienceConfig {
+        enabled: true,
+        ..Default::default()
+    },
+    ..Default::default()
+});
+
+// After flush, access metrics
+if let Some(metrics) = gateway.last_metrics() {
+    println!("Payload entropy: {:.2} bits", metrics.payload.h_bytes);
+    println!("Total correlation: {:.2} bits", metrics.signal.total_corr);
+
+    if let Some(res) = &metrics.resilience {
+        println!("Resilience R: {:.2}", res.r.unwrap_or(0.0));
+        println!("Zone: {}", res.zone.as_deref().unwrap_or("unknown"));
+    }
+}
+```
+
+### Metrics Features
+
+- **Signal Entropy**: Per-channel (H_i) and joint (H_joint) entropy
+- **Total Correlation**: Redundancy measure across channels
+- **Payload Entropy**: Compressed frame randomness
+- **Resilience Index**: Normalized redundancy (0-1)
+- **Criticality Ranking**: Which sensors are most important
+
+See [METRICS.md](../docs/METRICS.md) for full documentation.
+
+## Documentation
+
+- [Gateway Guide](../docs/GATEWAY.md)
+- [Metrics Guide](../docs/METRICS.md)
+- [Configuration Reference](../docs/CONFIGURATION.md)
+- [Integration Guide](../docs/INTEGRATION.md)
+- [JSON Schemas](../docs/JSON_SCHEMAS.md)
 
 ## License
 
-AGPL-3.0 or commercial license. See [LICENSE](../LICENSE).
+ALEC Gateway is dual-licensed:
+
+- **AGPL-3.0**: Free for open source projects, research, and personal use
+- **Commercial License**: For proprietary use without open-source obligations
+
+See [LICENSE](../LICENSE) for details.
