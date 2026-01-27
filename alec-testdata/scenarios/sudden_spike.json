@@ -1,0 +1,27 @@
+{
+  "name": "sudden_spike",
+  "description": "Sudden large spike in sensor value",
+  "industry_agnostic": true,
+  "injection": {
+    "type": "spike",
+    "target_sensor": "any",
+    "start_percent": 0.5,
+    "duration_percent": 0.01,
+    "params": {
+      "magnitude": 50.0
+    }
+  },
+  "expected_events": [
+    {
+      "type": "PAYLOAD_ENTROPY_SPIKE",
+      "min_delay_samples": 1,
+      "max_delay_samples": 10
+    }
+  ],
+  "validation": {
+    "r_should_decrease": false,
+    "r_should_increase": false,
+    "tc_should_change": false,
+    "h_bytes_should_increase": true
+  }
+}

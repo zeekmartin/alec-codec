@@ -1,0 +1,27 @@
+{
+  "name": "gradual_drift",
+  "description": "Sensor value gradually drifts away from normal operating range",
+  "industry_agnostic": true,
+  "injection": {
+    "type": "drift",
+    "target_sensor": "any",
+    "start_percent": 0.3,
+    "duration_percent": null,
+    "params": {
+      "rate": 0.05
+    }
+  },
+  "expected_events": [
+    {
+      "type": "COMPLEXITY_SURGE",
+      "min_delay_samples": 20,
+      "max_delay_samples": 100
+    }
+  ],
+  "validation": {
+    "r_should_decrease": false,
+    "r_should_increase": false,
+    "tc_should_change": true,
+    "h_bytes_should_increase": false
+  }
+}
