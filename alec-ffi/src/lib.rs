@@ -4,6 +4,8 @@
 // Dual-licensed under AGPL-3.0 and Commercial License.
 // See LICENSE file for details.
 
+#![allow(clippy::not_unsafe_ptr_arg_deref)]
+
 //! C/C++ bindings for ALEC compression library
 //!
 //! This crate provides a C-compatible FFI layer for the ALEC compression
