@@ -40,10 +40,7 @@ impl SlidingWindow {
 
     /// Add a sample to a channel's window.
     pub fn push(&mut self, channel_id: &str, value: f64, timestamp_ms: u64) {
-        let samples = self
-            .channels
-            .entry(channel_id.to_string())
-            .or_default();
+        let samples = self.channels.entry(channel_id.to_string()).or_default();
 
         samples.push_back(Sample {
             value,
@@ -89,9 +86,7 @@ impl SlidingWindow {
 
     /// Pre-register a channel (creates an empty sample queue).
     pub fn register_channel(&mut self, channel_id: &str) {
-        self.channels
-            .entry(channel_id.to_string())
-            .or_default();
+        self.channels.entry(channel_id.to_string()).or_default();
     }
 
     /// Get the time range of samples in the window.
