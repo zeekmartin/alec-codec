@@ -1,0 +1,24 @@
+[package]
+name = "alec-complexity"
+version = "0.1.0-alpha"
+edition = "2021"
+authors = ["David Martin Venti <contact@alec-codec.com>"]
+description = "ALEC Complexity Monitoring - Baseline learning, anomaly detection, and structure analysis"
+license = "AGPL-3.0"
+repository = "https://github.com/zeekmartin/alec-codec"
+keywords = ["iot", "complexity", "anomaly-detection", "monitoring", "entropy"]
+categories = ["science", "algorithms"]
+
+[dependencies]
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+
+# Optional: Gateway integration
+alec-gateway = { path = "../alec-gateway", optional = true, features = ["metrics"] }
+
+[features]
+default = []
+gateway = ["alec-gateway"]
+
+[dev-dependencies]
+tempfile = "3.0"
