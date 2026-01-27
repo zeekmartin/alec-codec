@@ -1,0 +1,43 @@
+# Prometheus configuration for ALEC monitoring
+# This configuration scrapes metrics from the ALEC exporter
+
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+  external_labels:
+    monitor: 'alec-monitor'
+
+# Alerting configuration (optional - can add alertmanager later)
+# alerting:
+#   alertmanagers:
+#     - static_configs:
+#         - targets: []
+
+# Rule files for recording and alerting rules
+rule_files:
+  # - "rules/*.yml"
+
+# Scrape configurations
+scrape_configs:
+  # Scrape Prometheus itself
+  - job_name: 'prometheus'
+    static_configs:
+      - targets: ['localhost:9090']
+
+  # Scrape ALEC Exporter
+  - job_name: 'alec'
+    scrape_interval: 5s  # More frequent for demo purposes
+    static_configs:
+      - targets: ['alec-exporter:9100']
+    relabel_configs:
+      - source_labels: [__address__]
+        target_label: instance
+        replacement: 'alec-demo'
+    metric_relabel_configs:
+      # Keep all alec_ metrics
+      - source_labels: [__name__]
+        regex: 'alec_.*'
+        action: keep
+
+  # Additional scrape targets can be added here
+  # For production, you might want to add more exporters

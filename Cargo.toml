@@ -1,5 +1,5 @@
 [workspace]
-members = [".", "alec-ffi", "alec-gateway", "alec-complexity", "alec-testdata"]
+members = [".", "alec-ffi", "alec-gateway", "alec-complexity", "alec-testdata", "alec-exporter"]
 resolver = "2"
 
 [package]
