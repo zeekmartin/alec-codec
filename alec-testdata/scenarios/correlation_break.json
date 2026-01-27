@@ -1,0 +1,27 @@
+{
+  "name": "correlation_break",
+  "description": "Sensor becomes decorrelated from related sensors",
+  "industry_agnostic": true,
+  "injection": {
+    "type": "decorrelate",
+    "target_sensor": "any",
+    "start_percent": 0.4,
+    "duration_percent": 0.3,
+    "params": {
+      "noise_std": 5.0
+    }
+  },
+  "expected_events": [
+    {
+      "type": "STRUCTURE_BREAK",
+      "min_delay_samples": 5,
+      "max_delay_samples": 30
+    }
+  ],
+  "validation": {
+    "r_should_decrease": false,
+    "r_should_increase": false,
+    "tc_should_change": true,
+    "h_bytes_should_increase": false
+  }
+}

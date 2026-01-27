@@ -1,0 +1,26 @@
+{
+  "name": "sensor_failure",
+  "description": "Single sensor stops updating (stuck at last value)",
+  "industry_agnostic": true,
+  "injection": {
+    "type": "stuck",
+    "target_sensor": "any",
+    "start_percent": 0.3,
+    "duration_percent": 0.5,
+    "params": {}
+  },
+  "expected_events": [
+    {
+      "type": "STRUCTURE_BREAK",
+      "min_delay_samples": 10,
+      "max_delay_samples": 50,
+      "severity": "Warning"
+    }
+  ],
+  "validation": {
+    "r_should_decrease": true,
+    "tc_should_change": true,
+    "r_should_increase": false,
+    "h_bytes_should_increase": false
+  }
+}
