@@ -21,7 +21,7 @@ services:
       - "--port=9100"
       - "--csv=/app/datasets/agriculture/farm_normal_24h.csv"
       - "--speed=60.0"
-      - "--loop-replay=true"
+      - "--loop-replay"
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:9100/health"]
       interval: 10s
