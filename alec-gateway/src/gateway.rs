@@ -34,6 +34,9 @@ use crate::config::{ChannelConfig, GatewayConfig};
 use crate::error::Result;
 use crate::frame::Frame;
 
+#[cfg(feature = "metrics")]
+use crate::metrics::{MetricsConfig, MetricsEngine, MetricsSnapshot};
+
 /// High-level API for managing sensor channels
 pub struct Gateway {
     /// Channel manager
@@ -42,6 +45,12 @@ pub struct Gateway {
     aggregator: Aggregator,
     /// Gateway configuration
     config: GatewayConfig,
+    /// Metrics engine (feature-gated)
+    #[cfg(feature = "metrics")]
+    metrics_engine: Option<MetricsEngine>,
+    /// Last computed metrics snapshot
+    #[cfg(feature = "metrics")]
+    last_metrics_snapshot: Option<MetricsSnapshot>,
 }
 
 impl Gateway {
@@ -56,6 +65,10 @@ impl Gateway {
             manager: ChannelManager::new(config.max_channels),
             aggregator: Aggregator::new(config.clone()),
             config,
+            #[cfg(feature = "metrics")]
+            metrics_engine: None,
+            #[cfg(feature = "metrics")]
+            last_metrics_snapshot: None,
         }
     }
 
@@ -73,7 +86,15 @@ impl Gateway {
     /// - The maximum number of channels has been reached
     /// - The preload file (if specified) cannot be loaded
     pub fn add_channel(&mut self, id: impl Into<String>, config: ChannelConfig) -> Result<()> {
-        self.manager.add(id, config)
+        let id_string = id.into();
+
+        // Register with metrics engine if enabled
+        #[cfg(feature = "metrics")]
+        if let Some(ref mut engine) = self.metrics_engine {
+            engine.register_channel(&id_string);
+        }
+
+        self.manager.add(id_string, config)
     }
 
     /// Remove a channel
@@ -104,6 +125,12 @@ impl Gateway {
     /// - The channel does not exist
     /// - The channel's buffer is full
     pub fn push(&mut self, channel_id: &str, value: f64, timestamp: u64) -> Result<()> {
+        // Observe sample for metrics (if enabled)
+        #[cfg(feature = "metrics")]
+        if let Some(ref mut engine) = self.metrics_engine {
+            engine.observe_sample(channel_id, value, timestamp);
+        }
+
         self.manager.get_mut(channel_id)?.push(value, timestamp)
     }
 
@@ -132,15 +159,47 @@ impl Gateway {
     /// Channels are processed in priority order. The frame respects the
     /// configured maximum size.
     pub fn flush(&mut self) -> Result<Frame> {
-        self.aggregator.aggregate(&mut self.manager)
+        let frame = self.aggregator.aggregate(&mut self.manager)?;
+
+        // Compute and store metrics (if enabled)
+        #[cfg(feature = "metrics")]
+        if let Some(ref mut engine) = self.metrics_engine {
+            let payload = frame.to_bytes();
+            // Use current time in milliseconds (or 0 if unavailable)
+            let current_time_ms = std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .map(|d| d.as_millis() as u64)
+                .unwrap_or(0);
+            if let Some(snapshot) = engine.observe_frame(&payload, current_time_ms) {
+                self.last_metrics_snapshot = Some(snapshot);
+            }
+        }
+
+        Ok(frame)
     }
 
     /// Flush specific channels and return aggregated frame
     ///
     /// Only the specified channels will be flushed.
     pub fn flush_channels(&mut self, channel_ids: &[&str]) -> Result<Frame> {
-        self.aggregator
-            .aggregate_channels(&mut self.manager, channel_ids)
+        let frame = self
+            .aggregator
+            .aggregate_channels(&mut self.manager, channel_ids)?;
+
+        // Compute and store metrics (if enabled)
+        #[cfg(feature = "metrics")]
+        if let Some(ref mut engine) = self.metrics_engine {
+            let payload = frame.to_bytes();
+            let current_time_ms = std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .map(|d| d.as_millis() as u64)
+                .unwrap_or(0);
+            if let Some(snapshot) = engine.observe_frame(&payload, current_time_ms) {
+                self.last_metrics_snapshot = Some(snapshot);
+            }
+        }
+
+        Ok(frame)
     }
 
     /// Get list of channel IDs
@@ -205,6 +264,73 @@ impl Gateway {
     /// Check if the gateway has any pending data
     pub fn has_pending_data(&self) -> bool {
         self.manager.total_pending() > 0
+    }
+
+    // =====================================================================
+    // Metrics API (feature-gated)
+    // =====================================================================
+
+    /// Enable metrics collection with the given configuration
+    ///
+    /// Metrics are disabled by default. Call this method to enable
+    /// information-theoretic observability features.
+    ///
+    /// # Example
+    ///
+    /// ```rust,ignore
+    /// use alec_gateway::{Gateway, MetricsConfig};
+    ///
+    /// let mut gateway = Gateway::new();
+    /// gateway.enable_metrics(MetricsConfig::default());
+    /// ```
+    #[cfg(feature = "metrics")]
+    pub fn enable_metrics(&mut self, config: MetricsConfig) {
+        self.metrics_engine = Some(MetricsEngine::new(config));
+        self.last_metrics_snapshot = None;
+    }
+
+    /// Disable metrics collection
+    ///
+    /// After calling this, no metrics will be computed on flush.
+    #[cfg(feature = "metrics")]
+    pub fn disable_metrics(&mut self) {
+        self.metrics_engine = None;
+        self.last_metrics_snapshot = None;
+    }
+
+    /// Check if metrics collection is enabled
+    #[cfg(feature = "metrics")]
+    pub fn metrics_enabled(&self) -> bool {
+        self.metrics_engine.is_some()
+    }
+
+    /// Get the last computed metrics snapshot
+    ///
+    /// Returns `None` if:
+    /// - Metrics are not enabled
+    /// - No flush has been performed since enabling metrics
+    #[cfg(feature = "metrics")]
+    pub fn last_metrics(&self) -> Option<&MetricsSnapshot> {
+        self.last_metrics_snapshot.as_ref()
+    }
+
+    /// Get a mutable reference to the metrics engine
+    ///
+    /// Useful for advanced configuration after initialization.
+    #[cfg(feature = "metrics")]
+    pub fn metrics_engine_mut(&mut self) -> Option<&mut MetricsEngine> {
+        self.metrics_engine.as_mut()
+    }
+
+    /// Register a channel with the metrics engine
+    ///
+    /// This is called automatically when adding channels if metrics are enabled,
+    /// but can be called manually for channels added before metrics were enabled.
+    #[cfg(feature = "metrics")]
+    pub fn register_channel_metrics(&mut self, channel_id: &str) {
+        if let Some(ref mut engine) = self.metrics_engine {
+            engine.register_channel(channel_id);
+        }
     }
 }
 

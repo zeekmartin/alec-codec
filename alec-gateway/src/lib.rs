@@ -90,6 +90,10 @@ mod error;
 mod frame;
 mod gateway;
 
+// Metrics module (feature-gated)
+#[cfg(feature = "metrics")]
+pub mod metrics;
+
 // Public API
 pub use aggregator::Aggregator;
 pub use channel_manager::{Channel, ChannelId, ChannelManager};
@@ -97,6 +101,13 @@ pub use config::{ChannelConfig, GatewayConfig};
 pub use error::{GatewayError, Result};
 pub use frame::{ChannelData, Frame, FrameBuilder, FrameParseError};
 pub use gateway::Gateway;
+
+// Metrics re-exports (feature-gated)
+#[cfg(feature = "metrics")]
+pub use metrics::{
+    MetricsConfig, MetricsEngine, MetricsSnapshot, PayloadMetrics, ResilienceConfig,
+    ResilienceMetrics, ResilienceZone, SignalMetrics,
+};
 
 /// Library version
 pub const VERSION: &str = env!("CARGO_PKG_VERSION");
