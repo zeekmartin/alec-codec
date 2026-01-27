@@ -1,0 +1,48 @@
+%% ALEC Data Flow
+sequenceDiagram
+    participant S as Sensors
+    participant G as Gateway
+    participant M as Metrics
+    participant C as Complexity
+    participant N as Network
+    participant D as Dashboard
+
+    Note over S,D: Data Collection Phase
+    loop Every Sample
+        S->>G: push(channel, value, timestamp)
+        G->>G: Buffer value
+    end
+
+    Note over S,D: Flush Phase
+    G->>G: flush()
+    G->>G: Build Frame
+    G->>N: Compressed Frame
+
+    alt Metrics Enabled
+        G->>M: Compute signal entropy
+        M->>M: H_i, H_joint, TC
+        G->>M: Compute payload entropy
+        M->>M: H_bytes
+        opt Resilience Enabled
+            M->>M: Compute R, ΔR
+        end
+        M->>G: MetricsSnapshot
+        G->>D: Export metrics
+    end
+
+    alt Complexity Enabled
+        G->>C: InputSnapshot
+        alt Baseline Building
+            C->>C: Collect samples
+            C->>C: Update running stats
+        else Baseline Locked
+            C->>C: Compute deltas
+            C->>C: Compute z-scores
+            C->>C: Extract S-lite
+            C->>C: Detect anomalies
+        end
+        C->>D: ComplexitySnapshot
+        opt Events Detected
+            C->>D: Anomaly Events
+        end
+    end

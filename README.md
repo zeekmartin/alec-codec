@@ -103,6 +103,37 @@ A satellite photographs Earth. It only sends significant changes compared to pre
 
 ---
 
+## Ecosystem
+
+ALEC consists of multiple crates:
+
+| Crate | Description | Features |
+|-------|-------------|----------|
+| `alec` | Core compression codec | Encoder, Decoder, Context |
+| `alec-gateway` | Multi-sensor orchestration | Channel management, Frame aggregation |
+| `alec-gateway[metrics]` | Entropy observability | TC, H_joint, Resilience R |
+| `alec-complexity` | Anomaly detection | Baseline, Z-scores, Events |
+| `alec-ffi` | C/C++ bindings | FFI interface |
+
+### Quick Install
+
+```toml
+# Core codec only
+[dependencies]
+alec = "1.0"
+
+# Gateway with metrics
+[dependencies]
+alec-gateway = { version = "0.1", features = ["metrics"] }
+
+# Full observability stack
+[dependencies]
+alec-gateway = { version = "0.1", features = ["metrics"] }
+alec-complexity = { version = "0.1", features = ["gateway"] }
+```
+
+---
+
 ## Quick Start
 
 ### Prerequisites
@@ -163,15 +194,33 @@ fn main() {
 
 ## Documentation
 
+### Core Documentation
+
 | Document | Description |
 |----------|-------------|
-| [Architecture](docs/architecture.md) | Technical overview |
-| [Applications](docs/applications.md) | Detailed use cases |
+| [Architecture](docs/ARCHITECTURE.md) | System design and ADRs |
 | [Getting Started](docs/getting-started.md) | Getting started guide |
 | [Protocol Reference](docs/protocol-reference.md) | Protocol specification |
 | [Security](docs/security.md) | Security considerations |
+| [FAQ](docs/FAQ.md) | Frequently asked questions |
+
+### Module Documentation
+
+| Document | Description |
+|----------|-------------|
+| [Gateway Guide](docs/GATEWAY.md) | Multi-sensor orchestration |
+| [Metrics Guide](docs/METRICS.md) | Entropy and resilience computation |
+| [Complexity Guide](docs/COMPLEXITY.md) | Baseline learning and anomaly detection |
+| [Configuration](docs/CONFIGURATION.md) | Complete configuration reference |
+| [JSON Schemas](docs/JSON_SCHEMAS.md) | Snapshot JSON formats |
+| [Integration](docs/INTEGRATION.md) | Integration patterns |
+
+### Additional Resources
+
+| Document | Description |
+|----------|-------------|
+| [Applications](docs/applications.md) | Detailed use cases |
 | [API Reference](docs/intra-application.md) | Interfaces and APIs |
-| [FAQ](docs/faq.md) | Frequently asked questions |
 | [Glossary](docs/glossary.md) | Glossary of terms |
 
 ---
