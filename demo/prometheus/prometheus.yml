@@ -1,22 +1,10 @@
-# ALEC Demo - Prometheus Configuration
-# Scrapes metrics from the ALEC ecosystem services
+# Prometheus configuration for ALEC Demo (Simplified)
+# Only scrapes services that are currently running
 
 global:
   scrape_interval: 5s
   evaluation_interval: 5s
-  external_labels:
-    monitor: 'alec-demo'
 
-# Alertmanager configuration (optional)
-alerting:
-  alertmanagers:
-    - static_configs:
-        - targets: []
-
-# Rule files (optional)
-rule_files: []
-
-# Scrape configurations
 scrape_configs:
   # Prometheus self-monitoring
   - job_name: 'prometheus'
@@ -25,38 +13,34 @@ scrape_configs:
         labels:
           service: 'prometheus'
 
-  # ALEC Simulator metrics
+  # ALEC Simulator - Generates correlated sensor data
   - job_name: 'alec-simulator'
     static_configs:
       - targets: ['simulator:8080']
         labels:
           service: 'simulator'
-    metrics_path: /metrics
-    scrape_interval: 5s
 
-  # ALEC Gateway metrics
-  - job_name: 'alec-gateway'
-    static_configs:
-      - targets: ['gateway:8081']
-        labels:
-          service: 'gateway'
-    metrics_path: /metrics
-    scrape_interval: 5s
+  # ==========================================================================
+  # COMMENTED OUT - Not yet implemented
+  # ==========================================================================
 
-  # ALEC Complexity metrics
-  - job_name: 'alec-complexity'
-    static_configs:
-      - targets: ['complexity:8082']
-        labels:
-          service: 'complexity'
-    metrics_path: /metrics
-    scrape_interval: 5s
+  # # ALEC Gateway - Sensor orchestration
+  # - job_name: 'alec-gateway'
+  #   static_configs:
+  #     - targets: ['gateway:8081']
+  #       labels:
+  #         service: 'gateway'
 
-  # ALEC Injection service metrics
-  - job_name: 'alec-injection'
-    static_configs:
-      - targets: ['injection:8084']
-        labels:
-          service: 'injection'
-    metrics_path: /metrics
-    scrape_interval: 10s
+  # # ALEC Complexity - Entropy/complexity analyzer
+  # - job_name: 'alec-complexity'
+  #   static_configs:
+  #     - targets: ['complexity:8082']
+  #       labels:
+  #         service: 'complexity'
+
+  # # Injection Service - Noise/anomaly injection
+  # - job_name: 'alec-injection'
+  #   static_configs:
+  #     - targets: ['injection:8084']
+  #       labels:
+  #         service: 'injection'

@@ -15,7 +15,7 @@
       }
     ]
   },
-  "description": "ALEC Demo Dashboard - Gateway & Complexity Validation",
+  "description": "ALEC Demo Dashboard - Simulator + Gateway & Complexity (Placeholder)",
   "editable": true,
   "fiscalYearStartMonth": 0,
   "graphTooltip": 1,
@@ -25,45 +25,78 @@
   "panels": [
     {
       "collapsed": false,
-      "gridPos": {"h": 1, "w": 24, "x": 0, "y": 0},
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 0
+      },
       "id": 100,
       "panels": [],
       "title": "Cluster Status",
       "type": "row"
     },
     {
-      "datasource": {"type": "prometheus", "uid": "${datasource}"},
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${datasource}"
+      },
       "fieldConfig": {
         "defaults": {
-          "color": {"mode": "thresholds"},
+          "color": {
+            "mode": "thresholds"
+          },
           "mappings": [],
           "thresholds": {
             "mode": "absolute",
             "steps": [
-              {"color": "red", "value": null},
-              {"color": "yellow", "value": 5},
-              {"color": "green", "value": 10}
+              {
+                "color": "red",
+                "value": null
+              },
+              {
+                "color": "yellow",
+                "value": 5
+              },
+              {
+                "color": "green",
+                "value": 10
+              }
             ]
           },
           "unit": "none"
         },
         "overrides": []
       },
-      "gridPos": {"h": 4, "w": 4, "x": 0, "y": 1},
+      "gridPos": {
+        "h": 4,
+        "w": 4,
+        "x": 0,
+        "y": 1
+      },
       "id": 1,
       "options": {
         "colorMode": "value",
         "graphMode": "area",
         "justifyMode": "auto",
         "orientation": "auto",
-        "reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false},
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
         "textMode": "auto"
       },
       "pluginVersion": "10.0.0",
       "targets": [
         {
-          "datasource": {"type": "prometheus", "uid": "${datasource}"},
-          "expr": "alec_gateway_sensors_active",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${datasource}"
+          },
+          "expr": "alec_active_sensors",
           "legendFormat": "Active Sensors",
           "refId": "A"
         }
@@ -72,37 +105,168 @@
       "type": "stat"
     },
     {
-      "datasource": {"type": "prometheus", "uid": "${datasource}"},
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${datasource}"
+      },
       "fieldConfig": {
         "defaults": {
-          "color": {"mode": "thresholds"},
+          "color": {
+            "mode": "thresholds"
+          },
           "mappings": [
-            {"options": {"0": {"color": "red", "index": 0, "text": "DOWN"}}, "type": "value"},
-            {"options": {"1": {"color": "green", "index": 1, "text": "UP"}}, "type": "value"}
+            {
+              "options": {
+                "0": {
+                  "color": "red",
+                  "index": 0,
+                  "text": "DOWN"
+                }
+              },
+              "type": "value"
+            },
+            {
+              "options": {
+                "1": {
+                  "color": "green",
+                  "index": 1,
+                  "text": "UP"
+                }
+              },
+              "type": "value"
+            }
           ],
           "thresholds": {
             "mode": "absolute",
-            "steps": [{"color": "red", "value": null}, {"color": "green", "value": 1}]
+            "steps": [
+              {
+                "color": "red",
+                "value": null
+              },
+              {
+                "color": "green",
+                "value": 1
+              }
+            ]
           },
           "unit": "none"
         },
         "overrides": []
       },
-      "gridPos": {"h": 4, "w": 4, "x": 4, "y": 1},
+      "gridPos": {
+        "h": 4,
+        "w": 4,
+        "x": 4,
+        "y": 1
+      },
       "id": 2,
       "options": {
         "colorMode": "background",
         "graphMode": "none",
         "justifyMode": "auto",
         "orientation": "auto",
-        "reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false},
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
         "textMode": "auto"
       },
       "pluginVersion": "10.0.0",
       "targets": [
         {
-          "datasource": {"type": "prometheus", "uid": "${datasource}"},
-          "expr": "up{job=\"alec-gateway\"}",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${datasource}"
+          },
+          "expr": "up{job=\"alec-simulator\"}",
+          "legendFormat": "Simulator",
+          "refId": "A"
+        }
+      ],
+      "title": "Simulator Status",
+      "type": "stat"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${datasource}"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "thresholds"
+          },
+          "mappings": [
+            {
+              "options": {
+                "0": {
+                  "color": "dark-gray",
+                  "index": 0,
+                  "text": "NOT DEPLOYED"
+                }
+              },
+              "type": "value"
+            },
+            {
+              "options": {
+                "1": {
+                  "color": "green",
+                  "index": 1,
+                  "text": "UP"
+                }
+              },
+              "type": "value"
+            }
+          ],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "dark-gray",
+                "value": null
+              },
+              {
+                "color": "green",
+                "value": 1
+              }
+            ]
+          },
+          "unit": "none"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 4,
+        "w": 4,
+        "x": 8,
+        "y": 1
+      },
+      "id": 3,
+      "options": {
+        "colorMode": "background",
+        "graphMode": "none",
+        "justifyMode": "auto",
+        "orientation": "auto",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "textMode": "auto"
+      },
+      "pluginVersion": "10.0.0",
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${datasource}"
+          },
+          "expr": "up{job=\"alec-gateway\"} or vector(0)",
           "legendFormat": "Gateway",
           "refId": "A"
         }
@@ -111,37 +275,83 @@
       "type": "stat"
     },
     {
-      "datasource": {"type": "prometheus", "uid": "${datasource}"},
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${datasource}"
+      },
       "fieldConfig": {
         "defaults": {
-          "color": {"mode": "thresholds"},
+          "color": {
+            "mode": "thresholds"
+          },
           "mappings": [
-            {"options": {"0": {"color": "red", "index": 0, "text": "DOWN"}}, "type": "value"},
-            {"options": {"1": {"color": "green", "index": 1, "text": "UP"}}, "type": "value"}
+            {
+              "options": {
+                "0": {
+                  "color": "dark-gray",
+                  "index": 0,
+                  "text": "NOT DEPLOYED"
+                }
+              },
+              "type": "value"
+            },
+            {
+              "options": {
+                "1": {
+                  "color": "green",
+                  "index": 1,
+                  "text": "UP"
+                }
+              },
+              "type": "value"
+            }
           ],
           "thresholds": {
             "mode": "absolute",
-            "steps": [{"color": "red", "value": null}, {"color": "green", "value": 1}]
+            "steps": [
+              {
+                "color": "dark-gray",
+                "value": null
+              },
+              {
+                "color": "green",
+                "value": 1
+              }
+            ]
           },
           "unit": "none"
         },
         "overrides": []
       },
-      "gridPos": {"h": 4, "w": 4, "x": 8, "y": 1},
-      "id": 3,
+      "gridPos": {
+        "h": 4,
+        "w": 4,
+        "x": 12,
+        "y": 1
+      },
+      "id": 4,
       "options": {
         "colorMode": "background",
         "graphMode": "none",
         "justifyMode": "auto",
         "orientation": "auto",
-        "reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false},
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
         "textMode": "auto"
       },
       "pluginVersion": "10.0.0",
       "targets": [
         {
-          "datasource": {"type": "prometheus", "uid": "${datasource}"},
-          "expr": "up{job=\"alec-complexity\"}",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${datasource}"
+          },
+          "expr": "up{job=\"alec-complexity\"} or vector(0)",
           "legendFormat": "Complexity",
           "refId": "A"
         }
@@ -150,137 +360,157 @@
       "type": "stat"
     },
     {
-      "datasource": {"type": "prometheus", "uid": "${datasource}"},
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${datasource}"
+      },
       "fieldConfig": {
         "defaults": {
-          "color": {"mode": "thresholds"},
-          "decimals": 2,
+          "color": {
+            "mode": "thresholds"
+          },
+          "decimals": 1,
           "mappings": [],
           "thresholds": {
             "mode": "absolute",
             "steps": [
-              {"color": "green", "value": null},
-              {"color": "yellow", "value": 5},
-              {"color": "red", "value": 10}
+              {
+                "color": "blue",
+                "value": null
+              }
             ]
           },
           "unit": "none"
         },
         "overrides": []
       },
-      "gridPos": {"h": 4, "w": 4, "x": 12, "y": 1},
-      "id": 4,
-      "options": {
-        "colorMode": "value",
-        "graphMode": "area",
-        "justifyMode": "auto",
-        "orientation": "auto",
-        "reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false},
-        "textMode": "auto"
+      "gridPos": {
+        "h": 4,
+        "w": 4,
+        "x": 16,
+        "y": 1
       },
-      "pluginVersion": "10.0.0",
-      "targets": [
-        {
-          "datasource": {"type": "prometheus", "uid": "${datasource}"},
-          "expr": "alec_gateway_compression_ratio",
-          "legendFormat": "Ratio",
-          "refId": "A"
-        }
-      ],
-      "title": "Compression Ratio",
-      "type": "stat"
-    },
-    {
-      "datasource": {"type": "prometheus", "uid": "${datasource}"},
-      "fieldConfig": {
-        "defaults": {
-          "color": {"mode": "thresholds"},
-          "mappings": [],
-          "thresholds": {
-            "mode": "absolute",
-            "steps": [{"color": "blue", "value": null}]
-          },
-          "unit": "Bps"
-        },
-        "overrides": []
-      },
-      "gridPos": {"h": 4, "w": 4, "x": 16, "y": 1},
       "id": 5,
       "options": {
         "colorMode": "value",
         "graphMode": "area",
         "justifyMode": "auto",
         "orientation": "auto",
-        "reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false},
+        "reduceOptions": {
+          "calcs": [
+            "mean"
+          ],
+          "fields": "",
+          "values": false
+        },
         "textMode": "auto"
       },
       "pluginVersion": "10.0.0",
       "targets": [
         {
-          "datasource": {"type": "prometheus", "uid": "${datasource}"},
-          "expr": "rate(alec_gateway_bytes_in_total[1m]) - rate(alec_gateway_bytes_out_total[1m])",
-          "legendFormat": "Saved",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${datasource}"
+          },
+          "expr": "avg(alec_sensor_quality)",
+          "legendFormat": "Avg Quality",
           "refId": "A"
         }
       ],
-      "title": "Bandwidth Saved",
+      "title": "Data Quality",
       "type": "stat"
     },
     {
-      "datasource": {"type": "prometheus", "uid": "${datasource}"},
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${datasource}"
+      },
       "fieldConfig": {
         "defaults": {
-          "color": {"mode": "palette-classic"},
+          "color": {
+            "mode": "thresholds"
+          },
           "mappings": [],
           "thresholds": {
             "mode": "absolute",
-            "steps": [{"color": "green", "value": null}]
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "yellow",
+                "value": 1
+              },
+              {
+                "color": "red",
+                "value": 5
+              }
+            ]
           },
           "unit": "none"
         },
-        "overrides": [
-          {"matcher": {"id": "byName", "options": "P1"}, "properties": [{"id": "color", "value": {"fixedColor": "red", "mode": "fixed"}}]},
-          {"matcher": {"id": "byName", "options": "P2"}, "properties": [{"id": "color", "value": {"fixedColor": "orange", "mode": "fixed"}}]},
-          {"matcher": {"id": "byName", "options": "P3"}, "properties": [{"id": "color", "value": {"fixedColor": "yellow", "mode": "fixed"}}]},
-          {"matcher": {"id": "byName", "options": "P4"}, "properties": [{"id": "color", "value": {"fixedColor": "green", "mode": "fixed"}}]},
-          {"matcher": {"id": "byName", "options": "P5"}, "properties": [{"id": "color", "value": {"fixedColor": "blue", "mode": "fixed"}}]}
-        ]
+        "overrides": []
       },
-      "gridPos": {"h": 4, "w": 4, "x": 20, "y": 1},
+      "gridPos": {
+        "h": 4,
+        "w": 4,
+        "x": 20,
+        "y": 1
+      },
       "id": 6,
       "options": {
-        "displayMode": "lcd",
-        "minVizHeight": 10,
-        "minVizWidth": 0,
-        "orientation": "horizontal",
-        "reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false},
-        "showUnfilled": true,
-        "valueMode": "color"
+        "colorMode": "value",
+        "graphMode": "area",
+        "justifyMode": "auto",
+        "orientation": "auto",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "textMode": "auto"
       },
       "pluginVersion": "10.0.0",
       "targets": [
-        {"datasource": {"type": "prometheus", "uid": "${datasource}"}, "expr": "alec_gateway_priority_total{level=\"p1\"}", "legendFormat": "P1", "refId": "A"},
-        {"datasource": {"type": "prometheus", "uid": "${datasource}"}, "expr": "alec_gateway_priority_total{level=\"p2\"}", "legendFormat": "P2", "refId": "B"},
-        {"datasource": {"type": "prometheus", "uid": "${datasource}"}, "expr": "alec_gateway_priority_total{level=\"p3\"}", "legendFormat": "P3", "refId": "C"},
-        {"datasource": {"type": "prometheus", "uid": "${datasource}"}, "expr": "alec_gateway_priority_total{level=\"p4\"}", "legendFormat": "P4", "refId": "D"},
-        {"datasource": {"type": "prometheus", "uid": "${datasource}"}, "expr": "alec_gateway_priority_total{level=\"p5\"}", "legendFormat": "P5", "refId": "E"}
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${datasource}"
+          },
+          "expr": "sum(alec_injection_active)",
+          "legendFormat": "Active Injections",
+          "refId": "A"
+        }
       ],
-      "title": "Priority Distribution",
-      "type": "bargauge"
+      "title": "Active Injections",
+      "type": "stat"
     },
     {
       "collapsed": false,
-      "gridPos": {"h": 1, "w": 24, "x": 0, "y": 5},
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 5
+      },
       "id": 101,
       "panels": [],
       "title": "Sensor Time Series",
       "type": "row"
     },
     {
-      "datasource": {"type": "prometheus", "uid": "${datasource}"},
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${datasource}"
+      },
       "fieldConfig": {
         "defaults": {
-          "color": {"mode": "palette-classic"},
+          "color": {
+            "mode": "palette-classic"
+          },
           "custom": {
             "axisCenteredZero": false,
             "axisColorMode": "text",
@@ -290,613 +520,936 @@
             "drawStyle": "line",
             "fillOpacity": 5,
             "gradientMode": "none",
-            "hideFrom": {"legend": false, "tooltip": false, "viz": false},
+            "hideFrom": {
+              "legend": false,
+              "tooltip": false,
+              "viz": false
+            },
             "insertNulls": false,
             "lineInterpolation": "smooth",
             "lineWidth": 1,
             "pointSize": 5,
-            "scaleDistribution": {"type": "linear"},
+            "scaleDistribution": {
+              "type": "linear"
+            },
             "showPoints": "never",
             "spanNulls": false,
-            "stacking": {"group": "A", "mode": "none"},
-            "thresholdsStyle": {"mode": "off"}
+            "stacking": {
+              "group": "A",
+              "mode": "none"
+            },
+            "thresholdsStyle": {
+              "mode": "off"
+            }
           },
           "mappings": [],
           "thresholds": {
             "mode": "absolute",
-            "steps": [{"color": "green", "value": null}]
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
           },
           "unit": "none"
         },
         "overrides": []
       },
-      "gridPos": {"h": 8, "w": 24, "x": 0, "y": 6},
+      "gridPos": {
+        "h": 8,
+        "w": 24,
+        "x": 0,
+        "y": 6
+      },
       "id": 7,
       "options": {
-        "legend": {"calcs": ["mean", "last"], "displayMode": "table", "placement": "right", "showLegend": true},
-        "tooltip": {"mode": "multi", "sort": "desc"}
+        "legend": {
+          "calcs": [
+            "mean",
+            "last"
+          ],
+          "displayMode": "table",
+          "placement": "right",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
       },
       "pluginVersion": "10.0.0",
       "targets": [
         {
-          "datasource": {"type": "prometheus", "uid": "${datasource}"},
-          "expr": "alec_sensor_value{sensor=~\"$sensor\"}",
-          "legendFormat": "{{sensor}}",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${datasource}"
+          },
+          "expr": "alec_sensor_value{sensor_id=~\"$sensor\"}",
+          "legendFormat": "{{sensor_id}} ({{sensor_type}})",
           "refId": "A"
         }
       ],
-      "title": "Sensor Values",
+      "title": "All Sensor Values",
       "type": "timeseries"
     },
     {
       "collapsed": false,
-      "gridPos": {"h": 1, "w": 24, "x": 0, "y": 14},
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 14
+      },
       "id": 102,
       "panels": [],
-      "title": "Complexity Metrics",
+      "title": "Temperature & Humidity",
       "type": "row"
     },
     {
-      "datasource": {"type": "prometheus", "uid": "${datasource}"},
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${datasource}"
+      },
       "fieldConfig": {
         "defaults": {
-          "color": {"mode": "thresholds"},
-          "decimals": 2,
-          "mappings": [],
-          "max": 100,
-          "min": 0,
-          "thresholds": {
-            "mode": "absolute",
-            "steps": [
-              {"color": "green", "value": null},
-              {"color": "yellow", "value": 30},
-              {"color": "red", "value": 50}
-            ]
+          "color": {
+            "mode": "palette-classic"
           },
-          "unit": "bits"
+          "custom": {
+            "axisCenteredZero": false,
+            "axisColorMode": "text",
+            "axisLabel": "°C",
+            "axisPlacement": "auto",
+            "drawStyle": "line",
+            "fillOpacity": 10,
+            "gradientMode": "none",
+            "lineInterpolation": "smooth",
+            "lineWidth": 2,
+            "pointSize": 5,
+            "showPoints": "never",
+            "spanNulls": false,
+            "stacking": {
+              "group": "A",
+              "mode": "none"
+            }
+          },
+          "unit": "celsius"
         },
         "overrides": []
       },
-      "gridPos": {"h": 6, "w": 6, "x": 0, "y": 15},
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 15
+      },
       "id": 8,
       "options": {
-        "orientation": "auto",
-        "reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false},
-        "showThresholdLabels": true,
-        "showThresholdMarkers": true
+        "legend": {
+          "calcs": [
+            "mean",
+            "last",
+            "min",
+            "max"
+          ],
+          "displayMode": "table",
+          "placement": "bottom"
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
       },
-      "pluginVersion": "10.0.0",
       "targets": [
         {
-          "datasource": {"type": "prometheus", "uid": "${datasource}"},
-          "expr": "alec_complexity_entropy_total",
-          "legendFormat": "H_tot",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${datasource}"
+          },
+          "expr": "alec_sensor_value{sensor_type=\"temperature\"}",
+          "legendFormat": "Air Temperature",
           "refId": "A"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${datasource}"
+          },
+          "expr": "alec_sensor_value{sensor_type=\"soil_temperature\"}",
+          "legendFormat": "Soil Temperature",
+          "refId": "B"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${datasource}"
+          },
+          "expr": "alec_sensor_value{sensor_type=\"dewpoint\"}",
+          "legendFormat": "Dewpoint",
+          "refId": "C"
         }
       ],
-      "title": "Total Entropy (H_tot)",
-      "type": "gauge"
+      "title": "Temperature Sensors",
+      "type": "timeseries"
     },
     {
-      "datasource": {"type": "prometheus", "uid": "${datasource}"},
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${datasource}"
+      },
       "fieldConfig": {
         "defaults": {
-          "color": {"mode": "thresholds"},
-          "decimals": 2,
-          "mappings": [],
-          "max": 50,
-          "min": 0,
-          "thresholds": {
-            "mode": "absolute",
-            "steps": [
-              {"color": "green", "value": null},
-              {"color": "yellow", "value": 15},
-              {"color": "red", "value": 30}
-            ]
+          "color": {
+            "mode": "palette-classic"
           },
-          "unit": "none"
+          "custom": {
+            "axisCenteredZero": false,
+            "axisColorMode": "text",
+            "axisLabel": "%",
+            "axisPlacement": "auto",
+            "drawStyle": "line",
+            "fillOpacity": 10,
+            "gradientMode": "none",
+            "lineInterpolation": "smooth",
+            "lineWidth": 2,
+            "pointSize": 5,
+            "showPoints": "never",
+            "spanNulls": false,
+            "stacking": {
+              "group": "A",
+              "mode": "none"
+            }
+          },
+          "max": 100,
+          "min": 0,
+          "unit": "percent"
         },
         "overrides": []
       },
-      "gridPos": {"h": 6, "w": 6, "x": 6, "y": 15},
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 15
+      },
       "id": 9,
       "options": {
-        "orientation": "auto",
-        "reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false},
-        "showThresholdLabels": true,
-        "showThresholdMarkers": true
-      },
-      "pluginVersion": "10.0.0",
-      "targets": [
-        {
-          "datasource": {"type": "prometheus", "uid": "${datasource}"},
-          "expr": "alec_complexity_complexity",
-          "legendFormat": "C",
-          "refId": "A"
-        }
-      ],
-      "title": "Complexity (C)",
-      "type": "gauge"
-    },
-    {
-      "datasource": {"type": "prometheus", "uid": "${datasource}"},
-      "fieldConfig": {
-        "defaults": {
-          "color": {"mode": "thresholds"},
-          "decimals": 3,
-          "mappings": [
-            {"options": {"from": 0.5, "result": {"color": "green", "index": 0, "text": "HEALTHY"}, "to": 1}, "type": "range"},
-            {"options": {"from": 0.2, "result": {"color": "yellow", "index": 1, "text": "ATTENTION"}, "to": 0.5}, "type": "range"},
-            {"options": {"from": 0, "result": {"color": "red", "index": 2, "text": "CRITICAL"}, "to": 0.2}, "type": "range"}
+        "legend": {
+          "calcs": [
+            "mean",
+            "last",
+            "min",
+            "max"
           ],
-          "max": 1,
-          "min": 0,
-          "thresholds": {
-            "mode": "absolute",
-            "steps": [
-              {"color": "red", "value": null},
-              {"color": "yellow", "value": 0.2},
-              {"color": "green", "value": 0.5}
-            ]
-          },
-          "unit": "percentunit"
+          "displayMode": "table",
+          "placement": "bottom"
         },
-        "overrides": []
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
       },
-      "gridPos": {"h": 6, "w": 6, "x": 12, "y": 15},
-      "id": 10,
-      "options": {
-        "orientation": "auto",
-        "reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false},
-        "showThresholdLabels": true,
-        "showThresholdMarkers": true
-      },
-      "pluginVersion": "10.0.0",
       "targets": [
         {
-          "datasource": {"type": "prometheus", "uid": "${datasource}"},
-          "expr": "alec_complexity_robustness",
-          "legendFormat": "R",
-          "refId": "A"
-        }
-      ],
-      "title": "Robustness (R)",
-      "type": "gauge"
-    },
-    {
-      "datasource": {"type": "prometheus", "uid": "${datasource}"},
-      "fieldConfig": {
-        "defaults": {
-          "color": {"mode": "thresholds"},
-          "mappings": [],
-          "thresholds": {
-            "mode": "absolute",
-            "steps": [
-              {"color": "green", "value": null},
-              {"color": "yellow", "value": 1},
-              {"color": "red", "value": 5}
-            ]
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${datasource}"
           },
-          "unit": "none"
-        },
-        "overrides": []
-      },
-      "gridPos": {"h": 6, "w": 6, "x": 18, "y": 15},
-      "id": 11,
-      "options": {
-        "colorMode": "value",
-        "graphMode": "area",
-        "justifyMode": "auto",
-        "orientation": "auto",
-        "reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false},
-        "textMode": "auto"
-      },
-      "pluginVersion": "10.0.0",
-      "targets": [
-        {
-          "datasource": {"type": "prometheus", "uid": "${datasource}"},
-          "expr": "sum(alec_complexity_anomaly_detected)",
-          "legendFormat": "Anomalies",
+          "expr": "alec_sensor_value{sensor_type=\"humidity\"}",
+          "legendFormat": "Air Humidity",
           "refId": "A"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${datasource}"
+          },
+          "expr": "alec_sensor_value{sensor_type=\"soil_moisture\"}",
+          "legendFormat": "Soil Moisture",
+          "refId": "B"
         }
       ],
-      "title": "Anomalies Detected",
-      "type": "stat"
+      "title": "Humidity & Moisture",
+      "type": "timeseries"
     },
     {
       "collapsed": false,
-      "gridPos": {"h": 1, "w": 24, "x": 0, "y": 21},
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 23
+      },
       "id": 103,
       "panels": [],
-      "title": "Entropy & Complexity Over Time",
+      "title": "Environmental Sensors",
       "type": "row"
     },
     {
-      "datasource": {"type": "prometheus", "uid": "${datasource}"},
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${datasource}"
+      },
       "fieldConfig": {
         "defaults": {
-          "color": {"mode": "palette-classic"},
+          "color": {
+            "mode": "palette-classic"
+          },
           "custom": {
-            "axisCenteredZero": false,
-            "axisColorMode": "text",
-            "axisLabel": "bits",
-            "axisPlacement": "auto",
-            "barAlignment": 0,
             "drawStyle": "line",
             "fillOpacity": 10,
-            "gradientMode": "none",
-            "hideFrom": {"legend": false, "tooltip": false, "viz": false},
-            "insertNulls": false,
             "lineInterpolation": "smooth",
             "lineWidth": 2,
-            "pointSize": 5,
-            "scaleDistribution": {"type": "linear"},
-            "showPoints": "never",
-            "spanNulls": false,
-            "stacking": {"group": "A", "mode": "none"},
-            "thresholdsStyle": {"mode": "dashed"}
+            "showPoints": "never"
           },
-          "mappings": [],
-          "thresholds": {
-            "mode": "absolute",
-            "steps": [
-              {"color": "green", "value": null},
-              {"color": "yellow", "value": 30},
-              {"color": "red", "value": 50}
-            ]
-          },
-          "unit": "bits"
+          "unit": "pressurehpa"
         },
         "overrides": []
       },
-      "gridPos": {"h": 8, "w": 12, "x": 0, "y": 22},
+      "gridPos": {
+        "h": 8,
+        "w": 8,
+        "x": 0,
+        "y": 24
+      },
+      "id": 10,
+      "options": {
+        "legend": {
+          "calcs": [
+            "mean",
+            "last"
+          ],
+          "displayMode": "table",
+          "placement": "bottom"
+        },
+        "tooltip": {
+          "mode": "multi"
+        }
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${datasource}"
+          },
+          "expr": "alec_sensor_value{sensor_type=\"pressure\"}",
+          "legendFormat": "Atmospheric Pressure",
+          "refId": "A"
+        }
+      ],
+      "title": "Pressure",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${datasource}"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "drawStyle": "line",
+            "fillOpacity": 10,
+            "lineInterpolation": "smooth",
+            "lineWidth": 2,
+            "showPoints": "never"
+          },
+          "unit": "lux"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 8,
+        "x": 8,
+        "y": 24
+      },
+      "id": 11,
+      "options": {
+        "legend": {
+          "calcs": [
+            "mean",
+            "last"
+          ],
+          "displayMode": "table",
+          "placement": "bottom"
+        },
+        "tooltip": {
+          "mode": "multi"
+        }
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${datasource}"
+          },
+          "expr": "alec_sensor_value{sensor_type=\"luminosity\"}",
+          "legendFormat": "Luminosity",
+          "refId": "A"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${datasource}"
+          },
+          "expr": "alec_sensor_value{sensor_type=\"uv_index\"} * 100",
+          "legendFormat": "UV Index (x100)",
+          "refId": "B"
+        }
+      ],
+      "title": "Light",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${datasource}"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "drawStyle": "line",
+            "fillOpacity": 10,
+            "lineInterpolation": "smooth",
+            "lineWidth": 2,
+            "showPoints": "never"
+          },
+          "unit": "velocityms"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 8,
+        "x": 16,
+        "y": 24
+      },
       "id": 12,
       "options": {
-        "legend": {"calcs": ["mean", "max"], "displayMode": "table", "placement": "bottom", "showLegend": true},
-        "tooltip": {"mode": "multi", "sort": "desc"}
-      },
-      "pluginVersion": "10.0.0",
-      "targets": [
-        {"datasource": {"type": "prometheus", "uid": "${datasource}"}, "expr": "alec_complexity_entropy_total", "legendFormat": "H_tot", "refId": "A"},
-        {"datasource": {"type": "prometheus", "uid": "${datasource}"}, "expr": "alec_complexity_complexity", "legendFormat": "C", "refId": "B"}
-      ],
-      "title": "Entropy & Complexity",
-      "type": "timeseries"
-    },
-    {
-      "datasource": {"type": "prometheus", "uid": "${datasource}"},
-      "fieldConfig": {
-        "defaults": {
-          "color": {"mode": "palette-classic"},
-          "custom": {
-            "axisCenteredZero": false,
-            "axisColorMode": "text",
-            "axisLabel": "",
-            "axisPlacement": "auto",
-            "barAlignment": 0,
-            "drawStyle": "line",
-            "fillOpacity": 10,
-            "gradientMode": "none",
-            "hideFrom": {"legend": false, "tooltip": false, "viz": false},
-            "insertNulls": false,
-            "lineInterpolation": "smooth",
-            "lineWidth": 2,
-            "pointSize": 5,
-            "scaleDistribution": {"type": "linear"},
-            "showPoints": "never",
-            "spanNulls": false,
-            "stacking": {"group": "A", "mode": "none"},
-            "thresholdsStyle": {"mode": "dashed+area"}
-          },
-          "mappings": [],
-          "max": 1,
-          "min": 0,
-          "thresholds": {
-            "mode": "absolute",
-            "steps": [
-              {"color": "red", "value": null},
-              {"color": "yellow", "value": 0.2},
-              {"color": "green", "value": 0.5}
-            ]
-          },
-          "unit": "percentunit"
+        "legend": {
+          "calcs": [
+            "mean",
+            "last",
+            "max"
+          ],
+          "displayMode": "table",
+          "placement": "bottom"
         },
-        "overrides": []
+        "tooltip": {
+          "mode": "multi"
+        }
       },
-      "gridPos": {"h": 8, "w": 12, "x": 12, "y": 22},
-      "id": 13,
-      "options": {
-        "legend": {"calcs": ["mean", "min"], "displayMode": "table", "placement": "bottom", "showLegend": true},
-        "tooltip": {"mode": "single", "sort": "none"}
-      },
-      "pluginVersion": "10.0.0",
       "targets": [
         {
-          "datasource": {"type": "prometheus", "uid": "${datasource}"},
-          "expr": "alec_complexity_robustness",
-          "legendFormat": "Robustness (R)",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${datasource}"
+          },
+          "expr": "alec_sensor_value{sensor_type=\"wind_speed\"}",
+          "legendFormat": "Wind Speed",
           "refId": "A"
         }
       ],
-      "title": "Robustness Over Time",
+      "title": "Wind",
       "type": "timeseries"
     },
     {
       "collapsed": false,
-      "gridPos": {"h": 1, "w": 24, "x": 0, "y": 30},
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 32
+      },
       "id": 104,
       "panels": [],
-      "title": "Per-Sensor Entropy",
+      "title": "Soil & Air Quality",
       "type": "row"
     },
     {
-      "datasource": {"type": "prometheus", "uid": "${datasource}"},
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${datasource}"
+      },
       "fieldConfig": {
         "defaults": {
-          "color": {"mode": "palette-classic"},
+          "color": {
+            "mode": "palette-classic"
+          },
           "custom": {
-            "axisCenteredZero": false,
-            "axisColorMode": "text",
-            "axisLabel": "bits",
-            "axisPlacement": "auto",
-            "barAlignment": 0,
             "drawStyle": "line",
-            "fillOpacity": 5,
-            "gradientMode": "none",
-            "hideFrom": {"legend": false, "tooltip": false, "viz": false},
-            "insertNulls": false,
+            "fillOpacity": 10,
             "lineInterpolation": "smooth",
-            "lineWidth": 1,
-            "pointSize": 5,
-            "scaleDistribution": {"type": "linear"},
-            "showPoints": "never",
-            "spanNulls": false,
-            "stacking": {"group": "A", "mode": "none"},
-            "thresholdsStyle": {"mode": "off"}
+            "lineWidth": 2,
+            "showPoints": "never"
           },
-          "mappings": [],
-          "thresholds": {
-            "mode": "absolute",
-            "steps": [{"color": "green", "value": null}]
-          },
-          "unit": "bits"
+          "unit": "none"
         },
         "overrides": []
       },
-      "gridPos": {"h": 8, "w": 16, "x": 0, "y": 31},
+      "gridPos": {
+        "h": 8,
+        "w": 8,
+        "x": 0,
+        "y": 33
+      },
+      "id": 13,
+      "options": {
+        "legend": {
+          "calcs": [
+            "mean",
+            "last"
+          ],
+          "displayMode": "table",
+          "placement": "bottom"
+        },
+        "tooltip": {
+          "mode": "multi"
+        }
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${datasource}"
+          },
+          "expr": "alec_sensor_value{sensor_type=\"ph\"}",
+          "legendFormat": "Soil pH",
+          "refId": "A"
+        }
+      ],
+      "title": "Soil pH",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${datasource}"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "drawStyle": "line",
+            "fillOpacity": 10,
+            "lineInterpolation": "smooth",
+            "lineWidth": 2,
+            "showPoints": "never"
+          },
+          "unit": "ppm"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 8,
+        "x": 8,
+        "y": 33
+      },
       "id": 14,
       "options": {
-        "legend": {"calcs": ["mean"], "displayMode": "table", "placement": "right", "showLegend": true},
-        "tooltip": {"mode": "multi", "sort": "desc"}
+        "legend": {
+          "calcs": [
+            "mean",
+            "last"
+          ],
+          "displayMode": "table",
+          "placement": "bottom"
+        },
+        "tooltip": {
+          "mode": "multi"
+        }
       },
-      "pluginVersion": "10.0.0",
       "targets": [
         {
-          "datasource": {"type": "prometheus", "uid": "${datasource}"},
-          "expr": "alec_complexity_entropy_per_sensor{sensor=~\"$sensor\"}",
-          "legendFormat": "{{sensor}}",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${datasource}"
+          },
+          "expr": "alec_sensor_value{sensor_type=\"co2\"}",
+          "legendFormat": "CO2",
           "refId": "A"
         }
       ],
-      "title": "Per-Sensor Entropy",
+      "title": "CO2 Level",
       "type": "timeseries"
     },
     {
-      "datasource": {"type": "prometheus", "uid": "${datasource}"},
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${datasource}"
+      },
       "fieldConfig": {
         "defaults": {
-          "color": {"mode": "thresholds"},
-          "mappings": [],
-          "thresholds": {
-            "mode": "absolute",
-            "steps": [
-              {"color": "green", "value": null},
-              {"color": "yellow", "value": 5},
-              {"color": "red", "value": 8}
-            ]
+          "color": {
+            "mode": "palette-classic"
           },
-          "unit": "bits"
+          "custom": {
+            "drawStyle": "line",
+            "fillOpacity": 10,
+            "lineInterpolation": "smooth",
+            "lineWidth": 2,
+            "showPoints": "never"
+          },
+          "unit": "none"
         },
         "overrides": []
       },
-      "gridPos": {"h": 8, "w": 8, "x": 16, "y": 31},
+      "gridPos": {
+        "h": 8,
+        "w": 8,
+        "x": 16,
+        "y": 33
+      },
       "id": 15,
       "options": {
-        "displayMode": "gradient",
-        "minVizHeight": 10,
-        "minVizWidth": 0,
-        "orientation": "horizontal",
-        "reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false},
-        "showUnfilled": true,
-        "valueMode": "color"
+        "legend": {
+          "calcs": [
+            "mean",
+            "last"
+          ],
+          "displayMode": "table",
+          "placement": "bottom"
+        },
+        "tooltip": {
+          "mode": "multi"
+        }
       },
-      "pluginVersion": "10.0.0",
       "targets": [
         {
-          "datasource": {"type": "prometheus", "uid": "${datasource}"},
-          "expr": "alec_complexity_entropy_per_sensor",
-          "legendFormat": "{{sensor}}",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${datasource}"
+          },
+          "expr": "alec_sensor_value{sensor_type=\"conductivity\"}",
+          "legendFormat": "Conductivity (µS/cm)",
           "refId": "A"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${datasource}"
+          },
+          "expr": "alec_sensor_value{sensor_type=\"o2\"}",
+          "legendFormat": "O2 (%)",
+          "refId": "B"
         }
       ],
-      "title": "Entropy Distribution",
-      "type": "bargauge"
+      "title": "Conductivity & O2",
+      "type": "timeseries"
     },
     {
       "collapsed": false,
-      "gridPos": {"h": 1, "w": 24, "x": 0, "y": 39},
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 41
+      },
       "id": 105,
       "panels": [],
-      "title": "Correlation Matrix",
+      "title": "Latent Variables (Simulation Drivers)",
       "type": "row"
     },
     {
-      "datasource": {"type": "prometheus", "uid": "${datasource}"},
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${datasource}"
+      },
       "fieldConfig": {
         "defaults": {
-          "color": {"mode": "continuous-RdYlGn"},
-          "custom": {
-            "cellGap": 1,
-            "filterValues": {"le": 1e-9},
-            "hideFrom": {"legend": false, "tooltip": false, "viz": false},
-            "scaleDistribution": {"type": "linear"}
+          "color": {
+            "mode": "palette-classic"
           },
-          "decimals": 2,
-          "mappings": [],
-          "max": 1,
-          "min": -1,
-          "thresholds": {
-            "mode": "absolute",
-            "steps": [
-              {"color": "blue", "value": null},
-              {"color": "green", "value": 0},
-              {"color": "red", "value": 0.5}
-            ]
+          "custom": {
+            "drawStyle": "line",
+            "fillOpacity": 20,
+            "lineInterpolation": "smooth",
+            "lineWidth": 2,
+            "showPoints": "never"
           },
           "unit": "none"
         },
         "overrides": []
       },
-      "gridPos": {"h": 10, "w": 12, "x": 0, "y": 40},
+      "gridPos": {
+        "h": 8,
+        "w": 24,
+        "x": 0,
+        "y": 42
+      },
       "id": 16,
       "options": {
-        "calculate": false,
-        "cellGap": 1,
-        "color": {"exponent": 0.5, "fill": "dark-orange", "mode": "continuous-RdYlGn", "reverse": false, "scale": "exponential", "scheme": "RdYlGn", "steps": 64},
-        "exemplars": {"color": "rgba(255,0,255,0.7)"},
-        "filterValues": {"le": 1e-9},
-        "legend": {"show": true},
-        "rowsFrame": {"layout": "auto"},
-        "tooltip": {"show": true, "yHistogram": false},
-        "yAxis": {"axisPlacement": "left", "reverse": false}
-      },
-      "pluginVersion": "10.0.0",
-      "targets": [
-        {
-          "datasource": {"type": "prometheus", "uid": "${datasource}"},
-          "expr": "alec_complexity_correlation",
-          "format": "heatmap",
-          "legendFormat": "{{sensor_a}}-{{sensor_b}}",
-          "refId": "A"
-        }
-      ],
-      "title": "Correlation Heatmap",
-      "type": "heatmap"
-    },
-    {
-      "datasource": {"type": "prometheus", "uid": "${datasource}"},
-      "fieldConfig": {
-        "defaults": {
-          "color": {"mode": "thresholds"},
-          "mappings": [],
-          "thresholds": {
-            "mode": "absolute",
-            "steps": [
-              {"color": "blue", "value": null},
-              {"color": "yellow", "value": 0.3},
-              {"color": "red", "value": 0.7}
-            ]
-          },
-          "unit": "none"
+        "legend": {
+          "calcs": [
+            "mean",
+            "last"
+          ],
+          "displayMode": "table",
+          "placement": "right"
         },
-        "overrides": []
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
       },
-      "gridPos": {"h": 10, "w": 12, "x": 12, "y": 40},
-      "id": 17,
-      "options": {
-        "colorMode": "value",
-        "graphMode": "none",
-        "justifyMode": "auto",
-        "orientation": "auto",
-        "reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false},
-        "textMode": "value_and_name"
-      },
-      "pluginVersion": "10.0.0",
       "targets": [
         {
-          "datasource": {"type": "prometheus", "uid": "${datasource}"},
-          "expr": "topk(10, abs(alec_complexity_correlation{sensor_a!~\"sensor_b\"}))",
-          "legendFormat": "{{sensor_a}} ↔ {{sensor_b}}",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${datasource}"
+          },
+          "expr": "alec_latent_variable",
+          "legendFormat": "{{name}}",
           "refId": "A"
         }
       ],
-      "title": "Top 10 Correlations",
-      "type": "stat"
-    },
-    {
-      "collapsed": false,
-      "gridPos": {"h": 1, "w": 24, "x": 0, "y": 50},
-      "id": 106,
-      "panels": [],
-      "title": "Anomaly Detection",
-      "type": "row"
-    },
-    {
-      "datasource": {"type": "prometheus", "uid": "${datasource}"},
-      "fieldConfig": {
-        "defaults": {
-          "color": {"mode": "palette-classic"},
-          "custom": {
-            "axisCenteredZero": false,
-            "axisColorMode": "text",
-            "axisLabel": "",
-            "axisPlacement": "auto",
-            "barAlignment": 0,
-            "drawStyle": "points",
-            "fillOpacity": 0,
-            "gradientMode": "none",
-            "hideFrom": {"legend": false, "tooltip": false, "viz": false},
-            "insertNulls": false,
-            "lineInterpolation": "linear",
-            "lineWidth": 1,
-            "pointSize": 8,
-            "scaleDistribution": {"type": "linear"},
-            "showPoints": "always",
-            "spanNulls": false,
-            "stacking": {"group": "A", "mode": "none"},
-            "thresholdsStyle": {"mode": "off"}
-          },
-          "mappings": [],
-          "thresholds": {
-            "mode": "absolute",
-            "steps": [{"color": "green", "value": null}]
-          },
-          "unit": "none"
-        },
-        "overrides": [
-          {
-            "matcher": {"id": "byRegexp", "options": ".*"},
-            "properties": [{"id": "color", "value": {"fixedColor": "red", "mode": "fixed"}}]
-          }
-        ]
-      },
-      "gridPos": {"h": 6, "w": 24, "x": 0, "y": 51},
-      "id": 18,
-      "options": {
-        "legend": {"calcs": [], "displayMode": "list", "placement": "bottom", "showLegend": true},
-        "tooltip": {"mode": "single", "sort": "none"}
-      },
-      "pluginVersion": "10.0.0",
-      "targets": [
-        {
-          "datasource": {"type": "prometheus", "uid": "${datasource}"},
-          "expr": "alec_complexity_anomaly_detected > 0",
-          "legendFormat": "{{sensor}}",
-          "refId": "A"
-        }
-      ],
-      "title": "Anomaly Events",
+      "title": "Latent Variables (Weather, Daily Cycle, Seasonal, Gusts, Irrigation)",
       "type": "timeseries"
+    },
+    {
+      "collapsed": true,
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 50
+      },
+      "id": 106,
+      "panels": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${datasource}"
+          },
+          "description": "These panels will display data when ALEC Gateway & Complexity are deployed",
+          "fieldConfig": {
+            "defaults": {
+              "color": {
+                "mode": "thresholds"
+              },
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "dark-gray",
+                    "value": null
+                  }
+                ]
+              }
+            }
+          },
+          "gridPos": {
+            "h": 6,
+            "w": 8,
+            "x": 0,
+            "y": 51
+          },
+          "id": 17,
+          "options": {
+            "orientation": "auto",
+            "reduceOptions": {
+              "calcs": [
+                "lastNotNull"
+              ],
+              "fields": "",
+              "values": false
+            },
+            "showThresholdLabels": false,
+            "showThresholdMarkers": true
+          },
+          "targets": [
+            {
+              "datasource": {
+                "type": "prometheus",
+                "uid": "${datasource}"
+              },
+              "expr": "alec_complexity_entropy_total or vector(0)",
+              "legendFormat": "H_tot",
+              "refId": "A"
+            }
+          ],
+          "title": "Total Entropy (H_tot) - Placeholder",
+          "type": "gauge"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${datasource}"
+          },
+          "fieldConfig": {
+            "defaults": {
+              "color": {
+                "mode": "thresholds"
+              },
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "dark-gray",
+                    "value": null
+                  }
+                ]
+              }
+            }
+          },
+          "gridPos": {
+            "h": 6,
+            "w": 8,
+            "x": 8,
+            "y": 51
+          },
+          "id": 18,
+          "options": {
+            "orientation": "auto",
+            "reduceOptions": {
+              "calcs": [
+                "lastNotNull"
+              ],
+              "fields": "",
+              "values": false
+            },
+            "showThresholdLabels": false,
+            "showThresholdMarkers": true
+          },
+          "targets": [
+            {
+              "datasource": {
+                "type": "prometheus",
+                "uid": "${datasource}"
+              },
+              "expr": "alec_complexity_complexity or vector(0)",
+              "legendFormat": "C",
+              "refId": "A"
+            }
+          ],
+          "title": "Complexity (C) - Placeholder",
+          "type": "gauge"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${datasource}"
+          },
+          "fieldConfig": {
+            "defaults": {
+              "color": {
+                "mode": "thresholds"
+              },
+              "mappings": [
+                {
+                  "options": {
+                    "from": 0.5,
+                    "result": {
+                      "color": "green",
+                      "index": 0,
+                      "text": "HEALTHY"
+                    },
+                    "to": 1
+                  },
+                  "type": "range"
+                },
+                {
+                  "options": {
+                    "from": 0.2,
+                    "result": {
+                      "color": "yellow",
+                      "index": 1,
+                      "text": "ATTENTION"
+                    },
+                    "to": 0.5
+                  },
+                  "type": "range"
+                },
+                {
+                  "options": {
+                    "from": 0,
+                    "result": {
+                      "color": "red",
+                      "index": 2,
+                      "text": "CRITICAL"
+                    },
+                    "to": 0.2
+                  },
+                  "type": "range"
+                }
+              ],
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "dark-gray",
+                    "value": null
+                  }
+                ]
+              }
+            }
+          },
+          "gridPos": {
+            "h": 6,
+            "w": 8,
+            "x": 16,
+            "y": 51
+          },
+          "id": 19,
+          "options": {
+            "orientation": "auto",
+            "reduceOptions": {
+              "calcs": [
+                "lastNotNull"
+              ],
+              "fields": "",
+              "values": false
+            },
+            "showThresholdLabels": false,
+            "showThresholdMarkers": true
+          },
+          "targets": [
+            {
+              "datasource": {
+                "type": "prometheus",
+                "uid": "${datasource}"
+              },
+              "expr": "alec_complexity_robustness or vector(0)",
+              "legendFormat": "R",
+              "refId": "A"
+            }
+          ],
+          "title": "Robustness (R) - Placeholder",
+          "type": "gauge"
+        }
+      ],
+      "title": "Complexity Metrics (Not Yet Deployed)",
+      "type": "row"
     }
   ],
   "refresh": "5s",
   "schemaVersion": 38,
   "style": "dark",
-  "tags": ["alec", "demo", "complexity", "iot"],
+  "tags": [
+    "alec",
+    "demo",
+    "iot",
+    "sensors"
+  ],
   "templating": {
     "list": [
       {
-        "current": {"selected": false, "text": "Prometheus", "value": "Prometheus"},
+        "current": {
+          "selected": false,
+          "text": "Prometheus",
+          "value": "Prometheus"
+        },
         "hide": 0,
         "includeAll": false,
         "label": "Datasource",
@@ -911,16 +1464,30 @@
       },
       {
         "allValue": ".*",
-        "current": {"selected": true, "text": ["All"], "value": ["$__all"]},
-        "datasource": {"type": "prometheus", "uid": "${datasource}"},
-        "definition": "label_values(alec_sensor_value, sensor)",
+        "current": {
+          "selected": true,
+          "text": [
+            "All"
+          ],
+          "value": [
+            "$__all"
+          ]
+        },
+        "datasource": {
+          "type": "prometheus",
+          "uid": "${datasource}"
+        },
+        "definition": "label_values(alec_sensor_value, sensor_id)",
         "hide": 0,
         "includeAll": true,
         "label": "Sensor",
         "multi": true,
         "name": "sensor",
         "options": [],
-        "query": {"query": "label_values(alec_sensor_value, sensor)", "refId": "StandardVariableQuery"},
+        "query": {
+          "query": "label_values(alec_sensor_value, sensor_id)",
+          "refId": "StandardVariableQuery"
+        },
         "refresh": 1,
         "regex": "",
         "skipUrlSync": false,
@@ -929,10 +1496,21 @@
       }
     ]
   },
-  "time": {"from": "now-15m", "to": "now"},
-  "timepicker": {"refresh_intervals": ["5s", "10s", "30s", "1m", "5m"]},
+  "time": {
+    "from": "now-15m",
+    "to": "now"
+  },
+  "timepicker": {
+    "refresh_intervals": [
+      "5s",
+      "10s",
+      "30s",
+      "1m",
+      "5m"
+    ]
+  },
   "timezone": "browser",
-  "title": "ALEC Demo - Gateway & Complexity",
+  "title": "ALEC Demo - Sensor Monitoring",
   "uid": "alec-demo",
   "version": 1,
   "weekStart": ""
