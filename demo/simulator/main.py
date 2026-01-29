@@ -262,6 +262,203 @@ class SensorSimulator:
         logger.info("All injections cleared")
 
 # =============================================================================
+# Complexity Metrics Calculators
+# =============================================================================
+
+from collections import deque
+
+class EntropyCalculator:
+    """Calculate Shannon entropy on a rolling window of sensor values."""
+
+    def __init__(self, window_size: int = 100, num_bins: int = 20):
+        self.window_size = window_size
+        self.num_bins = num_bins
+        self.buffers: dict[str, deque] = {}
+
+    def update(self, sensor_id: str, value: float) -> None:
+        """Add a new value to the sensor's buffer."""
+        if np.isnan(value):
+            return
+        if sensor_id not in self.buffers:
+            self.buffers[sensor_id] = deque(maxlen=self.window_size)
+        self.buffers[sensor_id].append(value)
+
+    def get_entropy(self, sensor_id: str) -> float:
+        """Calculate Shannon entropy for a sensor."""
+        if sensor_id not in self.buffers or len(self.buffers[sensor_id]) < 10:
+            return 0.0
+
+        values = np.array(self.buffers[sensor_id])
+
+        # Discretize into bins
+        hist, _ = np.histogram(values, bins=self.num_bins, density=True)
+        hist = hist[hist > 0]  # Remove zero bins
+
+        if len(hist) == 0:
+            return 0.0
+
+        # Calculate Shannon entropy: H = -Σ p(x) * log2(p(x))
+        # Normalize histogram to get probabilities
+        probs = hist / hist.sum()
+        entropy = -np.sum(probs * np.log2(probs + 1e-10))
+
+        return float(entropy)
+
+    def get_total_entropy(self) -> float:
+        """Get sum of all sensor entropies."""
+        return sum(self.get_entropy(sid) for sid in self.buffers)
+
+
+class CorrelationCalculator:
+    """Calculate pairwise Pearson correlation between sensors."""
+
+    def __init__(self, window_size: int = 100):
+        self.window_size = window_size
+        self.buffers: dict[str, deque] = {}
+
+    def update(self, sensor_id: str, value: float) -> None:
+        """Add value to buffer."""
+        if np.isnan(value):
+            return
+        if sensor_id not in self.buffers:
+            self.buffers[sensor_id] = deque(maxlen=self.window_size)
+        self.buffers[sensor_id].append(value)
+
+    def get_correlation(self, sensor_a: str, sensor_b: str) -> float:
+        """Calculate Pearson correlation between two sensors."""
+        if sensor_a not in self.buffers or sensor_b not in self.buffers:
+            return 0.0
+
+        buf_a = self.buffers[sensor_a]
+        buf_b = self.buffers[sensor_b]
+
+        # Need same length and minimum samples
+        min_len = min(len(buf_a), len(buf_b))
+        if min_len < 10:
+            return 0.0
+
+        a = np.array(list(buf_a)[-min_len:])
+        b = np.array(list(buf_b)[-min_len:])
+
+        # Pearson correlation
+        corr = np.corrcoef(a, b)[0, 1]
+        return float(corr) if not np.isnan(corr) else 0.0
+
+    def get_correlation_matrix(self) -> dict[tuple, float]:
+        """Get all pairwise correlations (upper triangle only)."""
+        sensors = sorted(self.buffers.keys())
+        matrix = {}
+        for i, s_a in enumerate(sensors):
+            for s_b in sensors[i + 1:]:
+                corr = self.get_correlation(s_a, s_b)
+                matrix[(s_a, s_b)] = corr
+        return matrix
+
+
+class AnomalyDetector:
+    """Detect anomalies based on z-score deviation."""
+
+    def __init__(self, window_size: int = 100, threshold_sigma: float = 3.0):
+        self.window_size = window_size
+        self.threshold_sigma = threshold_sigma
+        self.buffers: dict[str, deque] = {}
+
+    def update(self, sensor_id: str, value: float) -> None:
+        """Add value to buffer."""
+        if np.isnan(value):
+            return
+        if sensor_id not in self.buffers:
+            self.buffers[sensor_id] = deque(maxlen=self.window_size)
+        self.buffers[sensor_id].append(value)
+
+    def get_anomaly_score(self, sensor_id: str) -> float:
+        """
+        Returns anomaly score in [0, 1].
+        0 = normal, 1 = highly anomalous
+
+        Based on z-score of latest value vs rolling statistics.
+        """
+        if sensor_id not in self.buffers or len(self.buffers[sensor_id]) < 20:
+            return 0.0
+
+        values = np.array(self.buffers[sensor_id])
+        latest = values[-1]
+
+        # Exclude latest for statistics
+        historical = values[:-1]
+        mean = np.mean(historical)
+        std = np.std(historical)
+
+        if std < 1e-6:
+            return 0.0
+
+        z_score = abs(latest - mean) / std
+
+        # Convert z-score to [0, 1] using sigmoid-like function
+        anomaly_score = min(1.0, z_score / (self.threshold_sigma * 2))
+
+        return float(anomaly_score)
+
+
+def calculate_complexity(correlation_matrix: dict[tuple, float]) -> float:
+    """
+    Calculate complexity based on correlation structure.
+
+    Complexity increases when correlations are moderate (around 0.5).
+    Very low or very high correlations = low complexity.
+
+    C = Σ |r_ij| * (1 - |r_ij|) * 4
+
+    This peaks at |r| = 0.5 and is 0 at |r| = 0 or |r| = 1
+    """
+    if not correlation_matrix:
+        return 0.0
+
+    complexity = 0.0
+    for (s_a, s_b), corr in correlation_matrix.items():
+        abs_corr = abs(corr)
+        # Parabola that peaks at 0.5
+        complexity += abs_corr * (1 - abs_corr) * 4
+
+    return float(complexity)
+
+
+def calculate_robustness(
+    complexity: float,
+    entropy_total: float,
+    num_sensors: int
+) -> float:
+    """
+    Calculate robustness indicator R ∈ [0, 1].
+
+    R approaches 1 when:
+    - Complexity is moderate (not too high, not too low)
+    - Entropy is stable
+
+    R approaches 0 when:
+    - Complexity is very high (fragile system)
+    - High entropy (chaotic)
+    """
+    if num_sensors == 0:
+        return 0.0
+
+    # Normalize complexity (assume max ~= num_pairs * 1.0)
+    num_pairs = num_sensors * (num_sensors - 1) / 2
+    max_complexity = num_pairs  # Maximum when all correlations are 0.5
+    c_norm = min(complexity / max_complexity, 1.0) if max_complexity > 0 else 0
+
+    # Normalize entropy (assume max ~= num_sensors * 4 bits)
+    max_entropy = num_sensors * 4.0  # 4 bits per sensor max
+    h_norm = min(entropy_total / max_entropy, 1.0) if max_entropy > 0 else 0
+
+    # Robustness: high when both are low/moderate
+    # Using inverse weighted average
+    robustness = 1.0 - (c_norm * 0.6 + h_norm * 0.4)
+
+    return max(0.0, min(1.0, robustness))
+
+
+# =============================================================================
 # FastAPI Application
 # =============================================================================
 
@@ -271,13 +468,16 @@ app = FastAPI(
     version="1.0.0"
 )
 
-# Global simulator instance
+# Global instances
 simulator: SensorSimulator | None = None
+entropy_calc: EntropyCalculator | None = None
+correlation_calc: CorrelationCalculator | None = None
+anomaly_detector: AnomalyDetector | None = None
 
 @app.on_event("startup")
 async def startup():
     """Initialize the simulator on startup."""
-    global simulator
+    global simulator, entropy_calc, correlation_calc, anomaly_detector
 
     profile_path = PROFILE_DIR / f"{SENSOR_PROFILE}.json"
     if not profile_path.exists():
@@ -285,7 +485,14 @@ async def startup():
         raise RuntimeError(f"Profile not found: {profile_path}")
 
     simulator = SensorSimulator(profile_path)
+
+    # Initialize complexity calculators
+    entropy_calc = EntropyCalculator(window_size=100, num_bins=20)
+    correlation_calc = CorrelationCalculator(window_size=100)
+    anomaly_detector = AnomalyDetector(window_size=100, threshold_sigma=3.0)
+
     logger.info(f"Simulator started with profile: {SENSOR_PROFILE}")
+    logger.info("Complexity metrics calculators initialized")
 
 @app.get("/health")
 async def health():
@@ -300,6 +507,13 @@ async def metrics():
 
     readings = simulator.generate_all_readings()
     lines = []
+
+    # Update complexity calculators with new readings
+    for r in readings:
+        if not np.isnan(r.value):
+            entropy_calc.update(r.sensor_id, r.value)
+            correlation_calc.update(r.sensor_id, r.value)
+            anomaly_detector.update(r.sensor_id, r.value)
 
     # Sensor value metrics
     lines.append("# HELP alec_sensor_value Current sensor reading value")
@@ -335,6 +549,49 @@ async def metrics():
     lines.append("# HELP alec_active_sensors Number of active sensors")
     lines.append("# TYPE alec_active_sensors gauge")
     lines.append(f"alec_active_sensors {len(simulator.sensors)}")
+
+    # =========================================================================
+    # Complexity Metrics
+    # =========================================================================
+
+    # Entropy per sensor
+    lines.append("# HELP alec_entropy_per_sensor Shannon entropy per sensor (rolling window)")
+    lines.append("# TYPE alec_entropy_per_sensor gauge")
+    for sensor_id in simulator.sensors:
+        entropy = entropy_calc.get_entropy(sensor_id)
+        lines.append(f'alec_entropy_per_sensor{{sensor_id="{sensor_id}"}} {entropy:.6f}')
+
+    # Total entropy
+    lines.append("# HELP alec_entropy_total Sum of all sensor entropies")
+    lines.append("# TYPE alec_entropy_total gauge")
+    total_entropy = entropy_calc.get_total_entropy()
+    lines.append(f"alec_entropy_total {total_entropy:.6f}")
+
+    # Correlation matrix (upper triangle only to avoid duplicates)
+    lines.append("# HELP alec_correlation Pearson correlation between sensor pairs")
+    lines.append("# TYPE alec_correlation gauge")
+    corr_matrix = correlation_calc.get_correlation_matrix()
+    for (s_a, s_b), corr in corr_matrix.items():
+        lines.append(f'alec_correlation{{sensor_a="{s_a}",sensor_b="{s_b}"}} {corr:.6f}')
+
+    # Complexity
+    lines.append("# HELP alec_complexity Complexity metric from correlation structure")
+    lines.append("# TYPE alec_complexity gauge")
+    complexity = calculate_complexity(corr_matrix)
+    lines.append(f"alec_complexity {complexity:.6f}")
+
+    # Robustness
+    lines.append("# HELP alec_robustness Robustness indicator (0-1)")
+    lines.append("# TYPE alec_robustness gauge")
+    robustness = calculate_robustness(complexity, total_entropy, len(simulator.sensors))
+    lines.append(f"alec_robustness {robustness:.6f}")
+
+    # Anomaly scores
+    lines.append("# HELP alec_anomaly_score Anomaly score per sensor (0-1)")
+    lines.append("# TYPE alec_anomaly_score gauge")
+    for sensor_id in simulator.sensors:
+        score = anomaly_detector.get_anomaly_score(sensor_id)
+        lines.append(f'alec_anomaly_score{{sensor_id="{sensor_id}"}} {score:.6f}')
 
     return "\n".join(lines) + "\n"
 
