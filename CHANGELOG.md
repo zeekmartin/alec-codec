@@ -11,6 +11,61 @@ et ce projet adhère au [Semantic Versioning](https://semver.org/lang/fr/).
 
 ### Added
 
+#### ALEC Demo Infrastructure (v0.1.0)
+- **Sensor Simulator Service** (`demo/simulator/`):
+  - Real-time correlated sensor data generation using latent variables
+  - 15 agricultural IoT sensors (temperature, humidity, soil, wind, gas, etc.)
+  - Latent variable model: weather, daily_cycle, seasonal, gusts, irrigation
+  - Prometheus metrics endpoint (`/metrics`)
+  - JSON API for readings (`/readings`, `/sensors`, `/status`)
+  - Docker container with health checks
+- **Injection Service** (`demo/injection/`):
+  - FastAPI-based anomaly injection for testing
+  - Injection types: noise, spike, drift, dropout
+  - Per-sensor injection state management
+  - Auto-expiration for timed injections
+  - RESTful API: `POST /inject/{sensor}/{type}`, `DELETE /inject/{sensor}`, `POST /reset`
+- **Grafana Dashboard** (`demo/grafana/`):
+  - Pre-provisioned ALEC Demo dashboard
+  - Panels: Cluster Status, Sensor Time Series, Entropy Gauge, Complexity Gauge
+  - Robustness Indicator with HEALTHY/ATTENTION/CRITICAL zones
+  - Per-Sensor Entropy breakdown
+  - Correlation Heatmap visualization
+  - Anomaly Detection alerts
+- **Docker Compose Stack** (`demo/docker-compose.yml`):
+  - Full orchestration: simulator, gateway, complexity, injection, prometheus, grafana
+  - Service dependencies with health checks
+  - Named volumes for persistence
+  - Bridge network for service discovery
+- **Prometheus Configuration** (`demo/prometheus/`):
+  - Scrape configs for all ALEC services
+  - 5-second scrape interval for real-time monitoring
+- **Documentation** (`demo/README.md`):
+  - Architecture diagram
+  - Quick start guide
+  - API reference for all services
+  - Metrics reference table
+  - Troubleshooting guide
+
+#### ALEC Grafana Monitoring Stack (v0.1.0)
+- **ALEC Exporter** (`alec-grafana/exporter/`):
+  - Prometheus exporter for ALEC metrics
+  - Real-time compression stats, entropy, complexity
+  - Health check endpoint
+- **Demo Script** (`alec-grafana/scripts/demo.sh`):
+  - One-command stack management (start/stop/status/logs/clean)
+  - Prerequisite checking
+  - Service health waiting with timeout
+  - Colored terminal output
+
+#### ALEC Testdata Crate (v0.1.0)
+- **Industry Dataset Generator** (`alec-testdata/`):
+  - 6 industry profiles: Agriculture, HVAC, Energy, Logistics, Healthcare, Manufacturing
+  - 24 test scenarios with realistic patterns
+  - Configurable anomaly injection
+  - Parquet and CSV output formats
+  - Compression benchmark utility
+
 #### ALEC Gateway (v0.1.0-alpha)
 - **Multi-channel management**: Handle dozens of sensor channels
 - **Priority-based aggregation**: Numeric priority (0 = highest)
