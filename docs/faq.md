@@ -1,271 +1,291 @@
-# ALEC — Questions fréquentes (FAQ)
+# ALEC Frequently Asked Questions
 
----
+## General
 
-## Général
+### What is ALEC?
 
-### Qu'est-ce qui différencie ALEC des autres codecs de compression ?
+ALEC (Adaptive Lazy Evolving Compression) is a compression codec and observability suite designed for bandwidth-constrained IoT environments. It combines:
 
-ALEC combine trois approches innovantes :
+1. **Lazy Compression**: Decides if data should be transmitted before compressing
+2. **Evolving Context**: Dictionary improves over time
+3. **Information-Theoretic Metrics**: Real-time entropy and resilience monitoring
+4. **Anomaly Detection**: Automatic detection of system changes
 
-1. **Compression paresseuse** : Contrairement aux codecs classiques qui compressent tout, ALEC décide d'abord *si* une donnée mérite d'être transmise, puis *comment* la transmettre.
+### What compression ratios can I expect?
 
-2. **Contexte évolutif** : Le dictionnaire de compression s'enrichit automatiquement avec le temps, contrairement aux codecs statiques.
-
-3. **Asymétrie configurable** : L'effort de compression peut être placé côté émetteur ou récepteur selon les contraintes.
-
-### ALEC est-il avec ou sans perte ?
-
-**Sans perte** pour les valeurs numériques. Les données reconstruites sont identiques aux données originales (à la précision configurée près).
-
-Cependant, ALEC peut *décider de ne pas transmettre* certaines données (P4, P5). Ce n'est pas une perte de compression mais une décision de filtrage. Ces données restent disponibles sur demande.
-
-### Quelle compression puis-je espérer ?
-
-Cela dépend fortement des données et du temps d'apprentissage :
-
-| Situation | Ratio typique |
+| Situation | Typical Ratio |
 |-----------|---------------|
-| Données aléatoires | 0.8-1.0 (peu de gain) |
-| Premier jour (apprentissage) | 0.5-0.7 |
-| Après une semaine | 0.1-0.3 |
-| Données très prévisibles | 0.02-0.08 |
+| Random data | 0.8-1.0 (little gain) |
+| First day (learning) | 0.5-0.7 |
+| After one week | 0.1-0.3 |
+| Highly predictable data | 0.02-0.08 |
 
-### Quelles sont les limitations d'ALEC ?
+### Is ALEC lossy or lossless?
 
-- **Données aléatoires** : Peu de gain si les valeurs sont imprévisibles
-- **Latence** : L'approche paresseuse ajoute potentiellement un aller-retour pour les détails
-- **Mémoire** : Le contexte partagé consomme de la RAM (configurable, typiquement 16-64 KB)
-- **Apprentissage** : L'efficacité optimale nécessite une période de rodage
+**Lossless** for numeric values. Reconstructed data is identical to original data (at configured precision).
+
+However, ALEC may *decide not to transmit* certain data (P4, P5 priorities). This is filtering, not compression loss.
 
 ---
 
-## Technique
+## Gateway
 
-### Quels langages sont supportés ?
+### What is ALEC Gateway?
 
-Actuellement :
-- **Rust** (implémentation principale, émetteur et récepteur)
-- **C** (en cours, pour émetteurs très contraints)
+Gateway manages multiple ALEC encoder instances for IoT gateways that aggregate data from many sensors into efficient transmission frames.
 
-Prévu :
-- Python (bindings pour prototypage)
-- JavaScript (décodeur côté navigateur)
+### How many channels can Gateway handle?
 
-### ALEC fonctionne-t-il sur microcontrôleur ?
+Default maximum is 32 channels. This is configurable via `GatewayConfig.max_channels`. Each channel uses approximately 2KB of memory.
 
-Oui, l'émetteur est conçu pour fonctionner sur des microcontrôleurs type ARM Cortex-M0+ avec :
-- < 64 KB de RAM
-- < 128 KB de Flash
-- Pas de système d'exploitation requis (`no_std`)
+### What happens if a buffer fills up?
 
-### Quels protocoles de transport sont supportés ?
+`push()` returns `GatewayError::BufferFull`. The value is dropped. To avoid this:
+- Increase `buffer_size` in `ChannelConfig`
+- Flush more frequently
+- Handle the error and log dropped values
 
-ALEC est agnostique du transport. Il fonctionne sur :
-- MQTT / MQTT-SN
-- CoAP
-- HTTP/WebSocket
-- TCP/UDP brut
-- LoRaWAN
-- Liaison série
+### Can I use Gateway without Metrics?
 
-### Comment fonctionne la synchronisation du contexte ?
+Yes. Metrics is an optional feature that must be explicitly enabled:
 
-1. **Initialisation** : L'émetteur envoie son contexte complet
-2. **Incrémental** : Périodiquement, seuls les changements (diff) sont envoyés
-3. **Vérification** : Chaque message contient la version du contexte utilisé
-4. **Recovery** : En cas de désynchronisation, resync automatique
+```toml
+# Without metrics (default)
+alec-gateway = "0.1"
 
-### Le contexte peut-il être pré-chargé ?
-
-Oui ! Pour accélérer le démarrage, vous pouvez :
-- Exporter le contexte d'un émetteur existant
-- Le charger sur un nouvel émetteur
-- Bénéficier immédiatement de la compression optimale
-
-```rust
-// Exporter
-let export = context.export_full();
-save_to_flash(&export);
-
-// Importer
-let loaded = load_from_flash();
-context.import(&loaded);
+# With metrics
+alec-gateway = { version = "0.1", features = ["metrics"] }
 ```
 
-### Que se passe-t-il si un message est perdu ?
+---
 
-- **Messages P1** : Retransmis jusqu'à acquittement
-- **Messages P2-P3** : Le récepteur détecte le gap via le numéro de séquence et peut demander retransmission
-- **Contexte** : Si la désynchronisation est détectée, resync automatique
+## Metrics
 
-Les données P4/P5 non envoyées ne sont pas concernées.
+### What is Total Correlation (TC)?
+
+Total Correlation measures the redundancy (shared information) across all channels:
+
+```
+TC = Σ H(X_i) - H(X₁, ..., Xₙ)
+```
+
+- TC = 0: Channels are completely independent
+- TC > 0: Channels share information (redundancy exists)
+- Higher TC: More redundancy, system can tolerate sensor loss
+
+### What is the Resilience Index (R)?
+
+R is the normalized Total Correlation:
+
+```
+R = TC / Σ H(X_i)    (0 ≤ R ≤ 1)
+```
+
+| R Value | Zone | Meaning |
+|---------|------|---------|
+| R ≥ 0.5 | Healthy | High redundancy |
+| 0.2 ≤ R < 0.5 | Attention | Moderate redundancy |
+| R < 0.2 | Critical | Low redundancy, fragile |
+
+### Why is my signal.valid = false?
+
+Common reasons:
+- Insufficient samples (need `min_aligned_samples`, default 32)
+- No overlapping timestamps across channels
+- All channels have zero variance
+
+Check `signal.invalid_reason` for details.
+
+### What is Criticality (ΔR)?
+
+Criticality measures how important each channel is to system redundancy:
+
+```
+ΔR_k = R_all - R_without_k
+```
+
+High ΔR = removing the channel significantly drops R = critical channel.
 
 ---
 
-## Sécurité
+## Complexity
 
-### Les données sont-elles chiffrées ?
+### What is ALEC Complexity?
 
-ALEC ne chiffre pas lui-même les données. Il est conçu pour être encapsulé dans :
-- TLS 1.3 (connexions TCP)
-- DTLS 1.3 (connexions UDP)
+Complexity provides temporal analysis of metrics:
+- Baseline learning (statistical summary of "normal")
+- Delta/Z-score computation (deviation from baseline)
+- S-lite structure analysis (pairwise dependencies)
+- Anomaly event detection (with persistence/cooldown)
 
-Le chiffrement est ainsi délégué à des protocoles éprouvés.
+### How long does baseline building take?
 
-### Le contexte partagé est-il un risque de sécurité ?
+Default: 5 minutes (`build_time_ms: 300_000`) AND 20 samples (`min_valid_snapshots: 20`). Both conditions must be met.
 
-Le contexte contient des patterns statistiques, pas les données elles-mêmes. Cependant :
-- Un attaquant avec accès au contexte pourrait inférer certaines informations
-- Il est recommandé de protéger la synchronisation du contexte (authentification, chiffrement)
+For faster startup, reduce these values:
 
-### Comment protéger contre le rejeu de messages ?
+```rust
+baseline: BaselineConfig {
+    build_time_ms: 60_000,    // 1 minute
+    min_valid_snapshots: 10,
+    ..Default::default()
+}
+```
 
-- Les numéros de séquence détectent les duplications
-- Les timestamps permettent de rejeter les messages trop anciens
-- Pour une protection renforcée, utilisez DTLS avec anti-replay
+### What do Z-scores mean?
+
+Z-score = (current - baseline_mean) / baseline_std
+
+| |Z| | Interpretation |
+|-----|----------------|
+| < 2 | Normal |
+| 2-3 | Warning |
+| ≥ 3 | Critical |
+
+### Why aren't my anomaly events firing?
+
+Check these settings:
+1. `anomaly.enabled` is true
+2. `persistence_ms`: Condition must persist this long (default 30s)
+3. `cooldown_ms`: Same event blocked for this period (default 2min)
+4. Baseline is locked (check `baseline.state`)
+
+### Can I use Complexity without Gateway?
+
+Yes. Complexity can consume data from any source via `GenericInput`:
+
+```rust
+let input = GenericInput::new(timestamp_ms, entropy)
+    .with_tc(tc_value)
+    .with_r(resilience)
+    .build();
+```
+
+---
+
+## Integration
+
+### How do I integrate all three components?
+
+```rust
+// 1. Create Gateway with Metrics
+let mut gateway = Gateway::new();
+gateway.enable_metrics(MetricsConfig { enabled: true, ..Default::default() });
+
+// 2. Create Complexity Engine
+let mut complexity = ComplexityEngine::new(ComplexityConfig { enabled: true, ..Default::default() });
+
+// 3. Feed data flow
+gateway.push("sensor", value, timestamp)?;
+let frame = gateway.flush()?;
+
+if let Some(metrics) = gateway.last_metrics() {
+    let input = metrics.to_complexity_input();
+    if let Some(snapshot) = complexity.process(&input) {
+        // Handle events
+    }
+}
+```
+
+### Can I use Prometheus/Grafana with ALEC?
+
+Yes. Export `MetricsSnapshot` fields to your time-series database:
+- `payload.h_bytes` → `alec_payload_entropy`
+- `signal.total_corr` → `alec_total_correlation`
+- `resilience.r` → `alec_resilience`
+
+See [INTEGRATION.md](INTEGRATION.md) for examples.
+
+### Is ALEC thread-safe?
+
+Individual components are not thread-safe. For multi-threaded applications:
+- Use one Gateway per thread, or
+- Use channels (mpsc) to communicate between threads
+- Wrap components in `Mutex` if needed
 
 ---
 
 ## Performance
 
-### Quelle latence ajoute ALEC ?
+### What's the memory footprint?
 
-- **Encodage** : < 1 ms pour une valeur simple
-- **Décodage** : < 0.5 ms pour une valeur simple
-- **Classification** : < 0.1 ms
+| Component | Typical Memory |
+|-----------|---------------|
+| Gateway (per channel) | ~2KB |
+| Metrics window (60s) | ~100KB |
+| Complexity baseline | ~50KB |
 
-La latence principale vient du transport, pas d'ALEC.
+### What's the CPU overhead?
 
-### Combien de mémoire consomme le contexte ?
+| Operation | Typical Latency |
+|-----------|----------------|
+| push() | < 1µs |
+| flush() 10 channels | < 5ms |
+| Metrics computation | < 10ms |
+| Complexity snapshot | < 2ms |
 
-Configuration par défaut :
-- **Émetteur** : ~32 KB
-- **Récepteur** : ~1 MB (stocke aussi l'historique)
+### How do I minimize overhead?
 
-Configurable selon les contraintes :
+1. Disable metrics if not needed
+2. Increase `signal_compute` interval
+3. Reduce `signal_window` size
+4. Disable resilience/criticality computation
+5. Use `Frozen` baseline mode
+
+---
+
+## Troubleshooting
+
+### Gateway: "ChannelNotFound" error
+
+Channel was not added before pushing. Call `add_channel()` first:
+
 ```rust
-let context = Context::builder()
-    .max_patterns(100)      // Limite le dictionnaire
-    .max_memory_kb(16)      // Limite stricte
-    .build();
+gateway.add_channel("my_sensor", ChannelConfig::default())?;
+gateway.push("my_sensor", value, timestamp)?;
 ```
 
-### ALEC supporte-t-il le multithreading ?
+### Metrics: signal.h_joint is 0
 
-Le contexte n'est pas thread-safe par défaut. Options :
-- Un contexte par thread
-- Wrapper avec mutex
-- Version `Send + Sync` disponible avec le feature `threadsafe`
+This means:
+- Only one channel exists (joint entropy = single entropy)
+- Channels have zero variance
+- Alignment produced no overlapping samples
 
----
+### Complexity: No deltas/z_scores in snapshot
 
-## Cas d'usage
+Baseline is still building. Check:
+- `baseline.state` should be "locked"
+- `baseline.progress` should be 1.0
 
-### ALEC est-il adapté au streaming vidéo ?
+### Events not appearing in snapshot
 
-Non. ALEC est optimisé pour :
-- Données de capteurs (valeurs numériques)
-- Séries temporelles
-- Données discrètes et structurées
-
-Pour la vidéo, utilisez H.264, H.265, AV1, etc.
-
-### Puis-je utiliser ALEC pour des données binaires (images, fichiers) ?
-
-Ce n'est pas son usage principal, mais c'est possible :
-- Les données binaires peuvent être traitées comme des patterns
-- L'efficacité dépendra de la répétitivité des patterns
-
-Pour la compression générique, préférez zstd, lz4, etc.
-
-### ALEC fonctionne-t-il en temps réel ?
-
-Oui, pour les messages P1 et P2 :
-- Envoi immédiat dès classification
-- Pas de buffering
-- Latence prévisible
-
-Les messages P3 peuvent être légèrement retardés (batching optionnel).
+1. Check `anomaly.enabled = true`
+2. Check specific event type is enabled in `events`
+3. Check persistence timer (condition must persist)
+4. Check cooldown (same event recently fired)
 
 ---
 
-## Déploiement
+## Licensing
 
-### Comment mettre à jour ALEC sans perdre le contexte ?
+### What license is ALEC under?
 
-1. Exporter le contexte avant mise à jour
-2. Mettre à jour le firmware/logiciel
-3. Importer le contexte sauvegardé
+ALEC is **dual-licensed**:
 
-Si les versions sont compatibles, le contexte reste utilisable.
+1. **AGPL-3.0** (Open Source): Free for open source projects, research, and personal use. You must open-source your code if you distribute ALEC.
 
-### Puis-je avoir plusieurs récepteurs pour un émetteur ?
+2. **Commercial License**: For proprietary use without open-source obligations. Starting at $500/year.
 
-Oui, mais chaque récepteur maintient son propre contexte. Options :
-- Un récepteur principal qui redistribue
-- Synchronisation du contexte entre récepteurs (avancé)
+### Which license do I need?
 
-### Comment débugger une désynchronisation ?
+| Use Case | License |
+|----------|---------|
+| Open source project | AGPL-3.0 |
+| Research/academic | AGPL-3.0 |
+| Internal tools (no distribution) | AGPL-3.0 |
+| SaaS/network service | Commercial |
+| Proprietary product | Commercial |
+| Embedded in closed-source | Commercial |
 
-1. Activer les logs détaillés (`ALEC_LOG=debug`)
-2. Vérifier les hash de contexte des deux côtés
-3. Comparer les versions
-4. Forcer une resync complète si nécessaire
-
-```bash
-ALEC_LOG=debug cargo run --example emitter
-```
-
----
-
-## Contribution
-
-### Comment signaler un bug ?
-
-1. Vérifier qu'il n'existe pas déjà dans les issues
-2. Créer une issue avec :
-   - Version ALEC
-   - Environnement (OS, hardware)
-   - Étapes de reproduction
-   - Comportement attendu vs observé
-
-### Comment proposer une fonctionnalité ?
-
-1. Ouvrir une issue "Feature request"
-2. Décrire le cas d'usage
-3. Expliquer pourquoi les solutions existantes ne suffisent pas
-4. Proposer une approche (optionnel)
-
-### Le projet accepte-t-il les contributions ?
-
-Oui ! Voir [CONTRIBUTING.md](../CONTRIBUTING.md) pour :
-- Les conventions de code
-- Le processus de PR
-- Les templates disponibles
-
----
-
-## Licence et usage commercial
-
-### Quelle est la licence d'ALEC ?
-
-MIT License — vous pouvez :
-- Utiliser commercialement
-- Modifier
-- Distribuer
-- Utiliser en privé
-
-Sans garantie, avec attribution requise.
-
-### Puis-je utiliser ALEC dans un produit commercial ?
-
-Oui, la licence MIT le permet. Mentionnez simplement ALEC dans vos attributions.
-
----
-
-## Questions non résolues ?
-
-- 📖 Consultez la [documentation complète](../README.md)
-- 💬 Ouvrez une [issue sur GitHub](https://github.com/votre-org/alec-codec/issues)
-- 📧 Contactez les mainteneurs
+Contact: https://alec-codec.com/pricing

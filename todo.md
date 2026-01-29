@@ -182,16 +182,45 @@ Objectif : Permettre l'intégration avec des projets C/C++.
   - [x] 11 tests Rust FFI
   - [x] README avec instructions de build et linking
 
+### v1.3.0 — Demo Infrastructure ✅ Complété
+
+Objectif : Environnement de démonstration complet pour valider Gateway & Complexity.
+
+- [x] **Sensor Simulator** ✅
+  - [x] Génération temps réel avec variables latentes
+  - [x] 15 capteurs agricoles corrélés
+  - [x] Profils JSON configurables
+  - [x] Endpoint Prometheus `/metrics`
+  - [x] API REST `/readings`, `/sensors`, `/status`
+- [x] **Injection Service** ✅
+  - [x] API FastAPI pour injection d'anomalies
+  - [x] Types: noise, spike, drift, dropout
+  - [x] Gestion d'état par capteur
+  - [x] Auto-expiration des injections
+- [x] **Grafana Dashboard** ✅
+  - [x] Dashboard ALEC Demo pré-provisionné
+  - [x] Panels: Entropy, Complexity, Robustness
+  - [x] Heatmap de corrélation
+  - [x] Détection d'anomalies
+- [x] **Docker Compose** ✅
+  - [x] Orchestration complète 6 services
+  - [x] Health checks et dépendances
+  - [x] Volumes persistants
+- [x] **Documentation** ✅
+  - [x] README avec architecture et quickstart
+  - [x] Référence API complète
+  - [x] Guide de troubleshooting
+
 ### Backlog v1.x / v2.0
 
-- [ ] **Performance** (v1.3)
+- [ ] **Performance** (v1.4)
   - [ ] Optimisation mémoire émetteur
   - [ ] Benchmarks sur hardware cible
 - [ ] **Packaging** (v2.0)
   - [x] Bindings C/C++ (alec-ffi) ✅
   - [ ] Bindings Python (PyO3)
-  - [ ] Images Docker
-  - [ ] Dashboard visualisation
+  - [x] Images Docker ✅ (demo/docker-compose.yml)
+  - [x] Dashboard visualisation ✅ (demo/grafana/)
 
 ---
 
@@ -282,7 +311,7 @@ Objectif : Permettre l'intégration avec des projets C/C++.
 - [ ] Compression de séquences (run-length)
 - [ ] Mode "replay" pour debugging
 - [ ] Export vers formats standards (CSV, JSON)
-- [ ] Intégration Grafana
+- [x] Intégration Grafana ✅ (demo/grafana/ + alec-grafana/)
 - [ ] Support WebSocket pour dashboard
 
 ### Technique

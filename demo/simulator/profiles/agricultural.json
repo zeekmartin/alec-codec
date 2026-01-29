@@ -1,0 +1,201 @@
+{
+  "name": "Agricultural IoT",
+  "description": "15-sensor agricultural monitoring setup with temperature, humidity, soil, and atmospheric sensors",
+  "version": "1.0.0",
+  "sensors": [
+    {
+      "id": "sensor_01",
+      "type": "temperature",
+      "unit": "°C",
+      "base": 20.0,
+      "min": -10.0,
+      "max": 45.0,
+      "noise_std": 0.3,
+      "correlates": ["sensor_02", "sensor_05"],
+      "latent_weights": {"weather": 8.0, "daily_cycle": 5.0, "seasonal": 3.0}
+    },
+    {
+      "id": "sensor_02",
+      "type": "humidity",
+      "unit": "%",
+      "base": 60.0,
+      "min": 20.0,
+      "max": 100.0,
+      "noise_std": 2.0,
+      "correlates": ["sensor_01", "sensor_03"],
+      "latent_weights": {"weather": -12.0, "daily_cycle": -3.0, "seasonal": 5.0}
+    },
+    {
+      "id": "sensor_03",
+      "type": "dewpoint",
+      "unit": "°C",
+      "base": 12.0,
+      "min": -15.0,
+      "max": 30.0,
+      "noise_std": 0.2,
+      "derived_from": ["sensor_01", "sensor_02"],
+      "latent_weights": {"weather": 4.0, "daily_cycle": 2.0}
+    },
+    {
+      "id": "sensor_04",
+      "type": "pressure",
+      "unit": "hPa",
+      "base": 1013.0,
+      "min": 980.0,
+      "max": 1050.0,
+      "noise_std": 0.5,
+      "correlates": ["sensor_05"],
+      "latent_weights": {"weather": -5.0, "seasonal": 2.0}
+    },
+    {
+      "id": "sensor_05",
+      "type": "altitude",
+      "unit": "m",
+      "base": 450.0,
+      "min": 0.0,
+      "max": 2000.0,
+      "noise_std": 0.1,
+      "correlates": ["sensor_04", "sensor_01"],
+      "latent_weights": {"weather": 0.5}
+    },
+    {
+      "id": "sensor_06",
+      "type": "luminosity",
+      "unit": "lux",
+      "base": 500.0,
+      "min": 0.0,
+      "max": 100000.0,
+      "noise_std": 50.0,
+      "correlates": ["sensor_01"],
+      "latent_weights": {"daily_cycle": 400.0, "weather": 100.0}
+    },
+    {
+      "id": "sensor_07",
+      "type": "uv_index",
+      "unit": "-",
+      "base": 3.0,
+      "min": 0.0,
+      "max": 11.0,
+      "noise_std": 0.2,
+      "correlates": ["sensor_06"],
+      "latent_weights": {"daily_cycle": 3.0, "weather": 1.0}
+    },
+    {
+      "id": "sensor_08",
+      "type": "wind_speed",
+      "unit": "m/s",
+      "base": 5.0,
+      "min": 0.0,
+      "max": 30.0,
+      "noise_std": 1.0,
+      "correlates": ["sensor_09"],
+      "latent_weights": {"weather": 3.0, "gusts": 5.0}
+    },
+    {
+      "id": "sensor_09",
+      "type": "wind_direction",
+      "unit": "°",
+      "base": 180.0,
+      "min": 0.0,
+      "max": 360.0,
+      "noise_std": 15.0,
+      "correlates": ["sensor_08"],
+      "latent_weights": {"weather": 30.0, "gusts": 20.0}
+    },
+    {
+      "id": "sensor_10",
+      "type": "soil_moisture",
+      "unit": "%",
+      "base": 40.0,
+      "min": 10.0,
+      "max": 80.0,
+      "noise_std": 1.5,
+      "correlates": ["sensor_02", "sensor_11"],
+      "latent_weights": {"weather": -5.0, "seasonal": 8.0, "irrigation": 15.0}
+    },
+    {
+      "id": "sensor_11",
+      "type": "soil_temperature",
+      "unit": "°C",
+      "base": 18.0,
+      "min": 5.0,
+      "max": 35.0,
+      "noise_std": 0.2,
+      "correlates": ["sensor_01", "sensor_10"],
+      "latent_weights": {"weather": 3.0, "daily_cycle": 2.0, "seasonal": 4.0}
+    },
+    {
+      "id": "sensor_12",
+      "type": "ph",
+      "unit": "-",
+      "base": 6.5,
+      "min": 4.0,
+      "max": 9.0,
+      "noise_std": 0.1,
+      "correlates": ["sensor_10"],
+      "latent_weights": {"irrigation": -0.3, "seasonal": 0.2}
+    },
+    {
+      "id": "sensor_13",
+      "type": "conductivity",
+      "unit": "µS/cm",
+      "base": 500.0,
+      "min": 100.0,
+      "max": 2000.0,
+      "noise_std": 20.0,
+      "correlates": ["sensor_12"],
+      "latent_weights": {"irrigation": -50.0, "seasonal": 30.0}
+    },
+    {
+      "id": "sensor_14",
+      "type": "co2",
+      "unit": "ppm",
+      "base": 400.0,
+      "min": 350.0,
+      "max": 2000.0,
+      "noise_std": 10.0,
+      "correlates": ["sensor_01", "sensor_06"],
+      "latent_weights": {"daily_cycle": -20.0, "weather": 15.0}
+    },
+    {
+      "id": "sensor_15",
+      "type": "o2",
+      "unit": "%",
+      "base": 21.0,
+      "min": 18.0,
+      "max": 23.0,
+      "noise_std": 0.1,
+      "correlates": ["sensor_14"],
+      "latent_weights": {"daily_cycle": 0.3, "weather": -0.2}
+    }
+  ],
+  "latent_variables": {
+    "weather": "Slow weather pattern changes (pressure systems)",
+    "daily_cycle": "24-hour solar cycle",
+    "seasonal": "Long-term seasonal trends",
+    "gusts": "Sporadic wind gusts",
+    "irrigation": "Periodic irrigation events"
+  },
+  "correlation_groups": [
+    {
+      "name": "Atmospheric",
+      "sensors": ["sensor_01", "sensor_02", "sensor_03", "sensor_04", "sensor_05"]
+    },
+    {
+      "name": "Solar",
+      "sensors": ["sensor_06", "sensor_07", "sensor_14"]
+    },
+    {
+      "name": "Wind",
+      "sensors": ["sensor_08", "sensor_09"]
+    },
+    {
+      "name": "Soil",
+      "sensors": ["sensor_10", "sensor_11", "sensor_12", "sensor_13"]
+    },
+    {
+      "name": "Gas",
+      "sensors": ["sensor_14", "sensor_15"]
+    }
+  ]
+}
