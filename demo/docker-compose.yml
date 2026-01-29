@@ -1,0 +1,207 @@
+# ALEC Demo - Docker Compose
+# Complete demo stack for ALEC ecosystem validation
+#
+# Usage:
+#   docker compose up -d        # Start all services
+#   docker compose logs -f      # View logs
+#   docker compose down         # Stop all services
+#
+# Services:
+#   - simulator:  Generates correlated sensor data (port 8080)
+#   - gateway:    ALEC Gateway service (port 8081)
+#   - complexity: ALEC Complexity analyzer (port 8082)
+#   - injection:  Anomaly injection API (port 8084)
+#   - prometheus: Metrics storage (port 9090)
+#   - grafana:    Visualization (port 3000)
+
+version: '3.8'
+
+services:
+  # ==========================================================================
+  # Data Generation Layer
+  # ==========================================================================
+
+  simulator:
+    build:
+      context: ./simulator
+      dockerfile: Dockerfile
+    container_name: alec-simulator
+    ports:
+      - "8080:8080"
+    environment:
+      - SENSOR_PROFILE=agricultural
+      - GENERATION_RATE=1.0
+      - OUTPUT_FORMAT=prometheus
+      - LOG_LEVEL=info
+    volumes:
+      - ./simulator/profiles:/app/profiles:ro
+      - simulator-data:/app/data
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+    networks:
+      - alec-network
+    restart: unless-stopped
+
+  # ==========================================================================
+  # ALEC Processing Layer
+  # ==========================================================================
+
+  gateway:
+    image: alec-gateway:latest
+    build:
+      context: ../alec-gateway
+      dockerfile: Dockerfile
+    container_name: alec-gateway
+    ports:
+      - "8081:8081"
+    environment:
+      - RUST_LOG=info
+      - ALEC_GATEWAY_PORT=8081
+      - ALEC_SIMULATOR_URL=http://simulator:8080
+      - ALEC_COMPLEXITY_URL=http://complexity:8082
+    depends_on:
+      simulator:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8081/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 15s
+    networks:
+      - alec-network
+    restart: unless-stopped
+
+  complexity:
+    image: alec-complexity:latest
+    build:
+      context: ../alec-complexity
+      dockerfile: Dockerfile
+    container_name: alec-complexity
+    ports:
+      - "8082:8082"
+    environment:
+      - RUST_LOG=info
+      - ALEC_COMPLEXITY_PORT=8082
+      - ALEC_GATEWAY_URL=http://gateway:8081
+    depends_on:
+      gateway:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8082/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 15s
+    networks:
+      - alec-network
+    restart: unless-stopped
+
+  # ==========================================================================
+  # Testing & Injection Layer
+  # ==========================================================================
+
+  injection:
+    build:
+      context: ./injection
+      dockerfile: Dockerfile
+    container_name: alec-injection
+    ports:
+      - "8084:8084"
+    environment:
+      - LOG_LEVEL=info
+      - SIMULATOR_URL=http://simulator:8080
+    depends_on:
+      simulator:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "python", "-c", "import httpx; httpx.get('http://localhost:8084/health').raise_for_status()"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 5s
+    networks:
+      - alec-network
+    restart: unless-stopped
+
+  # ==========================================================================
+  # Monitoring Layer
+  # ==========================================================================
+
+  prometheus:
+    image: prom/prometheus:v2.48.0
+    container_name: alec-prometheus
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus-data:/prometheus
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+      - '--storage.tsdb.retention.time=7d'
+      - '--web.enable-lifecycle'
+      - '--web.enable-admin-api'
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://localhost:9090/-/healthy"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+    networks:
+      - alec-network
+    restart: unless-stopped
+
+  grafana:
+    image: grafana/grafana:10.2.0
+    container_name: alec-grafana
+    ports:
+      - "3000:3000"
+    environment:
+      - GF_SECURITY_ADMIN_USER=admin
+      - GF_SECURITY_ADMIN_PASSWORD=admin
+      - GF_USERS_ALLOW_SIGN_UP=false
+      - GF_AUTH_ANONYMOUS_ENABLED=true
+      - GF_AUTH_ANONYMOUS_ORG_ROLE=Viewer
+      - GF_DASHBOARDS_DEFAULT_HOME_DASHBOARD_PATH=/etc/grafana/provisioning/dashboards/alec-demo.json
+    volumes:
+      - ./grafana/provisioning/datasources:/etc/grafana/provisioning/datasources:ro
+      - ./grafana/provisioning/dashboards:/etc/grafana/provisioning/dashboards:ro
+      - grafana-data:/var/lib/grafana
+    depends_on:
+      prometheus:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://localhost:3000/api/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
+    networks:
+      - alec-network
+    restart: unless-stopped
+
+# ==========================================================================
+# Networks
+# ==========================================================================
+
+networks:
+  alec-network:
+    driver: bridge
+    name: alec-demo-network
+
+# ==========================================================================
+# Volumes
+# ==========================================================================
+
+volumes:
+  simulator-data:
+    name: alec-simulator-data
+  prometheus-data:
+    name: alec-prometheus-data
+  grafana-data:
+    name: alec-grafana-data

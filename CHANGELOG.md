@@ -10,10 +10,108 @@ et ce projet adhère au [Semantic Versioning](https://semver.org/lang/fr/).
 ## [Unreleased]
 
 ### Added
-- Rien
+
+#### ALEC Demo Infrastructure (v0.1.0)
+- **Sensor Simulator Service** (`demo/simulator/`):
+  - Real-time correlated sensor data generation using latent variables
+  - 15 agricultural IoT sensors (temperature, humidity, soil, wind, gas, etc.)
+  - Latent variable model: weather, daily_cycle, seasonal, gusts, irrigation
+  - Prometheus metrics endpoint (`/metrics`)
+  - JSON API for readings (`/readings`, `/sensors`, `/status`)
+  - Docker container with health checks
+- **Injection Service** (`demo/injection/`):
+  - FastAPI-based anomaly injection for testing
+  - Injection types: noise, spike, drift, dropout
+  - Per-sensor injection state management
+  - Auto-expiration for timed injections
+  - RESTful API: `POST /inject/{sensor}/{type}`, `DELETE /inject/{sensor}`, `POST /reset`
+- **Grafana Dashboard** (`demo/grafana/`):
+  - Pre-provisioned ALEC Demo dashboard
+  - Panels: Cluster Status, Sensor Time Series, Entropy Gauge, Complexity Gauge
+  - Robustness Indicator with HEALTHY/ATTENTION/CRITICAL zones
+  - Per-Sensor Entropy breakdown
+  - Correlation Heatmap visualization
+  - Anomaly Detection alerts
+- **Docker Compose Stack** (`demo/docker-compose.yml`):
+  - Full orchestration: simulator, gateway, complexity, injection, prometheus, grafana
+  - Service dependencies with health checks
+  - Named volumes for persistence
+  - Bridge network for service discovery
+- **Prometheus Configuration** (`demo/prometheus/`):
+  - Scrape configs for all ALEC services
+  - 5-second scrape interval for real-time monitoring
+- **Documentation** (`demo/README.md`):
+  - Architecture diagram
+  - Quick start guide
+  - API reference for all services
+  - Metrics reference table
+  - Troubleshooting guide
+
+#### ALEC Grafana Monitoring Stack (v0.1.0)
+- **ALEC Exporter** (`alec-grafana/exporter/`):
+  - Prometheus exporter for ALEC metrics
+  - Real-time compression stats, entropy, complexity
+  - Health check endpoint
+- **Demo Script** (`alec-grafana/scripts/demo.sh`):
+  - One-command stack management (start/stop/status/logs/clean)
+  - Prerequisite checking
+  - Service health waiting with timeout
+  - Colored terminal output
+
+#### ALEC Testdata Crate (v0.1.0)
+- **Industry Dataset Generator** (`alec-testdata/`):
+  - 6 industry profiles: Agriculture, HVAC, Energy, Logistics, Healthcare, Manufacturing
+  - 24 test scenarios with realistic patterns
+  - Configurable anomaly injection
+  - Parquet and CSV output formats
+  - Compression benchmark utility
+
+#### ALEC Gateway (v0.1.0-alpha)
+- **Multi-channel management**: Handle dozens of sensor channels
+- **Priority-based aggregation**: Numeric priority (0 = highest)
+- **Frame packing**: Optimize for LoRaWAN/MQTT payload limits
+- **Preload support**: Load pre-trained contexts per channel
+- **LoRaWAN presets**: Built-in configurations for DR0-DR5
+
+#### ALEC Metrics (Gateway feature: `metrics`)
+- **Signal entropy**: Per-channel (H_i) and joint (H_joint) entropy
+- **Total Correlation (TC)**: Redundancy measure across channels
+- **Payload entropy**: Compressed frame randomness (H_bytes)
+- **Resilience Index (R)**: Normalized redundancy (0-1)
+- **Criticality ranking**: Leave-one-out ΔR for sensor importance
+- **Zone classification**: healthy / attention / critical
+- **Configurable alignment**: Sample-and-hold, nearest, linear interpolation
+- **Sliding window**: Time-based or sample-count-based
+
+#### ALEC Complexity (v0.1.0-alpha)
+- **Baseline learning**: Statistical summary of nominal operation
+- **Delta/Z-score computation**: Deviation from baseline with smoothing
+- **S-lite structure analysis**: Lightweight pairwise channel dependency graph
+- **Anomaly event detection**: With persistence and cooldown
+  - PayloadEntropySpike
+  - StructureBreak
+  - RedundancyDrop
+  - ComplexitySurge
+  - SensorCriticalityShift
+- **GenericInput adapter**: JSON-based input for standalone usage
+- **GatewayInput adapter**: Direct MetricsSnapshot consumption (feature-gated)
+- **Baseline update modes**: Frozen, EMA, Rolling
+
+#### Documentation
+- `docs/ARCHITECTURE.md`: System design and ADRs
+- `docs/GATEWAY.md`: Gateway module documentation
+- `docs/METRICS.md`: Metrics module documentation
+- `docs/COMPLEXITY.md`: Complexity module documentation
+- `docs/CONFIGURATION.md`: Complete configuration reference
+- `docs/JSON_SCHEMAS.md`: Snapshot JSON schemas
+- `docs/INTEGRATION.md`: Integration patterns
+- `docs/FAQ.md`: Frequently asked questions (English)
+- `docs/diagrams/`: Mermaid architecture and data flow diagrams
+- `alec-gateway/README.md`: Crate-specific documentation
+- `alec-complexity/README.md`: Crate-specific documentation
 
 ### Changed
-- Rien
+- Workspace now includes `alec-gateway` and `alec-complexity` crates
 
 ---
 

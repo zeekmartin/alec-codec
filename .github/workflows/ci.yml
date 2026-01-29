@@ -27,14 +27,47 @@ jobs:
             target
           key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
 
-      - name: Build
-        run: cargo build --verbose
+      - name: Build workspace
+        run: cargo build --workspace --verbose
 
       - name: Run tests
-        run: cargo test --verbose
+        run: cargo test --workspace --verbose
 
       - name: Build examples
         run: cargo build --examples
+
+  # Test with feature flags
+  test-features:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache cargo
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: ${{ runner.os }}-cargo-features-${{ hashFiles('**/Cargo.lock') }}
+
+      - name: Test alec-gateway (no features)
+        run: cargo test -p alec-gateway --verbose
+
+      - name: Test alec-gateway (with metrics)
+        run: cargo test -p alec-gateway --features metrics --verbose
+
+      - name: Test alec-complexity (no features)
+        run: cargo test -p alec-complexity --verbose
+
+      - name: Test alec-complexity (with gateway)
+        run: cargo test -p alec-complexity --features gateway --verbose
+
+      - name: Test workspace with all features
+        run: cargo test --workspace --features "metrics,gateway" --verbose
 
   lint:
     runs-on: ubuntu-latest
@@ -46,8 +79,14 @@ jobs:
         with:
           components: clippy
 
-      - name: Clippy
-        run: cargo clippy -- -D warnings
+      - name: Clippy (workspace)
+        run: cargo clippy --workspace -- -D warnings
+
+      - name: Clippy (gateway with metrics)
+        run: cargo clippy -p alec-gateway --features metrics -- -D warnings
+
+      - name: Clippy (complexity with gateway)
+        run: cargo clippy -p alec-complexity --features gateway -- -D warnings
 
   format:
     runs-on: ubuntu-latest
@@ -60,7 +99,7 @@ jobs:
           components: rustfmt
 
       - name: Check formatting
-        run: cargo fmt -- --check
+        run: cargo fmt --all -- --check
 
   docs:
     runs-on: ubuntu-latest
@@ -70,8 +109,14 @@ jobs:
       - name: Install Rust
         uses: dtolnay/rust-toolchain@stable
 
-      - name: Build rustdoc
-        run: cargo doc --no-deps
+      - name: Build rustdoc (workspace)
+        run: cargo doc --workspace --no-deps
+
+      - name: Build rustdoc (gateway with metrics)
+        run: cargo doc -p alec-gateway --features metrics --no-deps
+
+      - name: Build rustdoc (complexity with gateway)
+        run: cargo doc -p alec-complexity --features gateway --no-deps
 
       - name: Run doc tests
         run: cargo test --doc
@@ -84,10 +129,14 @@ jobs:
       - name: Build book
         run: |
           export PATH="$HOME/.local/bin:$PATH"
-          cd docs/book
-          mdbook build
+          if [ -d "docs/book" ]; then
+            cd docs/book
+            mdbook build
+          else
+            echo "No mdBook found, skipping"
+          fi
 
-  # NEW: Multi-platform testing
+  # Multi-platform testing
   cross-platform:
     strategy:
       fail-fast: false
@@ -101,4 +150,9 @@ jobs:
         uses: dtolnay/rust-toolchain@stable
         
       - name: Run tests
-        run: cargo test --verbose
+        run: cargo test --workspace --verbose
+
+      - name: Run tests with features
+        run: |
+          cargo test -p alec-gateway --features metrics --verbose
+          cargo test -p alec-complexity --features gateway --verbose

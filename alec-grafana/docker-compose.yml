@@ -1,0 +1,93 @@
+# ALEC Grafana Monitoring Stack
+# Run with: docker-compose up -d
+#
+# Access:
+#   - Grafana:    http://localhost:3000 (admin/admin)
+#   - Prometheus: http://localhost:9090
+#   - Exporter:   http://localhost:9100/metrics
+
+services:
+  # ALEC Prometheus Exporter
+  alec-exporter:
+    build:
+      context: ..
+      dockerfile: alec-exporter/Dockerfile
+    container_name: alec-exporter
+    ports:
+      - "9100:9100"
+    volumes:
+      - ../alec-testdata/datasets:/app/datasets:ro
+    command:
+      - "--port=9100"
+      - "--csv=/app/datasets/agriculture/farm_normal_24h.csv"
+      - "--speed=60.0"
+      - "--loop-replay"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9100/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+    restart: unless-stopped
+    networks:
+      - alec-network
+
+  # Prometheus
+  prometheus:
+    image: prom/prometheus:v2.48.0
+    container_name: prometheus
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus_data:/prometheus
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+      - '--web.enable-lifecycle'
+      - '--storage.tsdb.retention.time=7d'
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://localhost:9090/-/healthy"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+    restart: unless-stopped
+    networks:
+      - alec-network
+    depends_on:
+      - alec-exporter
+
+  # Grafana
+  grafana:
+    image: grafana/grafana:10.2.2
+    container_name: grafana
+    ports:
+      - "3000:3000"
+    environment:
+      - GF_SECURITY_ADMIN_USER=admin
+      - GF_SECURITY_ADMIN_PASSWORD=admin
+      - GF_USERS_ALLOW_SIGN_UP=false
+      - GF_SERVER_ROOT_URL=http://localhost:3000
+      - GF_INSTALL_PLUGINS=
+    volumes:
+      - ./grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./grafana/dashboards:/var/lib/grafana/dashboards:ro
+      - grafana_data:/var/lib/grafana
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://localhost:3000/api/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+    restart: unless-stopped
+    networks:
+      - alec-network
+    depends_on:
+      - prometheus
+
+networks:
+  alec-network:
+    driver: bridge
+
+volumes:
+  prometheus_data:
+  grafana_data:

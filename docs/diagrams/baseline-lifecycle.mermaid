@@ -1,0 +1,50 @@
+%% Baseline Lifecycle State Machine
+stateDiagram-v2
+    [*] --> Building: Engine Created
+
+    state Building {
+        [*] --> CollectingSamples
+        CollectingSamples --> CollectingSamples: process(input)
+        CollectingSamples --> CheckConditions: Sample added
+
+        state CheckConditions <<choice>>
+        CheckConditions --> CollectingSamples: Conditions not met
+        CheckConditions --> Ready: Both conditions met
+
+        note right of CollectingSamples
+            - Compute running mean/std
+            - Update sample count
+            - Update time progress
+        end note
+    }
+
+    Building --> Locked: build_time_ms AND min_valid_snapshots met
+
+    state Locked {
+        [*] --> Active
+        Active --> Active: process(input)
+
+        state UpdateMode <<choice>>
+
+        note right of Active
+            Baseline update depends on mode:
+            - Frozen: No updates
+            - EMA: Exponential moving average
+            - Rolling: Sliding window
+        end note
+    }
+
+    Locked --> Building: reset() called
+
+    note right of Building
+        Progress = min(time_progress, sample_progress)
+        time_progress = elapsed / build_time_ms
+        sample_progress = count / min_valid_snapshots
+    end note
+
+    note right of Locked
+        After lock:
+        - Deltas computed
+        - Z-scores computed
+        - Anomaly detection active
+    end note

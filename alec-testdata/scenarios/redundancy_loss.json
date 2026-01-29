@@ -1,0 +1,25 @@
+{
+  "name": "redundancy_loss",
+  "description": "Sensor dropout causing redundancy loss in the system",
+  "industry_agnostic": true,
+  "injection": {
+    "type": "dropout",
+    "target_sensor": "any",
+    "start_percent": 0.5,
+    "duration_percent": 0.2,
+    "params": {}
+  },
+  "expected_events": [
+    {
+      "type": "REDUNDANCY_DROP",
+      "min_delay_samples": 1,
+      "max_delay_samples": 20
+    }
+  ],
+  "validation": {
+    "r_should_decrease": true,
+    "r_should_increase": false,
+    "tc_should_change": false,
+    "h_bytes_should_increase": false
+  }
+}
