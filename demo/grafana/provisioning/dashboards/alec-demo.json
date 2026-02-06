@@ -1289,7 +1289,7 @@
             "type": "prometheus",
             "uid": "${datasource}"
           },
-          "expr": "alec_entropy_total",
+          "expr": "alec_entropy_total{job=\"alec-complexity\"}",
           "legendFormat": "H_tot",
           "refId": "A"
         }
@@ -1360,7 +1360,7 @@
             "type": "prometheus",
             "uid": "${datasource}"
           },
-          "expr": "alec_complexity",
+          "expr": "alec_complexity{job=\"alec-complexity\"}",
           "legendFormat": "C",
           "refId": "A"
         }
@@ -1465,7 +1465,7 @@
             "type": "prometheus",
             "uid": "${datasource}"
           },
-          "expr": "alec_robustness",
+          "expr": "alec_robustness{job=\"alec-complexity\"}",
           "legendFormat": "R",
           "refId": "A"
         }
@@ -1538,7 +1538,7 @@
             "type": "prometheus",
             "uid": "${datasource}"
           },
-          "expr": "alec_entropy_total",
+          "expr": "alec_entropy_total{job=\"alec-complexity\"}",
           "legendFormat": "Total Entropy",
           "refId": "A"
         },
@@ -1547,7 +1547,7 @@
             "type": "prometheus",
             "uid": "${datasource}"
           },
-          "expr": "alec_complexity",
+          "expr": "alec_complexity{job=\"alec-complexity\"}",
           "legendFormat": "Complexity",
           "refId": "B"
         },
@@ -1556,7 +1556,7 @@
             "type": "prometheus",
             "uid": "${datasource}"
           },
-          "expr": "alec_robustness",
+          "expr": "alec_robustness{job=\"alec-complexity\"}",
           "legendFormat": "Robustness",
           "refId": "C"
         }
@@ -1612,7 +1612,7 @@
             "type": "prometheus",
             "uid": "${datasource}"
           },
-          "expr": "alec_entropy_per_sensor",
+          "expr": "alec_entropy_per_sensor{job=\"alec-complexity\"}",
           "legendFormat": "{{sensor_id}}",
           "refId": "A"
         }
@@ -1687,7 +1687,7 @@
             "type": "prometheus",
             "uid": "${datasource}"
           },
-          "expr": "alec_anomaly_score",
+          "expr": "alec_anomaly_score{job=\"alec-complexity\"}",
           "legendFormat": "{{sensor_id}}",
           "refId": "A"
         }

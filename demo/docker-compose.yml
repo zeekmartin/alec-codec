@@ -1,20 +1,17 @@
-# ALEC Demo - Docker Compose (Simplified)
-# Stack for demo WITHOUT gateway/complexity (not yet implemented)
+# ALEC Demo - Docker Compose
+# Complete stack with Complexity module for QCT-based anomaly detection
 #
 # Usage:
 #   docker compose up -d        # Start all services
 #   docker compose logs -f      # View logs
 #   docker compose down         # Stop all services
 #
-# Services available:
-#   - simulator:  Generates correlated sensor data (port 8080)
-#   - injection:  Anomaly injection API (port 8084)
-#   - prometheus: Metrics storage (port 9090)
-#   - grafana:    Visualization (port 3000)
-#
-# NOT YET AVAILABLE (commented out):
-#   - gateway:    ALEC Gateway service
-#   - complexity: ALEC Complexity analyzer
+# Services:
+#   - simulator:   Generates correlated sensor data (port 8080)
+#   - complexity:  ALEC Complexity analyzer - H, C, R metrics (port 8082)
+#   - injection:   Anomaly injection API (port 8084)
+#   - prometheus:  Metrics storage (port 9090)
+#   - grafana:     Visualization (port 3000)
 
 services:
   # ==========================================================================
@@ -36,7 +33,6 @@ services:
     volumes:
       - ./simulator/profiles:/app/profiles:ro
       - simulator-data:/app/data
-    # Healthcheck using Python instead of curl (curl not in slim image)
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8080/health')"]
       interval: 10s
@@ -48,45 +44,33 @@ services:
     restart: unless-stopped
 
   # ==========================================================================
-  # ALEC Processing Layer (NOT YET IMPLEMENTED)
+  # ALEC Processing Layer
   # ==========================================================================
 
-  # gateway:
-  #   image: alec-gateway:latest
-  #   build:
-  #     context: ../alec-gateway
-  #     dockerfile: Dockerfile
-  #   container_name: alec-gateway
-  #   ports:
-  #     - "8081:8081"
-  #   environment:
-  #     - RUST_LOG=info
-  #     - ALEC_GATEWAY_PORT=8081
-  #     - ALEC_SIMULATOR_URL=http://simulator:8080
-  #     - ALEC_COMPLEXITY_URL=http://complexity:8082
-  #   depends_on:
-  #     simulator:
-  #       condition: service_healthy
-  #   networks:
-  #     - alec-network
-
-  # complexity:
-  #   image: alec-complexity:latest
-  #   build:
-  #     context: ../alec-complexity
-  #     dockerfile: Dockerfile
-  #   container_name: alec-complexity
-  #   ports:
-  #     - "8082:8082"
-  #   environment:
-  #     - RUST_LOG=info
-  #     - ALEC_COMPLEXITY_PORT=8082
-  #     - ALEC_GATEWAY_URL=http://gateway:8081
-  #   depends_on:
-  #     gateway:
-  #       condition: service_healthy
-  #   networks:
-  #     - alec-network
+  complexity:
+    build:
+      context: ./complexity
+      dockerfile: Dockerfile
+    container_name: alec-complexity
+    ports:
+      - "8082:8082"
+    environment:
+      - SIMULATOR_URL=http://simulator:8080
+      - POLL_INTERVAL=1.0
+      - WINDOW_SIZE=100
+      - LOG_LEVEL=info
+    depends_on:
+      simulator:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "python", "-c", "import httpx; httpx.get('http://localhost:8082/health').raise_for_status()"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 15s
+    networks:
+      - alec-network
+    restart: unless-stopped
 
   # ==========================================================================
   # Testing & Injection Layer
@@ -104,7 +88,7 @@ services:
       - SIMULATOR_URL=http://simulator:8080
     depends_on:
       simulator:
-        condition: service_started    # Changed from service_healthy
+        condition: service_started
     healthcheck:
       test: ["CMD", "python", "-c", "import httpx; httpx.get('http://localhost:8084/health').raise_for_status()"]
       interval: 30s
@@ -133,6 +117,9 @@ services:
       - '--storage.tsdb.retention.time=7d'
       - '--web.enable-lifecycle'
       - '--web.enable-admin-api'
+    depends_on:
+      - simulator
+      - complexity
     healthcheck:
       test: ["CMD", "wget", "-q", "--spider", "http://localhost:9090/-/healthy"]
       interval: 10s
