@@ -1,0 +1,110 @@
+{
+  "name": "Maritime Cargo Monitoring",
+  "description": "6-sensor maritime cargo monitoring for satellite IoT (30-day North Atlantic crossing)",
+  "version": "1.0.0",
+  "scenario": {
+    "voyage": "Rotterdam → Halifax",
+    "duration_days": 30,
+    "vessel": "MV Nordic Explorer",
+    "cargo": "Refrigerated containers + pipeline coatings"
+  },
+  "sensors": [
+    {
+      "id": "sat_temp",
+      "type": "temperature",
+      "unit": "°C",
+      "label": "Cargo Hold Temperature",
+      "base": 21.5,
+      "min": 18.0,
+      "max": 25.0,
+      "noise_std": 0.08,
+      "alec_ratio_range": [15, 22],
+      "pattern": "diurnal_slow",
+      "latent_weights": {"weather": 1.2, "diurnal": 0.8, "sea_state": 0.3}
+    },
+    {
+      "id": "sat_pressure",
+      "type": "pressure",
+      "unit": "hPa",
+      "label": "Atmospheric Pressure",
+      "base": 1013.0,
+      "min": 1005.0,
+      "max": 1020.0,
+      "noise_std": 0.15,
+      "alec_ratio_range": [18, 25],
+      "pattern": "very_stable",
+      "latent_weights": {"weather": 3.5, "sea_state": 0.5}
+    },
+    {
+      "id": "sat_vibration",
+      "type": "vibration",
+      "unit": "g",
+      "label": "Hull Vibration",
+      "base": 0.35,
+      "min": 0.01,
+      "max": 2.5,
+      "noise_std": 0.08,
+      "alec_ratio_range": [5, 10],
+      "pattern": "chaotic_engine",
+      "latent_weights": {"engine": 0.15, "sea_state": 0.4, "gusts": 0.2}
+    },
+    {
+      "id": "sat_gps_lat",
+      "type": "gps_latitude",
+      "unit": "°N",
+      "label": "GPS Latitude",
+      "base": 51.9,
+      "min": 44.0,
+      "max": 56.0,
+      "noise_std": 0.001,
+      "alec_ratio_range": [12, 18],
+      "pattern": "monotonic_route",
+      "latent_weights": {"voyage_progress": 1.0}
+    },
+    {
+      "id": "sat_humidity",
+      "type": "humidity",
+      "unit": "%RH",
+      "label": "Cargo Hold Humidity",
+      "base": 70.0,
+      "min": 55.0,
+      "max": 85.0,
+      "noise_std": 0.5,
+      "alec_ratio_range": [10, 15],
+      "pattern": "cyclical_correlated",
+      "latent_weights": {"weather": -3.0, "diurnal": -1.5, "sea_state": 1.0}
+    },
+    {
+      "id": "sat_cathodic",
+      "type": "cathodic_voltage",
+      "unit": "mV",
+      "label": "Cathodic Protection Voltage",
+      "base": -950.0,
+      "min": -1100.0,
+      "max": -850.0,
+      "noise_std": 1.5,
+      "alec_ratio_range": [20, 30],
+      "pattern": "ultra_stable_anomaly",
+      "latent_weights": {"sea_state": 5.0},
+      "anomaly_config": {
+        "count": 3,
+        "magnitude_range": [80, 200],
+        "duration_updates": [5, 15]
+      }
+    }
+  ],
+  "latent_variables": {
+    "weather": "North Atlantic weather system progression",
+    "diurnal": "24-hour day/night thermal cycle",
+    "sea_state": "Wave height and sea conditions (Beaufort scale proxy)",
+    "engine": "Engine RPM variation and mechanical vibration",
+    "gusts": "Sporadic wind gusts affecting hull",
+    "voyage_progress": "Linear progression along shipping route"
+  },
+  "transmission": {
+    "interval_seconds": 60,
+    "raw_payload_bytes": 120,
+    "lorawan_dr": "DR4",
+    "max_payload_bytes": 242
+  }
+}
