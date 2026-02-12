@@ -1,0 +1,111 @@
+# ALEC Satellite IoT Demo — Docker Compose
+#
+# Maritime cargo monitoring demo for ECS Technologie AG sales meeting.
+# Simulates 6 satellite IoT sensor streams with ALEC compression metrics.
+#
+# Usage:
+#   docker compose up -d        # Start all services
+#   docker compose logs -f      # View logs
+#   docker compose down         # Stop all services
+#
+# Access:
+#   Grafana:    http://localhost:3001  (admin/admin)
+#   Prometheus: http://localhost:9091
+#   Simulator:  http://localhost:8085/status
+
+services:
+  # ==========================================================================
+  # Satellite Sensor Simulator
+  # ==========================================================================
+  satellite-simulator:
+    build:
+      context: ./simulator
+      dockerfile: Dockerfile
+    container_name: alec-satellite-sim
+    ports:
+      - "8085:8080"
+    environment:
+      - SENSOR_PROFILE=maritime
+      - TIME_ACCEL=60
+      - LOG_LEVEL=info
+    volumes:
+      - ./simulator/profiles:/app/profiles:ro
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8080/health')"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+    networks:
+      - satellite-network
+    restart: unless-stopped
+
+  # ==========================================================================
+  # Prometheus — Metrics Storage
+  # ==========================================================================
+  prometheus:
+    image: prom/prometheus:v2.48.0
+    container_name: alec-satellite-prometheus
+    ports:
+      - "9091:9090"
+    volumes:
+      - ./prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - satellite-prometheus-data:/prometheus
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+      - '--storage.tsdb.retention.time=7d'
+      - '--web.enable-lifecycle'
+      - '--web.enable-admin-api'
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://localhost:9090/-/healthy"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+    networks:
+      - satellite-network
+    restart: unless-stopped
+
+  # ==========================================================================
+  # Grafana — Visualization
+  # ==========================================================================
+  grafana:
+    image: grafana/grafana:10.2.0
+    container_name: alec-satellite-grafana
+    ports:
+      - "3001:3000"
+    environment:
+      - GF_SECURITY_ADMIN_USER=admin
+      - GF_SECURITY_ADMIN_PASSWORD=admin
+      - GF_USERS_ALLOW_SIGN_UP=false
+      - GF_AUTH_ANONYMOUS_ENABLED=true
+      - GF_AUTH_ANONYMOUS_ORG_ROLE=Viewer
+      - GF_DASHBOARDS_DEFAULT_HOME_DASHBOARD_PATH=/etc/grafana/provisioning/dashboards/satellite-iot-monitor.json
+    volumes:
+      - ./grafana/provisioning/datasources:/etc/grafana/provisioning/datasources:ro
+      - ./grafana/provisioning/dashboards:/etc/grafana/provisioning/dashboards:ro
+      - satellite-grafana-data:/var/lib/grafana
+    depends_on:
+      prometheus:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://localhost:3000/api/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
+    networks:
+      - satellite-network
+    restart: unless-stopped
+
+networks:
+  satellite-network:
+    driver: bridge
+    name: alec-satellite-network
+
+volumes:
+  satellite-prometheus-data:
+    name: alec-satellite-prometheus-data
+  satellite-grafana-data:
+    name: alec-satellite-grafana-data

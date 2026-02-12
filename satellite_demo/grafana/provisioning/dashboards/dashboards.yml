@@ -1,0 +1,14 @@
+apiVersion: 1
+
+providers:
+  - name: 'ALEC Satellite IoT'
+    orgId: 1
+    folder: 'ALEC Satellite'
+    folderUid: 'alec-satellite'
+    type: file
+    disableDeletion: false
+    updateIntervalSeconds: 30
+    allowUiUpdates: true
+    options:
+      path: /etc/grafana/provisioning/dashboards
+      foldersFromFilesStructure: false

@@ -1,0 +1,1276 @@
+{
+  "annotations": {
+    "list": [
+      {
+        "builtIn": 1,
+        "datasource": { "type": "grafana", "uid": "-- Grafana --" },
+        "enable": true,
+        "hide": true,
+        "iconColor": "#00C9A7",
+        "name": "Annotations & Alerts",
+        "type": "dashboard"
+      }
+    ]
+  },
+  "description": "ALEC Satellite IoT Monitor — Maritime Cargo Monitoring Demo (ECS Technologie AG)",
+  "editable": true,
+  "fiscalYearStartMonth": 0,
+  "graphTooltip": 2,
+  "id": null,
+  "links": [],
+  "liveNow": true,
+  "panels": [
+    {
+      "collapsed": false,
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 0 },
+      "id": 200,
+      "panels": [],
+      "title": "ALEC Compression Overview",
+      "type": "row"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "description": "Cumulative bytes saved by ALEC compression vs raw transmission",
+      "fieldConfig": {
+        "defaults": {
+          "color": { "fixedColor": "#00C9A7", "mode": "fixed" },
+          "decimals": 0,
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "#00C9A7", "value": null }
+            ]
+          },
+          "unit": "decbytes"
+        },
+        "overrides": []
+      },
+      "gridPos": { "h": 5, "w": 6, "x": 0, "y": 1 },
+      "id": 1,
+      "options": {
+        "colorMode": "value",
+        "graphMode": "area",
+        "justifyMode": "auto",
+        "orientation": "auto",
+        "reduceOptions": {
+          "calcs": ["lastNotNull"],
+          "fields": "",
+          "values": false
+        },
+        "textMode": "auto"
+      },
+      "pluginVersion": "10.2.0",
+      "targets": [
+        {
+          "datasource": { "type": "prometheus", "uid": "${datasource}" },
+          "expr": "sat_bytes_saved_total",
+          "legendFormat": "Bytes Saved",
+          "refId": "A"
+        }
+      ],
+      "title": "Total Bandwidth Saved",
+      "type": "stat"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "description": "Average ALEC compression ratio across all 6 sensors",
+      "fieldConfig": {
+        "defaults": {
+          "color": { "fixedColor": "#4FC3F7", "mode": "fixed" },
+          "decimals": 1,
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "#4FC3F7", "value": null }
+            ]
+          },
+          "unit": "x"
+        },
+        "overrides": []
+      },
+      "gridPos": { "h": 5, "w": 6, "x": 6, "y": 1 },
+      "id": 2,
+      "options": {
+        "colorMode": "value",
+        "graphMode": "area",
+        "justifyMode": "auto",
+        "orientation": "auto",
+        "reduceOptions": {
+          "calcs": ["lastNotNull"],
+          "fields": "",
+          "values": false
+        },
+        "textMode": "value_and_name"
+      },
+      "pluginVersion": "10.2.0",
+      "targets": [
+        {
+          "datasource": { "type": "prometheus", "uid": "${datasource}" },
+          "expr": "sat_avg_compression_ratio",
+          "legendFormat": "Avg Ratio",
+          "refId": "A"
+        }
+      ],
+      "title": "Avg Compression Ratio",
+      "type": "stat"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "description": "Number of satellite IoT sensors actively transmitting",
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "thresholds"
+          },
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "#EF5350", "value": null },
+              { "color": "#FFD54F", "value": 3 },
+              { "color": "#00C9A7", "value": 6 }
+            ]
+          },
+          "unit": "none"
+        },
+        "overrides": []
+      },
+      "gridPos": { "h": 5, "w": 4, "x": 12, "y": 1 },
+      "id": 3,
+      "options": {
+        "colorMode": "value",
+        "graphMode": "none",
+        "justifyMode": "auto",
+        "orientation": "auto",
+        "reduceOptions": {
+          "calcs": ["lastNotNull"],
+          "fields": "",
+          "values": false
+        },
+        "textMode": "auto"
+      },
+      "pluginVersion": "10.2.0",
+      "targets": [
+        {
+          "datasource": { "type": "prometheus", "uid": "${datasource}" },
+          "expr": "sat_active_sensors",
+          "legendFormat": "Sensors",
+          "refId": "A"
+        }
+      ],
+      "title": "Active Sensors",
+      "type": "stat"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "description": "Total anomaly events detected by ALEC Complexity (cathodic voltage spikes)",
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "thresholds"
+          },
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "#00C9A7", "value": null },
+              { "color": "#FFD54F", "value": 1 },
+              { "color": "#EF5350", "value": 5 }
+            ]
+          },
+          "unit": "none"
+        },
+        "overrides": []
+      },
+      "gridPos": { "h": 5, "w": 4, "x": 16, "y": 1 },
+      "id": 4,
+      "options": {
+        "colorMode": "value",
+        "graphMode": "area",
+        "justifyMode": "auto",
+        "orientation": "auto",
+        "reduceOptions": {
+          "calcs": ["lastNotNull"],
+          "fields": "",
+          "values": false
+        },
+        "textMode": "auto"
+      },
+      "pluginVersion": "10.2.0",
+      "targets": [
+        {
+          "datasource": { "type": "prometheus", "uid": "${datasource}" },
+          "expr": "sat_anomalies_total",
+          "legendFormat": "Anomalies",
+          "refId": "A"
+        }
+      ],
+      "title": "Anomalies Detected",
+      "type": "stat"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "description": "ALEC context maturity — higher = better compression. Cold start < 20 frames.",
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "thresholds"
+          },
+          "mappings": [
+            {
+              "options": {
+                "from": 0,
+                "result": { "color": "#EF5350", "index": 0, "text": "COLD" },
+                "to": 5
+              },
+              "type": "range"
+            },
+            {
+              "options": {
+                "from": 5,
+                "result": { "color": "#FFD54F", "index": 1, "text": "WARMING" },
+                "to": 20
+              },
+              "type": "range"
+            },
+            {
+              "options": {
+                "from": 20,
+                "result": { "color": "#00C9A7", "index": 2, "text": "WARM" },
+                "to": 9999999
+              },
+              "type": "range"
+            }
+          ],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "#EF5350", "value": null },
+              { "color": "#FFD54F", "value": 5 },
+              { "color": "#00C9A7", "value": 20 }
+            ]
+          },
+          "unit": "none"
+        },
+        "overrides": []
+      },
+      "gridPos": { "h": 5, "w": 4, "x": 20, "y": 1 },
+      "id": 5,
+      "options": {
+        "colorMode": "background",
+        "graphMode": "none",
+        "justifyMode": "auto",
+        "orientation": "auto",
+        "reduceOptions": {
+          "calcs": ["lastNotNull"],
+          "fields": "",
+          "values": false
+        },
+        "textMode": "auto"
+      },
+      "pluginVersion": "10.2.0",
+      "targets": [
+        {
+          "datasource": { "type": "prometheus", "uid": "${datasource}" },
+          "expr": "sat_context_age",
+          "legendFormat": "Context",
+          "refId": "A"
+        }
+      ],
+      "title": "Context Status",
+      "type": "stat"
+    },
+    {
+      "collapsed": false,
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 6 },
+      "id": 201,
+      "panels": [],
+      "title": "Compression Performance",
+      "type": "row"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "description": "ALEC compression ratio per sensor type. Stable sensors (cathodic, pressure) achieve the highest ratios.",
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "axisCenteredZero": false,
+            "axisColorMode": "text",
+            "axisLabel": "Compression Ratio (x)",
+            "axisPlacement": "auto",
+            "fillOpacity": 80,
+            "gradientMode": "scheme",
+            "hideFrom": { "legend": false, "tooltip": false, "viz": false },
+            "lineWidth": 1,
+            "scaleDistribution": { "type": "linear" },
+            "thresholdsStyle": { "mode": "off" }
+          },
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "#4FC3F7", "value": null }
+            ]
+          },
+          "unit": "x"
+        },
+        "overrides": [
+          {
+            "matcher": { "id": "byName", "options": "sat_cathodic" },
+            "properties": [{ "id": "color", "value": { "fixedColor": "#00C9A7", "mode": "fixed" } }]
+          },
+          {
+            "matcher": { "id": "byName", "options": "sat_pressure" },
+            "properties": [{ "id": "color", "value": { "fixedColor": "#4FC3F7", "mode": "fixed" } }]
+          },
+          {
+            "matcher": { "id": "byName", "options": "sat_temp" },
+            "properties": [{ "id": "color", "value": { "fixedColor": "#81C784", "mode": "fixed" } }]
+          },
+          {
+            "matcher": { "id": "byName", "options": "sat_gps_lat" },
+            "properties": [{ "id": "color", "value": { "fixedColor": "#FFB74D", "mode": "fixed" } }]
+          },
+          {
+            "matcher": { "id": "byName", "options": "sat_humidity" },
+            "properties": [{ "id": "color", "value": { "fixedColor": "#CE93D8", "mode": "fixed" } }]
+          },
+          {
+            "matcher": { "id": "byName", "options": "sat_vibration" },
+            "properties": [{ "id": "color", "value": { "fixedColor": "#FFD54F", "mode": "fixed" } }]
+          }
+        ]
+      },
+      "gridPos": { "h": 9, "w": 12, "x": 0, "y": 7 },
+      "id": 10,
+      "options": {
+        "barRadius": 0.1,
+        "barWidth": 0.7,
+        "fullHighlight": true,
+        "groupWidth": 0.7,
+        "legend": {
+          "calcs": [],
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": false
+        },
+        "orientation": "horizontal",
+        "showValue": "always",
+        "stacking": "none",
+        "tooltip": { "mode": "single", "sort": "none" },
+        "xTickLabelRotation": 0
+      },
+      "pluginVersion": "10.2.0",
+      "targets": [
+        {
+          "datasource": { "type": "prometheus", "uid": "${datasource}" },
+          "expr": "sat_compression_ratio",
+          "format": "table",
+          "instant": true,
+          "legendFormat": "{{sensor_id}}",
+          "refId": "A"
+        }
+      ],
+      "title": "Compression Ratio per Sensor",
+      "transformations": [
+        {
+          "id": "organize",
+          "options": {
+            "excludeByName": { "Time": true, "__name__": true, "instance": true, "job": true, "sensor_type": true },
+            "indexByName": {},
+            "renameByName": { "Value": "Ratio", "sensor_id": "Sensor" }
+          }
+        }
+      ],
+      "type": "barchart"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "description": "Cumulative bytes saved over time. Shows ALEC's increasing value — the longer you run, the more you save.",
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "palette-classic" },
+          "custom": {
+            "axisCenteredZero": false,
+            "axisColorMode": "text",
+            "axisLabel": "",
+            "axisPlacement": "auto",
+            "drawStyle": "line",
+            "fillOpacity": 25,
+            "gradientMode": "opacity",
+            "hideFrom": { "legend": false, "tooltip": false, "viz": false },
+            "insertNulls": false,
+            "lineInterpolation": "smooth",
+            "lineWidth": 2,
+            "pointSize": 5,
+            "scaleDistribution": { "type": "linear" },
+            "showPoints": "never",
+            "spanNulls": false,
+            "stacking": { "group": "A", "mode": "none" },
+            "thresholdsStyle": { "mode": "off" }
+          },
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [{ "color": "green", "value": null }]
+          },
+          "unit": "decbytes"
+        },
+        "overrides": [
+          {
+            "matcher": { "id": "byName", "options": "ALEC Compressed" },
+            "properties": [{ "id": "color", "value": { "fixedColor": "#00C9A7", "mode": "fixed" } }]
+          },
+          {
+            "matcher": { "id": "byName", "options": "Raw (uncompressed)" },
+            "properties": [{ "id": "color", "value": { "fixedColor": "#EF5350", "mode": "fixed" } }]
+          },
+          {
+            "matcher": { "id": "byName", "options": "gzip (worse on small payloads)" },
+            "properties": [
+              { "id": "color", "value": { "fixedColor": "#FFD54F", "mode": "fixed" } },
+              { "id": "custom.lineStyle", "value": { "dash": [10, 5], "fill": "dash" } }
+            ]
+          }
+        ]
+      },
+      "gridPos": { "h": 9, "w": 12, "x": 12, "y": 7 },
+      "id": 11,
+      "options": {
+        "legend": {
+          "calcs": ["lastNotNull"],
+          "displayMode": "table",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": { "mode": "multi", "sort": "desc" }
+      },
+      "pluginVersion": "10.2.0",
+      "targets": [
+        {
+          "datasource": { "type": "prometheus", "uid": "${datasource}" },
+          "expr": "sat_total_raw_bytes_total",
+          "legendFormat": "Raw (uncompressed)",
+          "refId": "A"
+        },
+        {
+          "datasource": { "type": "prometheus", "uid": "${datasource}" },
+          "expr": "sat_total_compressed_bytes_total",
+          "legendFormat": "ALEC Compressed",
+          "refId": "B"
+        },
+        {
+          "datasource": { "type": "prometheus", "uid": "${datasource}" },
+          "expr": "sat_total_gzip_bytes_total",
+          "legendFormat": "gzip (worse on small payloads)",
+          "refId": "C"
+        }
+      ],
+      "title": "Cumulative Transmission: Raw vs ALEC vs gzip",
+      "type": "timeseries"
+    },
+    {
+      "collapsed": false,
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 16 },
+      "id": 202,
+      "panels": [],
+      "title": "Frame-Level Comparison (per transmission)",
+      "type": "row"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "description": "Per-frame payload size: raw LoRaWAN payload (~120B) vs ALEC compressed vs gzip. Shows that gzip INCREASES size on small payloads.",
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "palette-classic" },
+          "custom": {
+            "axisCenteredZero": false,
+            "axisColorMode": "text",
+            "axisLabel": "Bytes",
+            "axisPlacement": "auto",
+            "drawStyle": "line",
+            "fillOpacity": 15,
+            "gradientMode": "none",
+            "lineInterpolation": "smooth",
+            "lineWidth": 2,
+            "pointSize": 5,
+            "showPoints": "never",
+            "spanNulls": false,
+            "stacking": { "group": "A", "mode": "none" },
+            "thresholdsStyle": { "mode": "off" }
+          },
+          "unit": "decbytes"
+        },
+        "overrides": [
+          {
+            "matcher": { "id": "byName", "options": "Raw Payload" },
+            "properties": [{ "id": "color", "value": { "fixedColor": "#EF5350", "mode": "fixed" } }]
+          },
+          {
+            "matcher": { "id": "byName", "options": "ALEC Compressed" },
+            "properties": [{ "id": "color", "value": { "fixedColor": "#00C9A7", "mode": "fixed" } }]
+          },
+          {
+            "matcher": { "id": "byName", "options": "gzip" },
+            "properties": [
+              { "id": "color", "value": { "fixedColor": "#FFD54F", "mode": "fixed" } },
+              { "id": "custom.lineStyle", "value": { "dash": [10, 5], "fill": "dash" } }
+            ]
+          }
+        ]
+      },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 17 },
+      "id": 12,
+      "options": {
+        "legend": {
+          "calcs": ["mean", "lastNotNull"],
+          "displayMode": "table",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": { "mode": "multi", "sort": "desc" }
+      },
+      "pluginVersion": "10.2.0",
+      "targets": [
+        {
+          "datasource": { "type": "prometheus", "uid": "${datasource}" },
+          "expr": "sat_frame_raw_bytes",
+          "legendFormat": "Raw Payload",
+          "refId": "A"
+        },
+        {
+          "datasource": { "type": "prometheus", "uid": "${datasource}" },
+          "expr": "sat_frame_compressed_bytes",
+          "legendFormat": "ALEC Compressed",
+          "refId": "B"
+        },
+        {
+          "datasource": { "type": "prometheus", "uid": "${datasource}" },
+          "expr": "sat_frame_gzip_bytes",
+          "legendFormat": "gzip",
+          "refId": "C"
+        }
+      ],
+      "title": "Per-Frame Payload: Raw vs ALEC vs gzip",
+      "type": "timeseries"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "description": "Bits used by ALEC to encode each sensor's delta. Lower = better compression. Stable sensors need only 2 bits (same value).",
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "palette-classic" },
+          "custom": {
+            "axisCenteredZero": false,
+            "axisColorMode": "text",
+            "axisLabel": "Bits",
+            "axisPlacement": "auto",
+            "drawStyle": "line",
+            "fillOpacity": 10,
+            "gradientMode": "none",
+            "lineInterpolation": "stepAfter",
+            "lineWidth": 2,
+            "pointSize": 5,
+            "showPoints": "never",
+            "spanNulls": false,
+            "stacking": { "group": "A", "mode": "none" },
+            "thresholdsStyle": { "mode": "off" }
+          },
+          "max": 34,
+          "min": 0,
+          "unit": "bits"
+        },
+        "overrides": []
+      },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 17 },
+      "id": 13,
+      "options": {
+        "legend": {
+          "calcs": ["mean", "lastNotNull"],
+          "displayMode": "table",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": { "mode": "multi", "sort": "desc" }
+      },
+      "pluginVersion": "10.2.0",
+      "targets": [
+        {
+          "datasource": { "type": "prometheus", "uid": "${datasource}" },
+          "expr": "sat_delta_bits",
+          "legendFormat": "{{sensor_id}}",
+          "refId": "A"
+        }
+      ],
+      "title": "Delta Encoding Bits per Sensor",
+      "type": "timeseries"
+    },
+    {
+      "collapsed": false,
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 25 },
+      "id": 203,
+      "panels": [],
+      "title": "Sensor Data Streams (Maritime Cargo Monitoring)",
+      "type": "row"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "description": "Cargo hold temperature — slowly varying with diurnal cycle. ALEC ratio: 15-22x",
+      "fieldConfig": {
+        "defaults": {
+          "color": { "fixedColor": "#81C784", "mode": "fixed" },
+          "custom": {
+            "axisCenteredZero": false,
+            "axisColorMode": "text",
+            "axisLabel": "°C",
+            "axisPlacement": "auto",
+            "drawStyle": "line",
+            "fillOpacity": 15,
+            "gradientMode": "opacity",
+            "lineInterpolation": "smooth",
+            "lineWidth": 2,
+            "pointSize": 5,
+            "showPoints": "never",
+            "spanNulls": false,
+            "stacking": { "group": "A", "mode": "none" },
+            "thresholdsStyle": { "mode": "dashed" }
+          },
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "#4FC3F7", "value": null },
+              { "color": "#00C9A7", "value": 18 },
+              { "color": "#FFD54F", "value": 24 },
+              { "color": "#EF5350", "value": 25 }
+            ]
+          },
+          "unit": "celsius"
+        },
+        "overrides": []
+      },
+      "gridPos": { "h": 7, "w": 8, "x": 0, "y": 26 },
+      "id": 20,
+      "options": {
+        "legend": {
+          "calcs": ["mean", "lastNotNull", "min", "max"],
+          "displayMode": "table",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": { "mode": "single", "sort": "none" }
+      },
+      "pluginVersion": "10.2.0",
+      "targets": [
+        {
+          "datasource": { "type": "prometheus", "uid": "${datasource}" },
+          "expr": "sat_sensor_value{sensor_id=\"sat_temp\"}",
+          "legendFormat": "Cargo Hold Temp",
+          "refId": "A"
+        }
+      ],
+      "title": "Temperature (15-22x)",
+      "type": "timeseries"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "description": "Atmospheric pressure — very stable, ideal for ALEC. Ratio: 18-25x",
+      "fieldConfig": {
+        "defaults": {
+          "color": { "fixedColor": "#4FC3F7", "mode": "fixed" },
+          "custom": {
+            "axisCenteredZero": false,
+            "axisColorMode": "text",
+            "axisLabel": "hPa",
+            "axisPlacement": "auto",
+            "drawStyle": "line",
+            "fillOpacity": 15,
+            "gradientMode": "opacity",
+            "lineInterpolation": "smooth",
+            "lineWidth": 2,
+            "showPoints": "never",
+            "spanNulls": false,
+            "stacking": { "group": "A", "mode": "none" },
+            "thresholdsStyle": { "mode": "off" }
+          },
+          "unit": "pressurehpa"
+        },
+        "overrides": []
+      },
+      "gridPos": { "h": 7, "w": 8, "x": 8, "y": 26 },
+      "id": 21,
+      "options": {
+        "legend": {
+          "calcs": ["mean", "lastNotNull", "min", "max"],
+          "displayMode": "table",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": { "mode": "single", "sort": "none" }
+      },
+      "pluginVersion": "10.2.0",
+      "targets": [
+        {
+          "datasource": { "type": "prometheus", "uid": "${datasource}" },
+          "expr": "sat_sensor_value{sensor_id=\"sat_pressure\"}",
+          "legendFormat": "Atmospheric Pressure",
+          "refId": "A"
+        }
+      ],
+      "title": "Pressure (18-25x)",
+      "type": "timeseries"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "description": "Hull vibration — chaotic engine + sea state. ALEC still achieves 5-10x despite high variability.",
+      "fieldConfig": {
+        "defaults": {
+          "color": { "fixedColor": "#FFD54F", "mode": "fixed" },
+          "custom": {
+            "axisCenteredZero": false,
+            "axisColorMode": "text",
+            "axisLabel": "g",
+            "axisPlacement": "auto",
+            "drawStyle": "line",
+            "fillOpacity": 15,
+            "gradientMode": "opacity",
+            "lineInterpolation": "smooth",
+            "lineWidth": 1,
+            "showPoints": "never",
+            "spanNulls": false,
+            "stacking": { "group": "A", "mode": "none" },
+            "thresholdsStyle": { "mode": "off" }
+          },
+          "unit": "accg"
+        },
+        "overrides": []
+      },
+      "gridPos": { "h": 7, "w": 8, "x": 16, "y": 26 },
+      "id": 22,
+      "options": {
+        "legend": {
+          "calcs": ["mean", "lastNotNull", "min", "max"],
+          "displayMode": "table",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": { "mode": "single", "sort": "none" }
+      },
+      "pluginVersion": "10.2.0",
+      "targets": [
+        {
+          "datasource": { "type": "prometheus", "uid": "${datasource}" },
+          "expr": "sat_sensor_value{sensor_id=\"sat_vibration\"}",
+          "legendFormat": "Hull Vibration",
+          "refId": "A"
+        }
+      ],
+      "title": "Vibration (5-10x)",
+      "type": "timeseries"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "description": "GPS latitude — predictable great circle route. ALEC ratio: 12-18x",
+      "fieldConfig": {
+        "defaults": {
+          "color": { "fixedColor": "#FFB74D", "mode": "fixed" },
+          "custom": {
+            "axisCenteredZero": false,
+            "axisColorMode": "text",
+            "axisLabel": "°N",
+            "axisPlacement": "auto",
+            "drawStyle": "line",
+            "fillOpacity": 10,
+            "gradientMode": "opacity",
+            "lineInterpolation": "smooth",
+            "lineWidth": 2,
+            "showPoints": "never",
+            "spanNulls": false,
+            "stacking": { "group": "A", "mode": "none" },
+            "thresholdsStyle": { "mode": "off" }
+          },
+          "decimals": 3,
+          "unit": "degree"
+        },
+        "overrides": []
+      },
+      "gridPos": { "h": 7, "w": 8, "x": 0, "y": 33 },
+      "id": 23,
+      "options": {
+        "legend": {
+          "calcs": ["mean", "lastNotNull", "min", "max"],
+          "displayMode": "table",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": { "mode": "single", "sort": "none" }
+      },
+      "pluginVersion": "10.2.0",
+      "targets": [
+        {
+          "datasource": { "type": "prometheus", "uid": "${datasource}" },
+          "expr": "sat_sensor_value{sensor_id=\"sat_gps_lat\"}",
+          "legendFormat": "GPS Latitude",
+          "refId": "A"
+        }
+      ],
+      "title": "GPS Latitude (12-18x)",
+      "type": "timeseries"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "description": "Cargo hold humidity — cyclical, correlated with temperature. ALEC ratio: 10-15x",
+      "fieldConfig": {
+        "defaults": {
+          "color": { "fixedColor": "#CE93D8", "mode": "fixed" },
+          "custom": {
+            "axisCenteredZero": false,
+            "axisColorMode": "text",
+            "axisLabel": "%RH",
+            "axisPlacement": "auto",
+            "drawStyle": "line",
+            "fillOpacity": 15,
+            "gradientMode": "opacity",
+            "lineInterpolation": "smooth",
+            "lineWidth": 2,
+            "showPoints": "never",
+            "spanNulls": false,
+            "stacking": { "group": "A", "mode": "none" },
+            "thresholdsStyle": { "mode": "off" }
+          },
+          "max": 100,
+          "min": 0,
+          "unit": "humidity"
+        },
+        "overrides": []
+      },
+      "gridPos": { "h": 7, "w": 8, "x": 8, "y": 33 },
+      "id": 24,
+      "options": {
+        "legend": {
+          "calcs": ["mean", "lastNotNull", "min", "max"],
+          "displayMode": "table",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": { "mode": "single", "sort": "none" }
+      },
+      "pluginVersion": "10.2.0",
+      "targets": [
+        {
+          "datasource": { "type": "prometheus", "uid": "${datasource}" },
+          "expr": "sat_sensor_value{sensor_id=\"sat_humidity\"}",
+          "legendFormat": "Cargo Humidity",
+          "refId": "A"
+        }
+      ],
+      "title": "Humidity (10-15x)",
+      "type": "timeseries"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "description": "Cathodic protection voltage — ultra-stable with rare anomaly spikes that ALEC Complexity detects for free. Ratio: 20-30x",
+      "fieldConfig": {
+        "defaults": {
+          "color": { "fixedColor": "#00C9A7", "mode": "fixed" },
+          "custom": {
+            "axisCenteredZero": false,
+            "axisColorMode": "text",
+            "axisLabel": "mV",
+            "axisPlacement": "auto",
+            "drawStyle": "line",
+            "fillOpacity": 15,
+            "gradientMode": "opacity",
+            "lineInterpolation": "smooth",
+            "lineWidth": 2,
+            "showPoints": "never",
+            "spanNulls": false,
+            "stacking": { "group": "A", "mode": "none" },
+            "thresholdsStyle": { "mode": "dashed" }
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "#00C9A7", "value": null },
+              { "color": "#FFD54F", "value": -880 },
+              { "color": "#EF5350", "value": -860 }
+            ]
+          },
+          "unit": "mvolt"
+        },
+        "overrides": []
+      },
+      "gridPos": { "h": 7, "w": 8, "x": 16, "y": 33 },
+      "id": 25,
+      "options": {
+        "legend": {
+          "calcs": ["mean", "lastNotNull", "min", "max"],
+          "displayMode": "table",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": { "mode": "single", "sort": "none" }
+      },
+      "pluginVersion": "10.2.0",
+      "targets": [
+        {
+          "datasource": { "type": "prometheus", "uid": "${datasource}" },
+          "expr": "sat_sensor_value{sensor_id=\"sat_cathodic\"}",
+          "legendFormat": "Cathodic Protection",
+          "refId": "A"
+        }
+      ],
+      "title": "Cathodic Voltage (20-30x)",
+      "type": "timeseries"
+    },
+    {
+      "collapsed": false,
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 40 },
+      "id": 204,
+      "panels": [],
+      "title": "ALEC Complexity — Anomaly Detection (Free with Compression)",
+      "type": "row"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "description": "ALEC Complexity index — spikes when sensor behavior deviates from learned baseline. Anomaly detection is a free byproduct of the compression process.",
+      "fieldConfig": {
+        "defaults": {
+          "color": { "fixedColor": "#4FC3F7", "mode": "fixed" },
+          "custom": {
+            "axisCenteredZero": false,
+            "axisColorMode": "text",
+            "axisLabel": "",
+            "axisPlacement": "auto",
+            "drawStyle": "line",
+            "fillOpacity": 20,
+            "gradientMode": "opacity",
+            "lineInterpolation": "smooth",
+            "lineWidth": 2,
+            "showPoints": "never",
+            "spanNulls": false,
+            "stacking": { "group": "A", "mode": "none" },
+            "thresholdsStyle": { "mode": "dashed+area" }
+          },
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "transparent", "value": null },
+              { "color": "#FFD54F33", "value": 5 },
+              { "color": "#EF535033", "value": 10 }
+            ]
+          },
+          "unit": "none"
+        },
+        "overrides": []
+      },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 41 },
+      "id": 30,
+      "options": {
+        "legend": {
+          "calcs": ["mean", "lastNotNull", "max"],
+          "displayMode": "table",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": { "mode": "multi", "sort": "desc" }
+      },
+      "pluginVersion": "10.2.0",
+      "targets": [
+        {
+          "datasource": { "type": "prometheus", "uid": "${datasource}" },
+          "expr": "sat_complexity_index",
+          "legendFormat": "Complexity Index",
+          "refId": "A"
+        }
+      ],
+      "title": "ALEC Complexity Index",
+      "type": "timeseries"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "description": "Per-sensor z-scores from rolling baseline. Values > 3 trigger critical anomaly alerts. Watch for cathodic voltage spikes.",
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "palette-classic" },
+          "custom": {
+            "axisCenteredZero": false,
+            "axisColorMode": "text",
+            "axisLabel": "z-score",
+            "axisPlacement": "auto",
+            "drawStyle": "line",
+            "fillOpacity": 10,
+            "gradientMode": "none",
+            "lineInterpolation": "stepAfter",
+            "lineWidth": 1,
+            "showPoints": "never",
+            "spanNulls": false,
+            "stacking": { "group": "A", "mode": "none" },
+            "thresholdsStyle": { "mode": "dashed+area" }
+          },
+          "mappings": [],
+          "min": 0,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "transparent", "value": null },
+              { "color": "#FFD54F33", "value": 2 },
+              { "color": "#EF535033", "value": 3 }
+            ]
+          },
+          "unit": "none"
+        },
+        "overrides": []
+      },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 41 },
+      "id": 31,
+      "options": {
+        "legend": {
+          "calcs": ["max", "lastNotNull"],
+          "displayMode": "table",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": { "mode": "multi", "sort": "desc" }
+      },
+      "pluginVersion": "10.2.0",
+      "targets": [
+        {
+          "datasource": { "type": "prometheus", "uid": "${datasource}" },
+          "expr": "sat_anomaly_z_score",
+          "legendFormat": "{{sensor_id}}",
+          "refId": "A"
+        }
+      ],
+      "title": "Anomaly Z-Scores per Sensor",
+      "type": "timeseries"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "description": "Binary anomaly flags — lights up when ALEC detects a structural break in the cathodic protection signal.",
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "thresholds"
+          },
+          "custom": {
+            "axisCenteredZero": false,
+            "axisColorMode": "text",
+            "axisLabel": "",
+            "axisPlacement": "auto",
+            "drawStyle": "bars",
+            "fillOpacity": 80,
+            "gradientMode": "scheme",
+            "lineWidth": 0,
+            "showPoints": "never",
+            "spanNulls": false,
+            "stacking": { "group": "A", "mode": "normal" },
+            "thresholdsStyle": { "mode": "off" }
+          },
+          "mappings": [
+            {
+              "options": { "0": { "color": "transparent", "index": 0, "text": "" } },
+              "type": "value"
+            },
+            {
+              "options": { "1": { "color": "#EF5350", "index": 1, "text": "ANOMALY" } },
+              "type": "value"
+            }
+          ],
+          "max": 1,
+          "min": 0,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "transparent", "value": null },
+              { "color": "#EF5350", "value": 0.5 }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "gridPos": { "h": 5, "w": 24, "x": 0, "y": 49 },
+      "id": 32,
+      "options": {
+        "legend": {
+          "calcs": [],
+          "displayMode": "list",
+          "placement": "right",
+          "showLegend": true
+        },
+        "tooltip": { "mode": "multi", "sort": "desc" }
+      },
+      "pluginVersion": "10.2.0",
+      "targets": [
+        {
+          "datasource": { "type": "prometheus", "uid": "${datasource}" },
+          "expr": "sat_anomaly_detected",
+          "legendFormat": "{{sensor_id}}",
+          "refId": "A"
+        }
+      ],
+      "title": "Anomaly Event Timeline",
+      "type": "timeseries"
+    },
+    {
+      "collapsed": false,
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 54 },
+      "id": 205,
+      "panels": [],
+      "title": "Voyage & Environment",
+      "type": "row"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "description": "Voyage progress along the North Atlantic route (Rotterdam to Halifax)",
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "thresholds"
+          },
+          "decimals": 1,
+          "max": 1,
+          "min": 0,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "#4FC3F7", "value": null },
+              { "color": "#00C9A7", "value": 0.5 },
+              { "color": "#81C784", "value": 0.9 }
+            ]
+          },
+          "unit": "percentunit"
+        },
+        "overrides": []
+      },
+      "gridPos": { "h": 5, "w": 6, "x": 0, "y": 55 },
+      "id": 40,
+      "options": {
+        "orientation": "auto",
+        "reduceOptions": {
+          "calcs": ["lastNotNull"],
+          "fields": "",
+          "values": false
+        },
+        "showThresholdLabels": false,
+        "showThresholdMarkers": true
+      },
+      "pluginVersion": "10.2.0",
+      "targets": [
+        {
+          "datasource": { "type": "prometheus", "uid": "${datasource}" },
+          "expr": "sat_voyage_progress",
+          "legendFormat": "Progress",
+          "refId": "A"
+        }
+      ],
+      "title": "Voyage Progress",
+      "type": "gauge"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "description": "Latent driving variables: weather systems, sea state, engine, and diurnal cycle",
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "palette-classic" },
+          "custom": {
+            "axisCenteredZero": true,
+            "axisColorMode": "text",
+            "axisLabel": "",
+            "axisPlacement": "auto",
+            "drawStyle": "line",
+            "fillOpacity": 15,
+            "gradientMode": "none",
+            "lineInterpolation": "smooth",
+            "lineWidth": 1,
+            "showPoints": "never",
+            "spanNulls": false,
+            "stacking": { "group": "A", "mode": "none" },
+            "thresholdsStyle": { "mode": "off" }
+          },
+          "unit": "none"
+        },
+        "overrides": []
+      },
+      "gridPos": { "h": 7, "w": 18, "x": 6, "y": 55 },
+      "id": 41,
+      "options": {
+        "legend": {
+          "calcs": ["mean", "lastNotNull"],
+          "displayMode": "table",
+          "placement": "right",
+          "showLegend": true
+        },
+        "tooltip": { "mode": "multi", "sort": "desc" }
+      },
+      "pluginVersion": "10.2.0",
+      "targets": [
+        {
+          "datasource": { "type": "prometheus", "uid": "${datasource}" },
+          "expr": "sat_latent_variable",
+          "legendFormat": "{{name}}",
+          "refId": "A"
+        }
+      ],
+      "title": "Environmental Drivers (Latent Variables)",
+      "type": "timeseries"
+    }
+  ],
+  "refresh": "10s",
+  "schemaVersion": 38,
+  "style": "dark",
+  "tags": [
+    "alec",
+    "satellite",
+    "iot",
+    "maritime",
+    "ecs-technologie",
+    "compression"
+  ],
+  "templating": {
+    "list": [
+      {
+        "current": {
+          "selected": false,
+          "text": "Prometheus",
+          "value": "Prometheus"
+        },
+        "hide": 0,
+        "includeAll": false,
+        "label": "Datasource",
+        "multi": false,
+        "name": "datasource",
+        "options": [],
+        "query": "prometheus",
+        "refresh": 1,
+        "regex": "",
+        "skipUrlSync": false,
+        "type": "datasource"
+      }
+    ]
+  },
+  "time": {
+    "from": "now-15m",
+    "to": "now"
+  },
+  "timepicker": {
+    "refresh_intervals": [
+      "5s",
+      "10s",
+      "30s",
+      "1m",
+      "5m"
+    ]
+  },
+  "timezone": "browser",
+  "title": "ALEC Satellite IoT Monitor",
+  "uid": "alec-satellite-iot",
+  "version": 1,
+  "weekStart": ""
+}
