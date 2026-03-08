@@ -56,14 +56,6 @@ mod zephyr_support {
     pub extern "C" fn alec_heap_init() {
         // Zephyr manages its own heap; nothing to do.
     }
-
-    // Panic handler for Zephyr builds.
-    // Zephyr handles panics at the C level; this satisfies the Rust compiler requirement.
-    #[cfg(not(feature = "bare-metal"))]
-    #[panic_handler]
-    fn panic(_info: &core::panic::PanicInfo) -> ! {
-        loop {}
-    }
 }
 
 // Bare-metal support: global allocator and panic handler
