@@ -26,11 +26,14 @@
 //! ```
 
 #[cfg(not(feature = "std"))]
-use alloc::{string::{String, ToString}, vec::Vec};
+use alloc::{
+    string::{String, ToString},
+    vec::Vec,
+};
 
-use crate::error::{AlecError, DecodeError};
 #[cfg(feature = "std")]
 use crate::error::ContextError;
+use crate::error::{AlecError, DecodeError};
 #[cfg(feature = "std")]
 use std::io::{Read, Write};
 #[cfg(feature = "std")]
@@ -415,7 +418,9 @@ impl PreloadFile {
                         .unwrap_or(0)
                 }
                 #[cfg(not(feature = "std"))]
-                { 0 }
+                {
+                    0
+                }
             },
             training_samples: ctx.observation_count(),
             dictionary,

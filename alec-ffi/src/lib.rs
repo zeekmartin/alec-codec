@@ -28,11 +28,11 @@ extern crate alloc;
 use alloc::{boxed::Box, vec::Vec};
 
 use core::ffi::c_char;
+use core::slice;
 #[cfg(feature = "std")]
 use std::ffi::CStr;
 #[cfg(feature = "std")]
 use std::path::Path;
-use core::slice;
 
 use alec::classifier::Classifier;
 use alec::context::Context;

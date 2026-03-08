@@ -476,7 +476,8 @@ impl Context {
 
         // Collect and sort by score (descending)
         let keys: Vec<_> = self.dictionary.keys().copied().collect();
-        let mut entries: Vec<_> = keys.into_iter()
+        let mut entries: Vec<_> = keys
+            .into_iter()
             .filter_map(|k| self.dictionary.remove(&k).map(|v| (k, v)))
             .collect();
         entries.sort_by(|a, b| {

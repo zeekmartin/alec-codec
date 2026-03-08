@@ -11,7 +11,10 @@
 //! requires the `tls` feature flag.
 
 #[cfg(not(feature = "std"))]
-use alloc::{string::{String, ToString}, vec::Vec};
+use alloc::{
+    string::{String, ToString},
+    vec::Vec,
+};
 
 /// TLS configuration builder
 #[derive(Debug, Clone, Default)]

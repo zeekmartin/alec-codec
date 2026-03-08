@@ -92,15 +92,24 @@ pub enum EncodeError {
     InvalidValue(String),
 
     /// Buffer too small
-    #[cfg_attr(feature = "std", error("Buffer too small: need {needed} bytes, have {available}"))]
+    #[cfg_attr(
+        feature = "std",
+        error("Buffer too small: need {needed} bytes, have {available}")
+    )]
     BufferTooSmall { needed: usize, available: usize },
 
     /// Payload too large
-    #[cfg_attr(feature = "std", error("Payload too large: {size} bytes exceeds maximum {max}"))]
+    #[cfg_attr(
+        feature = "std",
+        error("Payload too large: {size} bytes exceeds maximum {max}")
+    )]
     PayloadTooLarge { size: usize, max: usize },
 
     /// Context version mismatch
-    #[cfg_attr(feature = "std", error("Context version mismatch: expected {expected}, got {actual}"))]
+    #[cfg_attr(
+        feature = "std",
+        error("Context version mismatch: expected {expected}, got {actual}")
+    )]
     ContextMismatch { expected: u32, actual: u32 },
 }
 
@@ -110,13 +119,25 @@ impl core::fmt::Display for EncodeError {
         match self {
             EncodeError::InvalidValue(s) => write!(f, "Invalid value: {}", s),
             EncodeError::BufferTooSmall { needed, available } => {
-                write!(f, "Buffer too small: need {} bytes, have {}", needed, available)
+                write!(
+                    f,
+                    "Buffer too small: need {} bytes, have {}",
+                    needed, available
+                )
             }
             EncodeError::PayloadTooLarge { size, max } => {
-                write!(f, "Payload too large: {} bytes exceeds maximum {}", size, max)
+                write!(
+                    f,
+                    "Payload too large: {} bytes exceeds maximum {}",
+                    size, max
+                )
             }
             EncodeError::ContextMismatch { expected, actual } => {
-                write!(f, "Context version mismatch: expected {}, got {}", expected, actual)
+                write!(
+                    f,
+                    "Context version mismatch: expected {}, got {}",
+                    expected, actual
+                )
             }
         }
     }
@@ -127,15 +148,24 @@ impl core::fmt::Display for EncodeError {
 #[cfg_attr(feature = "std", derive(Error))]
 pub enum DecodeError {
     /// Invalid checksum
-    #[cfg_attr(feature = "std", error("Invalid checksum: expected {expected:08x}, got {actual:08x}"))]
+    #[cfg_attr(
+        feature = "std",
+        error("Invalid checksum: expected {expected:08x}, got {actual:08x}")
+    )]
     InvalidChecksum { expected: u32, actual: u32 },
 
     /// Context mismatch (can't decode without correct context)
-    #[cfg_attr(feature = "std", error("Context mismatch: expected version {expected}, message has {actual}"))]
+    #[cfg_attr(
+        feature = "std",
+        error("Context mismatch: expected version {expected}, message has {actual}")
+    )]
     ContextMismatch { expected: u32, actual: u32 },
 
     /// Malformed message
-    #[cfg_attr(feature = "std", error("Malformed message at offset {offset}: {reason}"))]
+    #[cfg_attr(
+        feature = "std",
+        error("Malformed message at offset {offset}: {reason}")
+    )]
     MalformedMessage { offset: usize, reason: String },
 
     /// Unknown pattern reference
@@ -151,7 +181,10 @@ pub enum DecodeError {
     UnknownMessageType(u8),
 
     /// Buffer too short
-    #[cfg_attr(feature = "std", error("Buffer too short: need at least {needed} bytes, got {available}"))]
+    #[cfg_attr(
+        feature = "std",
+        error("Buffer too short: need at least {needed} bytes, got {available}")
+    )]
     BufferTooShort { needed: usize, available: usize },
 
     /// Invalid header
@@ -164,10 +197,18 @@ impl core::fmt::Display for DecodeError {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         match self {
             DecodeError::InvalidChecksum { expected, actual } => {
-                write!(f, "Invalid checksum: expected {:08x}, got {:08x}", expected, actual)
+                write!(
+                    f,
+                    "Invalid checksum: expected {:08x}, got {:08x}",
+                    expected, actual
+                )
             }
             DecodeError::ContextMismatch { expected, actual } => {
-                write!(f, "Context mismatch: expected version {}, message has {}", expected, actual)
+                write!(
+                    f,
+                    "Context mismatch: expected version {}, message has {}",
+                    expected, actual
+                )
             }
             DecodeError::MalformedMessage { offset, reason } => {
                 write!(f, "Malformed message at offset {}: {}", offset, reason)
@@ -182,7 +223,11 @@ impl core::fmt::Display for DecodeError {
                 write!(f, "Unknown message type: {}", t)
             }
             DecodeError::BufferTooShort { needed, available } => {
-                write!(f, "Buffer too short: need at least {} bytes, got {}", needed, available)
+                write!(
+                    f,
+                    "Buffer too short: need at least {} bytes, got {}",
+                    needed, available
+                )
             }
             DecodeError::InvalidHeader => write!(f, "Invalid header"),
         }
@@ -194,7 +239,10 @@ impl core::fmt::Display for DecodeError {
 #[cfg_attr(feature = "std", derive(Error))]
 pub enum ContextError {
     /// Hash mismatch during sync
-    #[cfg_attr(feature = "std", error("Hash mismatch: expected {expected:016x}, got {actual:016x}"))]
+    #[cfg_attr(
+        feature = "std",
+        error("Hash mismatch: expected {expected:016x}, got {actual:016x}")
+    )]
     HashMismatch { expected: u64, actual: u64 },
 
     /// Version gap too large
@@ -202,11 +250,17 @@ pub enum ContextError {
     VersionGapTooLarge { from: u32, to: u32 },
 
     /// Dictionary full
-    #[cfg_attr(feature = "std", error("Dictionary full: maximum {max} patterns reached"))]
+    #[cfg_attr(
+        feature = "std",
+        error("Dictionary full: maximum {max} patterns reached")
+    )]
     DictionaryFull { max: usize },
 
     /// Pattern too large
-    #[cfg_attr(feature = "std", error("Pattern too large: {size} bytes exceeds maximum {max}"))]
+    #[cfg_attr(
+        feature = "std",
+        error("Pattern too large: {size} bytes exceeds maximum {max}")
+    )]
     PatternTooLarge { size: usize, max: usize },
 
     /// Sync failed
@@ -214,7 +268,10 @@ pub enum ContextError {
     SyncFailed { reason: String },
 
     /// Memory limit exceeded
-    #[cfg_attr(feature = "std", error("Memory limit exceeded: {used} bytes exceeds {limit}"))]
+    #[cfg_attr(
+        feature = "std",
+        error("Memory limit exceeded: {used} bytes exceeds {limit}")
+    )]
     MemoryLimitExceeded { used: usize, limit: usize },
 }
 
@@ -223,7 +280,11 @@ impl core::fmt::Display for ContextError {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         match self {
             ContextError::HashMismatch { expected, actual } => {
-                write!(f, "Hash mismatch: expected {:016x}, got {:016x}", expected, actual)
+                write!(
+                    f,
+                    "Hash mismatch: expected {:016x}, got {:016x}",
+                    expected, actual
+                )
             }
             ContextError::VersionGapTooLarge { from, to } => {
                 write!(f, "Version gap too large: from {} to {}", from, to)
@@ -232,7 +293,11 @@ impl core::fmt::Display for ContextError {
                 write!(f, "Dictionary full: maximum {} patterns reached", max)
             }
             ContextError::PatternTooLarge { size, max } => {
-                write!(f, "Pattern too large: {} bytes exceeds maximum {}", size, max)
+                write!(
+                    f,
+                    "Pattern too large: {} bytes exceeds maximum {}",
+                    size, max
+                )
             }
             ContextError::SyncFailed { reason } => {
                 write!(f, "Synchronization failed: {}", reason)
