@@ -75,6 +75,11 @@ alec-ffi = { version = "1.2", default-features = false, features = ["no_std"] }
 
 Core FFI functions (`alec_encode_value`, `alec_decode_value`, `alec_encode_multi`, `alec_decode_multi`) are available in no_std mode. File I/O functions (`alec_encoder_save_context`, `alec_encoder_load_context`, `alec_decoder_load_context`) require the `std` feature.
 
+## Reference Implementation
+
+Live demo on Nordic nRF9151 SMA-DK (NB-IoT):
+https://github.com/zeekmartin/alec-nrf9151-demo
+
 ### Breaking Changes
 
 None. The default feature set (`std`) preserves full backward compatibility. Existing users are unaffected.
@@ -90,6 +95,7 @@ None. The default feature set (`std`) preserves full backward compatibility. Exi
 ```bash
 # no_std (embedded ARM Cortex-M)
 cargo check --target thumbv8m.main-none-eabihf --no-default-features --features no_std --lib
+# Note: full cargo build requires libc/alloc provider (Zephyr runtime)
 
 # std (existing functionality, all tests passing)
 cargo test
