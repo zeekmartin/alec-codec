@@ -13,10 +13,10 @@
 use alloc::{format, string::String, vec::Vec};
 
 use crate::protocol::EncodingType;
-#[cfg(feature = "std")]
-use std::collections::HashMap;
 #[cfg(not(feature = "std"))]
 use alloc::collections::BTreeMap as HashMap;
+#[cfg(feature = "std")]
+use std::collections::HashMap;
 
 /// Compression statistics collector
 #[derive(Debug, Clone, Default)]
