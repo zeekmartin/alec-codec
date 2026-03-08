@@ -16,10 +16,17 @@ mod preload;
 
 pub use preload::*;
 
+#[cfg(not(feature = "std"))]
+use alloc::{string::ToString, vec::Vec};
+
 use crate::error::{ContextError, Result};
 use crate::protocol::RawData;
-use std::collections::HashMap;
 use xxhash_rust::xxh64::xxh64;
+
+#[cfg(feature = "std")]
+type Map<K, V> = std::collections::HashMap<K, V>;
+#[cfg(not(feature = "std"))]
+type Map<K, V> = alloc::collections::BTreeMap<K, V>;
 
 /// Maximum number of patterns in dictionary
 pub const MAX_PATTERNS: usize = 65535;
@@ -233,7 +240,17 @@ impl Pattern {
     pub fn score(&self, current_time: u64) -> f64 {
         let age = current_time.saturating_sub(self.last_used) as f64;
         let recency = 1.0 / (1.0 + age / 1000.0);
-        let freq_score = (self.frequency as f64 + 1.0).ln();
+        // Use a simple log approximation for no_std compatibility
+        // ln(x) ≈ (x - 1) / (x + 1) * 2 for x > 0 (rough but sufficient for scoring)
+        let x = self.frequency as f64 + 1.0;
+        #[cfg(feature = "std")]
+        let freq_score = x.ln();
+        #[cfg(not(feature = "std"))]
+        let freq_score = {
+            // Approximate ln using integer bit counting: ln(x) ≈ log2(x) * ln(2)
+            let bits = (63 - (x as u64).leading_zeros()) as f64;
+            bits * 0.693147 // ln(2)
+        };
         freq_score * recency
     }
 }
@@ -300,13 +317,13 @@ pub struct Context {
     /// Total observation count (used for timestamps)
     observation_count: u64,
     /// Dictionary: code -> pattern
-    dictionary: HashMap<u32, Pattern>,
+    dictionary: Map<u32, Pattern>,
     /// Reverse lookup: pattern hash -> code
-    pattern_index: HashMap<u64, u32>,
+    pattern_index: Map<u64, u32>,
     /// Next available code
     next_code: u32,
     /// Per-source statistics for prediction
-    source_stats: HashMap<u32, SourceStats>,
+    source_stats: Map<u32, SourceStats>,
     /// Configuration
     config: ContextConfig,
     /// Scale factor for delta encoding
@@ -319,10 +336,10 @@ impl Context {
         Self {
             version: 0,
             observation_count: 0,
-            dictionary: HashMap::new(),
-            pattern_index: HashMap::new(),
+            dictionary: Map::new(),
+            pattern_index: Map::new(),
             next_code: 0,
-            source_stats: HashMap::new(),
+            source_stats: Map::new(),
             config: ContextConfig::default(),
             scale_factor: crate::DEFAULT_SCALE_FACTOR,
         }
@@ -333,10 +350,10 @@ impl Context {
         Self {
             version: 0,
             observation_count: 0,
-            dictionary: HashMap::new(),
-            pattern_index: HashMap::new(),
+            dictionary: Map::new(),
+            pattern_index: Map::new(),
             next_code: 0,
-            source_stats: HashMap::new(),
+            source_stats: Map::new(),
             config,
             scale_factor: crate::DEFAULT_SCALE_FACTOR,
         }
@@ -458,11 +475,14 @@ impl Context {
         }
 
         // Collect and sort by score (descending)
-        let mut entries: Vec<_> = self.dictionary.drain().collect();
+        let keys: Vec<_> = self.dictionary.keys().copied().collect();
+        let mut entries: Vec<_> = keys.into_iter()
+            .filter_map(|k| self.dictionary.remove(&k).map(|v| (k, v)))
+            .collect();
         entries.sort_by(|a, b| {
             b.1.score(current_time)
                 .partial_cmp(&a.1.score(current_time))
-                .unwrap_or(std::cmp::Ordering::Equal)
+                .unwrap_or(core::cmp::Ordering::Equal)
         });
 
         // Clear pattern index
@@ -764,6 +784,7 @@ impl Context {
     /// // ... train the context with data ...
     /// ctx.save_to_file(Path::new("temperature.alec-context"), "temperature").unwrap();
     /// ```
+    #[cfg(feature = "std")]
     pub fn save_to_file(&self, path: &std::path::Path, sensor_type: &str) -> Result<()> {
         let preload = PreloadFile::from_context(self, sensor_type);
         preload.save_to_file(path)
@@ -791,12 +812,14 @@ impl Context {
     /// let ctx = Context::load_from_file(Path::new("temperature.alec-context")).unwrap();
     /// assert!(ctx.pattern_count() > 0);
     /// ```
+    #[cfg(feature = "std")]
     pub fn load_from_file(path: &std::path::Path) -> Result<Self> {
         let preload = PreloadFile::load_from_file(path)?;
         Self::from_preload(&preload)
     }
 
     /// Create a context from a preload file
+    #[cfg(feature = "std")]
     fn from_preload(preload: &PreloadFile) -> Result<Self> {
         let mut ctx = Self::new();
 
@@ -855,6 +878,7 @@ impl Default for Context {
 }
 
 // HealthCheckable implementation for Context
+#[cfg(feature = "std")]
 impl crate::health::HealthCheckable for Context {
     fn health_check(&self) -> crate::health::HealthCheck {
         use crate::health::{HealthCheck, HealthStatus};

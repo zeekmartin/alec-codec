@@ -7,6 +7,31 @@ et ce projet adhère au [Semantic Versioning](https://semver.org/lang/fr/).
 
 ---
 
+## [1.2.0] - 2026-03-08
+
+### Added
+- **`no_std` support** for bare-metal embedded targets (ARM Cortex-M, RISC-V, etc.)
+  - `#![no_std]` with `extern crate alloc` when `std` feature is disabled
+  - Feature flags: `default = ["std"]`, `std = ["thiserror"]`, `no_std = []`
+  - Verified on `thumbv8m.main-none-eabihf` (Nordic nRF9151 / Zephyr RTOS)
+- **`alec-ffi` no_std support** with feature passthrough (`std`/`no_std`)
+  - File I/O functions gated behind `std` feature
+  - Core FFI functions (encode/decode) available in no_std
+
+### Changed
+- `thiserror` dependency now optional, gated behind `std` feature
+  - Manual `Display` and `From` impls provided for `no_std`
+- `crc32fast` replaced with `crc` v3.0 (no_std compatible, `default-features = false`)
+- `std::collections::HashMap` replaced with `alloc::collections::BTreeMap` in no_std mode
+  - `EncodingType` now derives `Ord` and `PartialOrd` for BTreeMap compatibility
+- `std::fmt` → `core::fmt`, `std::result` → `core::result` across all core modules
+- Std-only modules gated behind `#[cfg(feature = "std")]`:
+  - `channel`, `fleet`, `health`, `recovery`, `security`
+- Context `save_to_file`/`load_from_file` and `HealthCheckable` impl gated behind `std`
+- `alec-ffi` version string updated to "1.2.0"
+
+---
+
 ## [Unreleased]
 
 ### Added

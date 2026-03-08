@@ -1,6 +1,6 @@
 [package]
 name = "alec-ffi"
-version = "1.0.0"
+version = "1.2.0"
 edition = "2021"
 rust-version = "1.70"
 authors = ["David Martin Venti <contact@alec-codec.com>"]
@@ -16,10 +16,15 @@ name = "alec_ffi"
 crate-type = ["staticlib", "cdylib"]
 
 [dependencies]
-alec = { path = "..", version = "1.0" }
+alec = { path = "..", version = "1.2", default-features = false }
 
 [build-dependencies]
 cbindgen = "0.26"
+
+[features]
+default = ["std"]
+std = ["alec/std"]
+no_std = ["alec/no_std"]
 
 [dev-dependencies]
 tempfile = "3.10"

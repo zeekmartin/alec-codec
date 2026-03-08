@@ -33,6 +33,9 @@
 //! assert!(message.len() <= 24); // Compressed or equal to raw
 //! ```
 
+#[cfg(not(feature = "std"))]
+use alloc::{vec, vec::Vec};
+
 use crate::classifier::Classification;
 use crate::context::Context;
 use crate::metrics::CompressionMetrics;
@@ -288,7 +291,9 @@ impl Encoder {
         if let Some(prediction) = context.predict(data.source_id) {
             let delta = data.value - prediction.value;
             let scale = context.scale_factor() as f64;
-            let scaled_delta = (delta * scale).round();
+            let raw = delta * scale;
+            let scaled_delta = if raw >= 0.0 { raw + 0.5 } else { raw - 0.5 };
+            let scaled_delta = scaled_delta as i64 as f64;
 
             // Check if delta fits in i8
             if scaled_delta >= i8::MIN as f64 && scaled_delta <= i8::MAX as f64 {

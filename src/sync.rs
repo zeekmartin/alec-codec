@@ -12,6 +12,9 @@
 //! - State machine for tracking synchronization status
 //! - Diff generation and application for incremental updates
 
+#[cfg(not(feature = "std"))]
+use alloc::vec::Vec;
+
 use crate::context::{Context, Pattern};
 use crate::error::{ContextError, Result};
 use crate::protocol::RawData;

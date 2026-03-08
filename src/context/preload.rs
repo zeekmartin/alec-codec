@@ -25,8 +25,15 @@
 //! └─────────────────────────────────────┘
 //! ```
 
-use crate::error::{AlecError, ContextError, DecodeError};
+#[cfg(not(feature = "std"))]
+use alloc::{string::{String, ToString}, vec::Vec};
+
+use crate::error::{AlecError, DecodeError};
+#[cfg(feature = "std")]
+use crate::error::ContextError;
+#[cfg(feature = "std")]
 use std::io::{Read, Write};
+#[cfg(feature = "std")]
 use std::path::Path;
 
 /// Magic bytes for ALEC preload files
@@ -399,10 +406,17 @@ impl PreloadFile {
             format_version: PRELOAD_FORMAT_VERSION,
             context_version: ctx.version(),
             sensor_type: sensor_type.to_string(),
-            created_timestamp: std::time::SystemTime::now()
-                .duration_since(std::time::UNIX_EPOCH)
-                .map(|d| d.as_secs())
-                .unwrap_or(0),
+            created_timestamp: {
+                #[cfg(feature = "std")]
+                {
+                    std::time::SystemTime::now()
+                        .duration_since(std::time::UNIX_EPOCH)
+                        .map(|d| d.as_secs())
+                        .unwrap_or(0)
+                }
+                #[cfg(not(feature = "std"))]
+                { 0 }
+            },
             training_samples: ctx.observation_count(),
             dictionary,
             statistics,
@@ -465,10 +479,12 @@ impl PreloadFile {
         bytes.extend_from_slice(&self.prediction.to_bytes());
 
         // Calculate and insert checksum (CRC32 of everything except the checksum field)
-        let mut hasher = crc32fast::Hasher::new();
-        hasher.update(&bytes[..checksum_offset]);
-        hasher.update(&bytes[checksum_offset + 4..]);
-        let checksum = hasher.finalize();
+        use crc::{Crc, CRC_32_ISO_HDLC};
+        const CRC32: Crc<u32> = Crc::<u32>::new(&CRC_32_ISO_HDLC);
+        let mut digest = CRC32.digest();
+        digest.update(&bytes[..checksum_offset]);
+        digest.update(&bytes[checksum_offset + 4..]);
+        let checksum = digest.finalize();
         bytes[checksum_offset..checksum_offset + 4].copy_from_slice(&checksum.to_le_bytes());
 
         bytes
@@ -508,10 +524,12 @@ impl PreloadFile {
         let stored_checksum = u32::from_le_bytes(data[62..66].try_into().unwrap());
 
         // Verify checksum
-        let mut hasher = crc32fast::Hasher::new();
-        hasher.update(&data[..62]);
-        hasher.update(&data[66..]);
-        let computed_checksum = hasher.finalize();
+        use crc::{Crc, CRC_32_ISO_HDLC};
+        const CRC32: Crc<u32> = Crc::<u32>::new(&CRC_32_ISO_HDLC);
+        let mut digest = CRC32.digest();
+        digest.update(&data[..62]);
+        digest.update(&data[66..]);
+        let computed_checksum = digest.finalize();
 
         if stored_checksum != computed_checksum {
             return Err(DecodeError::InvalidChecksum {
@@ -562,6 +580,7 @@ impl PreloadFile {
     }
 
     /// Save preload to a file
+    #[cfg(feature = "std")]
     pub fn save_to_file(&self, path: &Path) -> Result<(), AlecError> {
         let bytes = self.to_bytes();
         let mut file = std::fs::File::create(path).map_err(|e| ContextError::SyncFailed {
@@ -575,6 +594,7 @@ impl PreloadFile {
     }
 
     /// Load preload from a file
+    #[cfg(feature = "std")]
     pub fn load_from_file(path: &Path) -> Result<Self, AlecError> {
         let mut file = std::fs::File::open(path).map_err(|e| ContextError::SyncFailed {
             reason: format!("Failed to open preload file: {}", e),

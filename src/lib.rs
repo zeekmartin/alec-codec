@@ -40,48 +40,67 @@
 //! - [`decoder`]: Message decoding
 //! - [`classifier`]: Priority classification
 //! - [`context`]: Shared context (dictionary + prediction model)
-//! - [`channel`]: Communication channel abstraction
+//! - [`channel`]: Communication channel abstraction (std only)
 //! - [`metrics`]: Compression statistics and analysis
 
-// Modules
-pub mod channel;
+#![cfg_attr(not(feature = "std"), no_std)]
+
+#[cfg(not(feature = "std"))]
+extern crate alloc;
+
+// Core modules (always available)
 pub mod classifier;
 pub mod context;
 pub mod decoder;
 pub mod encoder;
 pub mod error;
-pub mod fleet;
-pub mod health;
 pub mod metrics;
 pub mod protocol;
-pub mod recovery;
-pub mod security;
 pub mod sync;
 pub mod tls;
 
-// Re-exports for convenient access
-pub use channel::Channel;
+// Std-only modules
+#[cfg(feature = "std")]
+pub mod channel;
+#[cfg(feature = "std")]
+pub mod fleet;
+#[cfg(feature = "std")]
+pub mod health;
+#[cfg(feature = "std")]
+pub mod recovery;
+#[cfg(feature = "std")]
+pub mod security;
+
+// Re-exports for convenient access (always available)
 pub use classifier::{Classification, ClassificationReason, Classifier};
 pub use context::Context;
 pub use decoder::Decoder;
 pub use encoder::Encoder;
 pub use error::{AlecError, Result};
-pub use fleet::{EmitterId, EmitterState, FleetConfig, FleetManager, FleetStats, ProcessedMessage};
-pub use health::{HealthCheck, HealthCheckable, HealthConfig, HealthMonitor, HealthStatus};
 pub use metrics::{CompressionMetrics, ContextMetrics};
 pub use protocol::{EncodedMessage, EncodingType, MessageHeader, MessageType, Priority, RawData};
-pub use recovery::{
-    with_retry, with_retry_metrics, CircuitBreaker, CircuitConfig, CircuitState, DegradationLevel,
-    RetryResult, RetryStrategy,
-};
-pub use security::{
-    AuditEvent, AuditEventType, AuditFilter, AuditLogger, CertValidation, MemoryAuditLogger,
-    RateLimiter, SecurityConfig, SecurityContext, Severity,
-};
 pub use sync::{
     SyncAnnounce, SyncConfig, SyncDiff, SyncMessage, SyncRequest, SyncState, Synchronizer,
 };
 pub use tls::{DtlsConfig, TlsConfig, TlsState};
+
+// Std-only re-exports
+#[cfg(feature = "std")]
+pub use channel::Channel;
+#[cfg(feature = "std")]
+pub use fleet::{EmitterId, EmitterState, FleetConfig, FleetManager, FleetStats, ProcessedMessage};
+#[cfg(feature = "std")]
+pub use health::{HealthCheck, HealthCheckable, HealthConfig, HealthMonitor, HealthStatus};
+#[cfg(feature = "std")]
+pub use recovery::{
+    with_retry, with_retry_metrics, CircuitBreaker, CircuitConfig, CircuitState, DegradationLevel,
+    RetryResult, RetryStrategy,
+};
+#[cfg(feature = "std")]
+pub use security::{
+    AuditEvent, AuditEventType, AuditFilter, AuditLogger, CertValidation, MemoryAuditLogger,
+    RateLimiter, SecurityConfig, SecurityContext, Severity,
+};
 
 /// Library version
 pub const VERSION: &str = env!("CARGO_PKG_VERSION");

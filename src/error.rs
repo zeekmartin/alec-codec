@@ -8,141 +8,286 @@
 //!
 //! This module defines all error types used throughout the library.
 
+#[cfg(not(feature = "std"))]
+use alloc::string::String;
+
+#[cfg(feature = "std")]
 use thiserror::Error;
 
 /// Result type alias for ALEC operations
-pub type Result<T> = std::result::Result<T, AlecError>;
+pub type Result<T> = core::result::Result<T, AlecError>;
 
 /// Main error type for ALEC operations
-#[derive(Error, Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq)]
+#[cfg_attr(feature = "std", derive(Error))]
 pub enum AlecError {
     /// Encoding error
-    #[error("Encoding error: {0}")]
-    Encode(#[from] EncodeError),
+    #[cfg_attr(feature = "std", error("Encoding error: {0}"))]
+    Encode(#[cfg_attr(feature = "std", from)] EncodeError),
 
     /// Decoding error
-    #[error("Decoding error: {0}")]
-    Decode(#[from] DecodeError),
+    #[cfg_attr(feature = "std", error("Decoding error: {0}"))]
+    Decode(#[cfg_attr(feature = "std", from)] DecodeError),
 
     /// Context error
-    #[error("Context error: {0}")]
-    Context(#[from] ContextError),
+    #[cfg_attr(feature = "std", error("Context error: {0}"))]
+    Context(#[cfg_attr(feature = "std", from)] ContextError),
 
     /// Channel error
-    #[error("Channel error: {0}")]
-    Channel(#[from] ChannelError),
+    #[cfg_attr(feature = "std", error("Channel error: {0}"))]
+    Channel(#[cfg_attr(feature = "std", from)] ChannelError),
 
     /// Protocol error
-    #[error("Protocol error: {0}")]
+    #[cfg_attr(feature = "std", error("Protocol error: {0}"))]
     Protocol(String),
 }
 
+#[cfg(not(feature = "std"))]
+impl core::fmt::Display for AlecError {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        match self {
+            AlecError::Encode(e) => write!(f, "Encoding error: {}", e),
+            AlecError::Decode(e) => write!(f, "Decoding error: {}", e),
+            AlecError::Context(e) => write!(f, "Context error: {}", e),
+            AlecError::Channel(e) => write!(f, "Channel error: {}", e),
+            AlecError::Protocol(s) => write!(f, "Protocol error: {}", s),
+        }
+    }
+}
+
+#[cfg(not(feature = "std"))]
+impl From<EncodeError> for AlecError {
+    fn from(e: EncodeError) -> Self {
+        AlecError::Encode(e)
+    }
+}
+
+#[cfg(not(feature = "std"))]
+impl From<DecodeError> for AlecError {
+    fn from(e: DecodeError) -> Self {
+        AlecError::Decode(e)
+    }
+}
+
+#[cfg(not(feature = "std"))]
+impl From<ContextError> for AlecError {
+    fn from(e: ContextError) -> Self {
+        AlecError::Context(e)
+    }
+}
+
+#[cfg(not(feature = "std"))]
+impl From<ChannelError> for AlecError {
+    fn from(e: ChannelError) -> Self {
+        AlecError::Channel(e)
+    }
+}
+
 /// Errors during encoding
-#[derive(Error, Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq)]
+#[cfg_attr(feature = "std", derive(Error))]
 pub enum EncodeError {
     /// Value is not a valid number (NaN, Inf)
-    #[error("Invalid value: {0}")]
+    #[cfg_attr(feature = "std", error("Invalid value: {0}"))]
     InvalidValue(String),
 
     /// Buffer too small
-    #[error("Buffer too small: need {needed} bytes, have {available}")]
+    #[cfg_attr(feature = "std", error("Buffer too small: need {needed} bytes, have {available}"))]
     BufferTooSmall { needed: usize, available: usize },
 
     /// Payload too large
-    #[error("Payload too large: {size} bytes exceeds maximum {max}")]
+    #[cfg_attr(feature = "std", error("Payload too large: {size} bytes exceeds maximum {max}"))]
     PayloadTooLarge { size: usize, max: usize },
 
     /// Context version mismatch
-    #[error("Context version mismatch: expected {expected}, got {actual}")]
+    #[cfg_attr(feature = "std", error("Context version mismatch: expected {expected}, got {actual}"))]
     ContextMismatch { expected: u32, actual: u32 },
+}
+
+#[cfg(not(feature = "std"))]
+impl core::fmt::Display for EncodeError {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        match self {
+            EncodeError::InvalidValue(s) => write!(f, "Invalid value: {}", s),
+            EncodeError::BufferTooSmall { needed, available } => {
+                write!(f, "Buffer too small: need {} bytes, have {}", needed, available)
+            }
+            EncodeError::PayloadTooLarge { size, max } => {
+                write!(f, "Payload too large: {} bytes exceeds maximum {}", size, max)
+            }
+            EncodeError::ContextMismatch { expected, actual } => {
+                write!(f, "Context version mismatch: expected {}, got {}", expected, actual)
+            }
+        }
+    }
 }
 
 /// Errors during decoding
-#[derive(Error, Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq)]
+#[cfg_attr(feature = "std", derive(Error))]
 pub enum DecodeError {
     /// Invalid checksum
-    #[error("Invalid checksum: expected {expected:08x}, got {actual:08x}")]
+    #[cfg_attr(feature = "std", error("Invalid checksum: expected {expected:08x}, got {actual:08x}"))]
     InvalidChecksum { expected: u32, actual: u32 },
 
     /// Context mismatch (can't decode without correct context)
-    #[error("Context mismatch: expected version {expected}, message has {actual}")]
+    #[cfg_attr(feature = "std", error("Context mismatch: expected version {expected}, message has {actual}"))]
     ContextMismatch { expected: u32, actual: u32 },
 
     /// Malformed message
-    #[error("Malformed message at offset {offset}: {reason}")]
+    #[cfg_attr(feature = "std", error("Malformed message at offset {offset}: {reason}"))]
     MalformedMessage { offset: usize, reason: String },
 
     /// Unknown pattern reference
-    #[error("Unknown pattern ID: {pattern_id}")]
+    #[cfg_attr(feature = "std", error("Unknown pattern ID: {pattern_id}"))]
     UnknownPattern { pattern_id: u32 },
 
     /// Unknown encoding type
-    #[error("Unknown encoding type: 0x{0:02x}")]
+    #[cfg_attr(feature = "std", error("Unknown encoding type: 0x{0:02x}"))]
     UnknownEncodingType(u8),
 
     /// Unknown message type
-    #[error("Unknown message type: {0}")]
+    #[cfg_attr(feature = "std", error("Unknown message type: {0}"))]
     UnknownMessageType(u8),
 
     /// Buffer too short
-    #[error("Buffer too short: need at least {needed} bytes, got {available}")]
+    #[cfg_attr(feature = "std", error("Buffer too short: need at least {needed} bytes, got {available}"))]
     BufferTooShort { needed: usize, available: usize },
 
     /// Invalid header
-    #[error("Invalid header")]
+    #[cfg_attr(feature = "std", error("Invalid header"))]
     InvalidHeader,
 }
 
+#[cfg(not(feature = "std"))]
+impl core::fmt::Display for DecodeError {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        match self {
+            DecodeError::InvalidChecksum { expected, actual } => {
+                write!(f, "Invalid checksum: expected {:08x}, got {:08x}", expected, actual)
+            }
+            DecodeError::ContextMismatch { expected, actual } => {
+                write!(f, "Context mismatch: expected version {}, message has {}", expected, actual)
+            }
+            DecodeError::MalformedMessage { offset, reason } => {
+                write!(f, "Malformed message at offset {}: {}", offset, reason)
+            }
+            DecodeError::UnknownPattern { pattern_id } => {
+                write!(f, "Unknown pattern ID: {}", pattern_id)
+            }
+            DecodeError::UnknownEncodingType(t) => {
+                write!(f, "Unknown encoding type: 0x{:02x}", t)
+            }
+            DecodeError::UnknownMessageType(t) => {
+                write!(f, "Unknown message type: {}", t)
+            }
+            DecodeError::BufferTooShort { needed, available } => {
+                write!(f, "Buffer too short: need at least {} bytes, got {}", needed, available)
+            }
+            DecodeError::InvalidHeader => write!(f, "Invalid header"),
+        }
+    }
+}
+
 /// Errors related to the shared context
-#[derive(Error, Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq)]
+#[cfg_attr(feature = "std", derive(Error))]
 pub enum ContextError {
     /// Hash mismatch during sync
-    #[error("Hash mismatch: expected {expected:016x}, got {actual:016x}")]
+    #[cfg_attr(feature = "std", error("Hash mismatch: expected {expected:016x}, got {actual:016x}"))]
     HashMismatch { expected: u64, actual: u64 },
 
     /// Version gap too large
-    #[error("Version gap too large: from {from} to {to}")]
+    #[cfg_attr(feature = "std", error("Version gap too large: from {from} to {to}"))]
     VersionGapTooLarge { from: u32, to: u32 },
 
     /// Dictionary full
-    #[error("Dictionary full: maximum {max} patterns reached")]
+    #[cfg_attr(feature = "std", error("Dictionary full: maximum {max} patterns reached"))]
     DictionaryFull { max: usize },
 
     /// Pattern too large
-    #[error("Pattern too large: {size} bytes exceeds maximum {max}")]
+    #[cfg_attr(feature = "std", error("Pattern too large: {size} bytes exceeds maximum {max}"))]
     PatternTooLarge { size: usize, max: usize },
 
     /// Sync failed
-    #[error("Synchronization failed: {reason}")]
+    #[cfg_attr(feature = "std", error("Synchronization failed: {reason}"))]
     SyncFailed { reason: String },
 
     /// Memory limit exceeded
-    #[error("Memory limit exceeded: {used} bytes exceeds {limit}")]
+    #[cfg_attr(feature = "std", error("Memory limit exceeded: {used} bytes exceeds {limit}"))]
     MemoryLimitExceeded { used: usize, limit: usize },
 }
 
+#[cfg(not(feature = "std"))]
+impl core::fmt::Display for ContextError {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        match self {
+            ContextError::HashMismatch { expected, actual } => {
+                write!(f, "Hash mismatch: expected {:016x}, got {:016x}", expected, actual)
+            }
+            ContextError::VersionGapTooLarge { from, to } => {
+                write!(f, "Version gap too large: from {} to {}", from, to)
+            }
+            ContextError::DictionaryFull { max } => {
+                write!(f, "Dictionary full: maximum {} patterns reached", max)
+            }
+            ContextError::PatternTooLarge { size, max } => {
+                write!(f, "Pattern too large: {} bytes exceeds maximum {}", size, max)
+            }
+            ContextError::SyncFailed { reason } => {
+                write!(f, "Synchronization failed: {}", reason)
+            }
+            ContextError::MemoryLimitExceeded { used, limit } => {
+                write!(f, "Memory limit exceeded: {} bytes exceeds {}", used, limit)
+            }
+        }
+    }
+}
+
 /// Errors related to the communication channel
-#[derive(Error, Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq)]
+#[cfg_attr(feature = "std", derive(Error))]
 pub enum ChannelError {
     /// Connection timeout
-    #[error("Connection timeout after {timeout_ms}ms")]
+    #[cfg_attr(feature = "std", error("Connection timeout after {timeout_ms}ms"))]
     Timeout { timeout_ms: u64 },
 
     /// Disconnected
-    #[error("Disconnected: {reason}")]
+    #[cfg_attr(feature = "std", error("Disconnected: {reason}"))]
     Disconnected { reason: String },
 
     /// Buffer full
-    #[error("Send buffer full")]
+    #[cfg_attr(feature = "std", error("Send buffer full"))]
     BufferFull,
 
     /// Transmission error
-    #[error("Transmission error after {retries} retries")]
+    #[cfg_attr(feature = "std", error("Transmission error after {retries} retries"))]
     TransmissionError { retries: u8 },
 
     /// Rate limited
-    #[error("Rate limited: retry after {retry_after_ms}ms")]
+    #[cfg_attr(feature = "std", error("Rate limited: retry after {retry_after_ms}ms"))]
     RateLimited { retry_after_ms: u64 },
+}
+
+#[cfg(not(feature = "std"))]
+impl core::fmt::Display for ChannelError {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        match self {
+            ChannelError::Timeout { timeout_ms } => {
+                write!(f, "Connection timeout after {}ms", timeout_ms)
+            }
+            ChannelError::Disconnected { reason } => {
+                write!(f, "Disconnected: {}", reason)
+            }
+            ChannelError::BufferFull => write!(f, "Send buffer full"),
+            ChannelError::TransmissionError { retries } => {
+                write!(f, "Transmission error after {} retries", retries)
+            }
+            ChannelError::RateLimited { retry_after_ms } => {
+                write!(f, "Rate limited: retry after {}ms", retry_after_ms)
+            }
+        }
+    }
 }
 
 #[cfg(test)]

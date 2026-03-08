@@ -11,7 +11,10 @@
 
 use crate::context::Context;
 use crate::protocol::{Priority, RawData};
+#[cfg(feature = "std")]
 use std::collections::HashMap;
+#[cfg(not(feature = "std"))]
+use alloc::collections::BTreeMap as HashMap;
 
 /// Classification result for a data point
 #[derive(Debug, Clone, PartialEq)]

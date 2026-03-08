@@ -4,8 +4,6 @@
 // Dual-licensed under AGPL-3.0 and Commercial License.
 // See LICENSE file for details.
 
-#![allow(clippy::not_unsafe_ptr_arg_deref)]
-
 //! C/C++ bindings for ALEC compression library
 //!
 //! This crate provides a C-compatible FFI layer for the ALEC compression
@@ -20,9 +18,21 @@
 //! - Handles are not used after being freed
 //! - Thread safety is managed by the caller
 
-use std::ffi::{c_char, CStr};
+#![cfg_attr(not(feature = "std"), no_std)]
+#![allow(clippy::not_unsafe_ptr_arg_deref)]
+
+#[cfg(not(feature = "std"))]
+extern crate alloc;
+
+#[cfg(not(feature = "std"))]
+use alloc::{boxed::Box, vec::Vec};
+
+use core::ffi::c_char;
+#[cfg(feature = "std")]
+use std::ffi::CStr;
+#[cfg(feature = "std")]
 use std::path::Path;
-use std::slice;
+use core::slice;
 
 use alec::classifier::Classifier;
 use alec::context::Context;
@@ -91,7 +101,7 @@ pub struct AlecDecoder {
 #[no_mangle]
 pub extern "C" fn alec_version() -> *const c_char {
     // Include null terminator
-    static VERSION: &[u8] = b"1.0.0\0";
+    static VERSION: &[u8] = b"1.2.0\0";
     VERSION.as_ptr() as *const c_char
 }
 
@@ -331,6 +341,7 @@ pub extern "C" fn alec_encode_multi(
 /// # Returns
 ///
 /// `ALEC_OK` on success, error code otherwise.
+#[cfg(feature = "std")]
 #[no_mangle]
 pub extern "C" fn alec_encoder_save_context(
     encoder: *mut AlecEncoder,
@@ -372,6 +383,7 @@ pub extern "C" fn alec_encoder_save_context(
 /// # Returns
 ///
 /// `ALEC_OK` on success, error code otherwise.
+#[cfg(feature = "std")]
 #[no_mangle]
 pub extern "C" fn alec_encoder_load_context(
     encoder: *mut AlecEncoder,
@@ -569,6 +581,7 @@ pub extern "C" fn alec_decode_multi(
 /// # Returns
 ///
 /// `ALEC_OK` on success, error code otherwise.
+#[cfg(feature = "std")]
 #[no_mangle]
 pub extern "C" fn alec_decoder_load_context(
     decoder: *mut AlecDecoder,
@@ -626,7 +639,7 @@ mod tests {
         let version = alec_version();
         assert!(!version.is_null());
         let version_str = unsafe { CStr::from_ptr(version) }.to_str().unwrap();
-        assert_eq!(version_str, "1.0.0");
+        assert_eq!(version_str, "1.2.0");
     }
 
     #[test]

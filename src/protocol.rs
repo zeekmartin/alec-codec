@@ -12,8 +12,11 @@
 //! - Encoding types
 //! - Raw data representation
 
+#[cfg(not(feature = "std"))]
+use alloc::vec::Vec;
+
 use crate::error::DecodeError;
-use std::fmt;
+use core::fmt;
 
 /// Checksum size in bytes (xxHash32)
 pub const CHECKSUM_SIZE: usize = 4;
@@ -152,7 +155,7 @@ impl MessageType {
 }
 
 /// Encoding types for data compression
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Default)]
 #[repr(u8)]
 pub enum EncodingType {
     /// Raw float64, big-endian (8 bytes)

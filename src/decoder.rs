@@ -9,6 +9,9 @@
 //! This module handles decoding binary messages back into data values
 //! using the shared context for decompression.
 
+#[cfg(not(feature = "std"))]
+use alloc::{string::ToString, vec::Vec};
+
 use crate::context::Context;
 use crate::error::{DecodeError, Result};
 use crate::protocol::{DecodedData, EncodedMessage, EncodingType};

@@ -9,8 +9,14 @@
 //! This module provides statistics about compression efficiency,
 //! encoding distribution, and prediction accuracy.
 
+#[cfg(not(feature = "std"))]
+use alloc::{format, string::String, vec::Vec};
+
 use crate::protocol::EncodingType;
+#[cfg(feature = "std")]
 use std::collections::HashMap;
+#[cfg(not(feature = "std"))]
+use alloc::collections::BTreeMap as HashMap;
 
 /// Compression statistics collector
 #[derive(Debug, Clone, Default)]
