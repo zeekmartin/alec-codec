@@ -336,6 +336,15 @@ enum AlecResult alec_decoder_load_context(struct AlecDecoder *decoder, const cha
  */
 uint32_t alec_decoder_context_version(const struct AlecDecoder *decoder);
 
+/**
+ * Initialize the heap allocator. Must be called before any alloc usage.
+ *
+ * # Safety
+ *
+ * Must be called exactly once, before any heap allocation.
+ */
+void alec_heap_init(void);
+
 #ifdef __cplusplus
 } // extern "C"
 #endif // __cplusplus
