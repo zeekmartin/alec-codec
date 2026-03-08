@@ -7,6 +7,17 @@ et ce projet adhère au [Semantic Versioning](https://semver.org/lang/fr/).
 
 ---
 
+## [1.2.3] - 2026-03-08
+
+### Fixed
+- **`alec-ffi` zephyr panic handler**: replaced standalone `#[panic_handler]` with one that delegates to Zephyr's `k_panic()` C function, eliminating duplicate symbol linker errors when linking with Zephyr RTOS
+
+### Changed
+- `alec` and `alec-ffi` version bumped to 1.2.3
+- `alec-ffi` version string updated to "1.2.3"
+
+---
+
 ## [1.2.2] - 2026-03-08
 
 ### Added
