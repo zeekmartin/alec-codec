@@ -7,6 +7,22 @@ et ce projet adhère au [Semantic Versioning](https://semver.org/lang/fr/).
 
 ---
 
+## [1.2.2] - 2026-03-08
+
+### Added
+- **`zephyr` feature for `alec-ffi`**: Zephyr RTOS support without conflicting with Zephyr's own panic handler and heap
+  - Global allocator backed by Zephyr `k_malloc`/`k_free` (extern C FFI)
+  - No `embedded-alloc` dependency — uses Zephyr's native heap management
+  - `alec_heap_init()` is a no-op (Zephyr manages its own heap)
+  - Panic handler provided for Rust compiler satisfaction; Zephyr handles panics at C level
+  - Usage: `alec-ffi = { version = "1.2.2", default-features = false, features = ["zephyr"] }`
+
+### Changed
+- `alec` and `alec-ffi` version bumped to 1.2.2
+- `alec-ffi` version string updated to "1.2.2"
+
+---
+
 ## [1.2.1] - 2026-03-08
 
 ### Added
