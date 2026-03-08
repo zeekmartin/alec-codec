@@ -1,6 +1,6 @@
 [package]
 name = "alec-ffi"
-version = "1.2.1"
+version = "1.2.2"
 edition = "2021"
 rust-version = "1.70"
 authors = ["David Martin Venti <contact@alec-codec.com>"]
@@ -28,6 +28,7 @@ default = ["std"]
 std = ["alec/std"]
 no_std = ["alec/no_std"]
 bare-metal = ["no_std", "embedded-alloc", "cortex-m"]
+zephyr = ["no_std"]
 
 [dev-dependencies]
 tempfile = "3.10"

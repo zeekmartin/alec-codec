@@ -24,6 +24,40 @@
 #[cfg(not(feature = "std"))]
 extern crate alloc;
 
+// Zephyr RTOS support: global allocator via k_malloc/k_free, no panic handler
+#[cfg(feature = "zephyr")]
+mod zephyr_support {
+    use core::alloc::{GlobalAlloc, Layout};
+
+    extern "C" {
+        fn k_malloc(size: usize) -> *mut u8;
+        fn k_free(ptr: *mut u8);
+    }
+
+    struct ZephyrAllocator;
+
+    unsafe impl GlobalAlloc for ZephyrAllocator {
+        unsafe fn alloc(&self, layout: Layout) -> *mut u8 {
+            unsafe { k_malloc(layout.size()) }
+        }
+
+        unsafe fn dealloc(&self, ptr: *mut u8, _layout: Layout) {
+            unsafe { k_free(ptr) }
+        }
+    }
+
+    #[global_allocator]
+    static ALLOCATOR: ZephyrAllocator = ZephyrAllocator;
+
+    /// No-op on Zephyr — heap is managed by the RTOS.
+    ///
+    /// Provided for API compatibility with bare-metal builds.
+    #[no_mangle]
+    pub extern "C" fn alec_heap_init() {
+        // Zephyr manages its own heap; nothing to do.
+    }
+}
+
 // Bare-metal support: global allocator and panic handler
 #[cfg(feature = "bare-metal")]
 mod bare_metal_support {
@@ -129,7 +163,7 @@ pub struct AlecDecoder {
 #[no_mangle]
 pub extern "C" fn alec_version() -> *const c_char {
     // Include null terminator
-    static VERSION: &[u8] = b"1.2.1\0";
+    static VERSION: &[u8] = b"1.2.2\0";
     VERSION.as_ptr() as *const c_char
 }
 
@@ -667,7 +701,7 @@ mod tests {
         let version = alec_version();
         assert!(!version.is_null());
         let version_str = unsafe { CStr::from_ptr(version) }.to_str().unwrap();
-        assert_eq!(version_str, "1.2.1");
+        assert_eq!(version_str, "1.2.2");
     }
 
     #[test]
