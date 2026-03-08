@@ -7,6 +7,21 @@ et ce projet adhère au [Semantic Versioning](https://semver.org/lang/fr/).
 
 ---
 
+## [1.2.1] - 2026-03-08
+
+### Added
+- **`bare-metal` feature for `alec-ffi`**: Provides `#[global_allocator]` (via `embedded-alloc` `LlffHeap`) and `#[panic_handler]` for bare-metal embedded targets
+  - New FFI function `alec_heap_init()` — must be called before any heap allocation
+  - Heap size: 8192 bytes (sufficient for ALEC context + encode buffer)
+  - Dependencies: `embedded-alloc` 0.6 (llff), `cortex-m` 0.7 (critical-section-single-core)
+  - Usage: `alec-ffi = { version = "1.2.1", default-features = false, features = ["bare-metal"] }`
+
+### Changed
+- `alec` and `alec-ffi` version bumped to 1.2.1
+- `alec-ffi` version string updated to "1.2.1"
+
+---
+
 ## [1.2.0] - 2026-03-08
 
 ### Added
