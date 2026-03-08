@@ -59,8 +59,12 @@ mod zephyr_support {
 
     #[panic_handler]
     fn panic(_: &core::panic::PanicInfo) -> ! {
-        extern "C" { fn k_panic(); }
-        unsafe { k_panic(); }
+        extern "C" {
+            fn k_panic();
+        }
+        unsafe {
+            k_panic();
+        }
         loop {}
     }
 }
