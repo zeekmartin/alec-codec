@@ -56,6 +56,13 @@ mod zephyr_support {
     pub extern "C" fn alec_heap_init() {
         // Zephyr manages its own heap; nothing to do.
     }
+
+    #[panic_handler]
+    fn panic(_: &core::panic::PanicInfo) -> ! {
+        extern "C" { fn k_panic(); }
+        unsafe { k_panic(); }
+        loop {}
+    }
 }
 
 // Bare-metal support: global allocator and panic handler
