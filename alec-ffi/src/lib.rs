@@ -24,6 +24,34 @@
 #[cfg(not(feature = "std"))]
 extern crate alloc;
 
+// Bare-metal support: global allocator and panic handler
+#[cfg(feature = "bare-metal")]
+mod bare_metal_support {
+    use embedded_alloc::LlffHeap as Heap;
+
+    #[global_allocator]
+    static HEAP: Heap = Heap::empty();
+
+    /// Initialize the heap allocator. Must be called before any alloc usage.
+    ///
+    /// # Safety
+    ///
+    /// Must be called exactly once, before any heap allocation.
+    #[no_mangle]
+    pub unsafe extern "C" fn alec_heap_init() {
+        const HEAP_SIZE: usize = 8192;
+        static mut HEAP_MEM: [u8; HEAP_SIZE] = [0; HEAP_SIZE];
+        unsafe {
+            HEAP.init(&raw mut HEAP_MEM as usize, HEAP_SIZE);
+        }
+    }
+
+    #[panic_handler]
+    fn panic(_info: &core::panic::PanicInfo) -> ! {
+        loop {}
+    }
+}
+
 #[cfg(not(feature = "std"))]
 use alloc::{boxed::Box, vec::Vec};
 
@@ -101,7 +129,7 @@ pub struct AlecDecoder {
 #[no_mangle]
 pub extern "C" fn alec_version() -> *const c_char {
     // Include null terminator
-    static VERSION: &[u8] = b"1.2.0\0";
+    static VERSION: &[u8] = b"1.2.1\0";
     VERSION.as_ptr() as *const c_char
 }
 
@@ -639,7 +667,7 @@ mod tests {
         let version = alec_version();
         assert!(!version.is_null());
         let version_str = unsafe { CStr::from_ptr(version) }.to_str().unwrap();
-        assert_eq!(version_str, "1.2.0");
+        assert_eq!(version_str, "1.2.1");
     }
 
     #[test]

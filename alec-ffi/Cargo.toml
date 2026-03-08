@@ -1,6 +1,6 @@
 [package]
 name = "alec-ffi"
-version = "1.2.0"
+version = "1.2.1"
 edition = "2021"
 rust-version = "1.70"
 authors = ["David Martin Venti <contact@alec-codec.com>"]
@@ -17,6 +17,8 @@ crate-type = ["staticlib", "cdylib"]
 
 [dependencies]
 alec = { path = "..", version = "1.2", default-features = false }
+embedded-alloc = { version = "0.6", optional = true, default-features = false, features = ["llff"] }
+cortex-m = { version = "0.7", optional = true, features = ["critical-section-single-core"] }
 
 [build-dependencies]
 cbindgen = "0.26"
@@ -25,6 +27,7 @@ cbindgen = "0.26"
 default = ["std"]
 std = ["alec/std"]
 no_std = ["alec/no_std"]
+bare-metal = ["no_std", "embedded-alloc", "cortex-m"]
 
 [dev-dependencies]
 tempfile = "3.10"
