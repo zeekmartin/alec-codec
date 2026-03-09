@@ -185,7 +185,7 @@ enum AlecResult alec_encode_value(struct AlecEncoder *encoder,
  * `ALEC_OK` on success, error code otherwise.
  */
 enum AlecResult alec_encode_multi(struct AlecEncoder *encoder,
-                                  const double *values,
+                                  const float *values,
                                   uintptr_t value_count,
                                   uint64_t timestamp,
                                   const char *_source_id,
@@ -336,7 +336,7 @@ enum AlecResult alec_decoder_load_context(struct AlecDecoder *decoder, const cha
  */
 uint32_t alec_decoder_context_version(const struct AlecDecoder *decoder);
 
-extern uint8_t *k_malloc(uintptr_t size);
+extern uint8_t *k_aligned_alloc(uintptr_t align, uintptr_t size);
 
 extern void k_free(uint8_t *ptr);
 

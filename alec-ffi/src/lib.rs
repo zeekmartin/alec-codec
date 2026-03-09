@@ -30,7 +30,11 @@ mod zephyr_support {
     use core::alloc::{GlobalAlloc, Layout};
 
     extern "C" {
-        fn k_malloc(size: usize) -> *mut u8;
+        // k_aligned_alloc is required instead of k_malloc because k_malloc
+        // returns 4-byte aligned memory on ARM. Rust types such as
+        // Vec<(u16, f64)> and BTreeMap nodes require 8-byte alignment;
+        // using k_malloc causes misaligned access (UB) on Cortex-M33.
+        fn k_aligned_alloc(align: usize, size: usize) -> *mut u8;
         fn k_free(ptr: *mut u8);
     }
 
@@ -38,7 +42,7 @@ mod zephyr_support {
 
     unsafe impl GlobalAlloc for ZephyrAllocator {
         unsafe fn alloc(&self, layout: Layout) -> *mut u8 {
-            unsafe { k_malloc(layout.size()) }
+            unsafe { k_aligned_alloc(layout.align(), layout.size()) }
         }
 
         unsafe fn dealloc(&self, ptr: *mut u8, _layout: Layout) {
@@ -168,7 +172,7 @@ pub struct AlecDecoder {
 #[no_mangle]
 pub extern "C" fn alec_version() -> *const c_char {
     // Include null terminator
-    static VERSION: &[u8] = b"1.2.3\0";
+    static VERSION: &[u8] = b"1.2.4\0";
     VERSION.as_ptr() as *const c_char
 }
 
@@ -340,7 +344,7 @@ pub extern "C" fn alec_encode_value(
 #[no_mangle]
 pub extern "C" fn alec_encode_multi(
     encoder: *mut AlecEncoder,
-    values: *const f64,
+    values: *const f32,
     value_count: usize,
     timestamp: u64,
     _source_id: *const c_char,
@@ -360,11 +364,11 @@ pub extern "C" fn alec_encode_multi(
     let enc = unsafe { &mut *encoder };
     let values_slice = unsafe { slice::from_raw_parts(values, value_count) };
 
-    // Convert to (name_id, value) pairs
+    // Convert f32 → f64 and build (name_id, value) pairs
     let value_pairs: Vec<(u16, f64)> = values_slice
         .iter()
         .enumerate()
-        .map(|(i, &v)| (i as u16, v))
+        .map(|(i, &v)| (i as u16, v as f64))
         .collect();
 
     // Encode multi
@@ -390,7 +394,7 @@ pub extern "C" fn alec_encode_multi(
 
     // Observe all values
     for &v in values_slice {
-        let rd = RawData::new(v, timestamp);
+        let rd = RawData::new(v as f64, timestamp);
         enc.context.observe(&rd);
     }
 
@@ -706,7 +710,7 @@ mod tests {
         let version = alec_version();
         assert!(!version.is_null());
         let version_str = unsafe { CStr::from_ptr(version) }.to_str().unwrap();
-        assert_eq!(version_str, "1.2.3");
+        assert_eq!(version_str, "1.2.4");
     }
 
     #[test]
@@ -782,7 +786,7 @@ mod tests {
     #[test]
     fn test_encode_multi() {
         let enc = alec_encoder_new();
-        let values = [22.0, 22.5, 23.0, 22.8];
+        let values: [f32; 4] = [22.0, 22.5, 23.0, 22.8];
         let mut output = [0u8; 256];
         let mut output_len: usize = 0;
 
