@@ -16,7 +16,7 @@ name = "alec_ffi"
 crate-type = ["staticlib", "cdylib"]
 
 [dependencies]
-alec = { path = "..", default-features = false }
+alec = { path = "..", version = "1.3.0", default-features = false }
 xxhash-rust = { version = "0.8", default-features = false, features = ["xxh64"] }
 embedded-alloc = { version = "0.6", optional = true, default-features = false, features = ["llff"] }
 cortex-m = { version = "0.7", optional = true, features = ["critical-section-single-core"] }
