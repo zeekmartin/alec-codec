@@ -348,11 +348,11 @@ pub extern "C" fn alec_encode_value(
 /// * `values` - Array of f64 values to encode (one per channel)
 /// * `value_count` - Number of channels
 /// * `timestamps` - Per-channel timestamps (array of uint64_t), or NULL to
-///                   use 0 for all channels
+///   use 0 for all channels
 /// * `source_ids` - Per-channel source identifier strings (array of
-///                   `const char*`), or NULL for automatic index-based IDs
+///   `const char*`), or NULL for automatic index-based IDs
 /// * `priorities` - Per-channel priority overrides (1–5), or NULL for
-///                   classifier-assigned priorities
+///   classifier-assigned priorities
 /// * `output` - Output buffer for encoded data
 /// * `output_capacity` - Size of output buffer in bytes
 /// * `output_len` - Pointer to store actual encoded length
@@ -414,12 +414,9 @@ pub extern "C" fn alec_encode_multi(
     // If priorities are provided, set critical thresholds to force classification.
     // Otherwise let the classifier decide naturally.
     // For now, we use the classifier and override priorities post-classification.
-    let (message, classifications) = enc.encoder.encode_multi_adaptive(
-        &channels,
-        timestamp,
-        &enc.context,
-        &enc.classifier,
-    );
+    let (message, classifications) =
+        enc.encoder
+            .encode_multi_adaptive(&channels, timestamp, &enc.context, &enc.classifier);
 
     // If explicit priorities were provided, we need to re-encode with those.
     // However, the cleaner approach is to let the classifier work and use the
@@ -845,9 +842,9 @@ mod tests {
             enc,
             values.as_ptr(),
             values.len(),
-            ptr::null(),  // timestamps
-            ptr::null(),  // source_ids
-            ptr::null(),  // priorities
+            ptr::null(), // timestamps
+            ptr::null(), // source_ids
+            ptr::null(), // priorities
             output.as_mut_ptr(),
             output.len(),
             &mut output_len,
@@ -951,8 +948,16 @@ mod tests {
         let b = b"pressure\0";
         let ha = hash_source_id(a.as_ptr() as *const c_char);
         let hb = hash_source_id(b.as_ptr() as *const c_char);
-        assert!(ha >= 1 && ha <= 127, "hash out of 1-byte varint range: {}", ha);
-        assert!(hb >= 1 && hb <= 127, "hash out of 1-byte varint range: {}", hb);
+        assert!(
+            ha >= 1 && ha <= 127,
+            "hash out of 1-byte varint range: {}",
+            ha
+        );
+        assert!(
+            hb >= 1 && hb <= 127,
+            "hash out of 1-byte varint range: {}",
+            hb
+        );
         assert_ne!(ha, hb);
 
         // Same input → same hash
