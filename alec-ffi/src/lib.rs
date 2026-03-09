@@ -98,10 +98,8 @@ mod bare_metal_support {
 #[cfg(not(feature = "std"))]
 use alloc::{boxed::Box, vec::Vec};
 
-use core::ffi::c_char;
+use core::ffi::{c_char, CStr};
 use core::slice;
-#[cfg(feature = "std")]
-use std::ffi::CStr;
 #[cfg(feature = "std")]
 use std::path::Path;
 
@@ -109,6 +107,18 @@ use alec::classifier::Classifier;
 use alec::context::Context;
 use alec::protocol::RawData;
 use alec::{Decoder, Encoder};
+
+/// Hash a C source_id string to a u32 for context keying.
+/// Returns 0 if the pointer is null.
+fn hash_source_id(source_id: *const c_char) -> u32 {
+    if source_id.is_null() {
+        return 0;
+    }
+    let bytes = unsafe { CStr::from_ptr(source_id) }.to_bytes();
+    // Map to 1..=127 so the source_id always encodes as a 1-byte varint.
+    // 0 is reserved for NULL / "no source".
+    (xxhash_rust::xxh64::xxh64(bytes, 0) % 127 + 1) as u32
+}
 
 /// Result codes for ALEC FFI functions
 #[repr(C)]
@@ -172,7 +182,7 @@ pub struct AlecDecoder {
 #[no_mangle]
 pub extern "C" fn alec_version() -> *const c_char {
     // Include null terminator
-    static VERSION: &[u8] = b"1.2.4\0";
+    static VERSION: &[u8] = b"1.2.5\0";
     VERSION.as_ptr() as *const c_char
 }
 
@@ -286,7 +296,7 @@ pub extern "C" fn alec_encode_value(
     encoder: *mut AlecEncoder,
     value: f64,
     timestamp: u64,
-    _source_id: *const c_char,
+    source_id: *const c_char,
     output: *mut u8,
     output_capacity: usize,
     output_len: *mut usize,
@@ -297,9 +307,10 @@ pub extern "C" fn alec_encode_value(
     }
 
     let enc = unsafe { &mut *encoder };
+    let sid = hash_source_id(source_id);
 
-    // Create RawData
-    let raw_data = RawData::new(value, timestamp);
+    // Create RawData with hashed source_id for per-channel context isolation
+    let raw_data = RawData::with_source(sid, value, timestamp);
 
     // Classify the data
     let classification = enc.classifier.classify(&raw_data, &enc.context);
@@ -710,7 +721,7 @@ mod tests {
         let version = alec_version();
         assert!(!version.is_null());
         let version_str = unsafe { CStr::from_ptr(version) }.to_str().unwrap();
-        assert_eq!(version_str, "1.2.4");
+        assert_eq!(version_str, "1.2.5");
     }
 
     #[test]
@@ -852,6 +863,60 @@ mod tests {
 
         assert_eq!(result, AlecResult::Ok);
         alec_encoder_free(enc);
+    }
+
+    #[test]
+    fn test_encode_value_with_source_id() {
+        let enc = alec_encoder_new();
+        let mut output = [0u8; 256];
+        let mut output_len: usize = 0;
+
+        let source = b"temperature\0";
+        let result = alec_encode_value(
+            enc,
+            22.5,
+            0,
+            source.as_ptr() as *const c_char,
+            output.as_mut_ptr(),
+            output.len(),
+            &mut output_len,
+        );
+
+        assert_eq!(result, AlecResult::Ok);
+        assert!(output_len > 0);
+
+        // Encoding with NULL source_id should also work (defaults to 0)
+        let result2 = alec_encode_value(
+            enc,
+            22.5,
+            1,
+            ptr::null(),
+            output.as_mut_ptr(),
+            output.len(),
+            &mut output_len,
+        );
+        assert_eq!(result2, AlecResult::Ok);
+
+        alec_encoder_free(enc);
+    }
+
+    #[test]
+    fn test_hash_source_id() {
+        // NULL returns 0
+        assert_eq!(hash_source_id(ptr::null()), 0);
+
+        // Non-null returns a deterministic hash in 1..=127 (1-byte varint)
+        let a = b"temperature\0";
+        let b = b"pressure\0";
+        let ha = hash_source_id(a.as_ptr() as *const c_char);
+        let hb = hash_source_id(b.as_ptr() as *const c_char);
+        assert!(ha >= 1 && ha <= 127, "hash out of 1-byte varint range: {}", ha);
+        assert!(hb >= 1 && hb <= 127, "hash out of 1-byte varint range: {}", hb);
+        assert_ne!(ha, hb);
+
+        // Same input → same hash
+        let ha2 = hash_source_id(a.as_ptr() as *const c_char);
+        assert_eq!(ha, ha2);
     }
 
     #[test]

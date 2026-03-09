@@ -161,7 +161,7 @@ void alec_encoder_free(struct AlecEncoder *encoder);
 enum AlecResult alec_encode_value(struct AlecEncoder *encoder,
                                   double value,
                                   uint64_t timestamp,
-                                  const char *_source_id,
+                                  const char *source_id,
                                   uint8_t *output,
                                   uintptr_t output_capacity,
                                   uintptr_t *output_len);

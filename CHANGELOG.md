@@ -7,6 +7,41 @@ et ce projet adhère au [Semantic Versioning](https://semver.org/lang/fr/).
 
 ---
 
+## [1.2.5] - 2026-03-09
+
+### Fixed
+
+- **`alec-ffi` `alec_encode_value()` source_id hashing**: the `source_id`
+  C string parameter was ignored (`_source_id`), and `RawData::new()` was
+  called with `source_id=0` unconditionally. This pooled all channels
+  (temperature, pressure, humidity, etc.) into a single context slot,
+  making EMA predictions meaningless and preventing adaptive compression.
+  The parameter is now hashed via `xxh64()` to a `u32` and passed to
+  `RawData::with_source()` for per-channel context isolation. NULL
+  source_id defaults to `0` (backward-compatible).
+
+- **`alec-ffi` `hash_source_id()` varint overhead**: the initial fix
+  truncated the full xxh64 to u32, producing values like `0xd84dd889`
+  that encode as 5-byte varints in the message payload — adding 4 bytes
+  of pure overhead per message vs a 1-byte varint. Now maps to the range
+  1–127 via `(xxh64(bytes, 0) % 127 + 1) as u32`, guaranteeing a 1-byte
+  varint. NULL source_id stays 0.
+
+- **`EncodedMessage::encoding_type()` varint misparse** (`protocol.rs`):
+  hardcoded `payload[1]` as the encoding byte, assuming source_id is
+  always a 1-byte varint (`< 128`). Any source_id >= 128 caused the
+  method to read a varint continuation byte as the encoding type,
+  returning `None` or a wrong variant. Now properly decodes the varint
+  to find the encoding byte position.
+
+### Changed
+
+- `alec-ffi` version bumped to 1.2.5
+- `alec-ffi` version string updated to "1.2.5"
+- Added `xxhash-rust` dependency to `alec-ffi` (`no_std`-compatible)
+
+---
+
 ## [1.2.4] - 2026-03-09
 
 ### Fixed
