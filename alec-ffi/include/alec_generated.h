@@ -336,7 +336,7 @@ enum AlecResult alec_decoder_load_context(struct AlecDecoder *decoder, const cha
  */
 uint32_t alec_decoder_context_version(const struct AlecDecoder *decoder);
 
-extern uint8_t *k_malloc(uintptr_t size);
+extern uint8_t *k_aligned_alloc(uintptr_t align, uintptr_t size);
 
 extern void k_free(uint8_t *ptr);
 
