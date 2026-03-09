@@ -38,8 +38,8 @@ fn compression_diagnostic() {
     let classifier = Classifier::default();
     let mut context = Context::new();
 
-    // Hash "temp" the same way alec-ffi does: xxh64 truncated to u32
-    let source_id = xxhash_rust::xxh64::xxh64(b"temp", 0) as u32;
+    // Hash "temp" the same way alec-ffi does: xxh64 mod 127 + 1 (1-byte varint)
+    let source_id = (xxhash_rust::xxh64::xxh64(b"temp", 0) % 127 + 1) as u32;
 
     let drift_pattern: [f64; 10] = [8.0, -6.0, 10.0, -4.0, 7.0, -9.0, 5.0, -3.0, 11.0, -8.0];
     let mut value = 2400.0_f64;
@@ -100,9 +100,11 @@ fn compression_diagnostic() {
         // ── Encode ──────────────────────────────────────────────────
         let message = encoder.encode(&raw_data, &classification, &context);
         let encoded = message.to_bytes();
-        // message.encoding_type() assumes 1-byte varint source_id — wrong for large hashes.
-        // Parse the varint properly to find the encoding byte.
-        let encoding = extract_encoding_type(&message.payload);
+        // Use both: the now-fixed encoding_type() and our manual parser for cross-check
+        let encoding = message.encoding_type();
+        let encoding_manual = extract_encoding_type(&message.payload);
+        assert_eq!(encoding, encoding_manual,
+            "encoding_type() disagrees with manual varint parse at message {}", i);
 
         // ── Observe (update context AFTER encoding, like FFI does) ─
         context.observe(&raw_data);

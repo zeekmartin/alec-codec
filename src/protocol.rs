@@ -331,15 +331,20 @@ impl EncodedMessage {
         self.payload.is_empty()
     }
 
-    /// Get the encoding type from the payload (first byte after source_id)
+    /// Get the encoding type from the payload (first byte after source_id varint)
     pub fn encoding_type(&self) -> Option<EncodingType> {
         // Payload format: source_id (varint) + encoding_type (1 byte) + value
-        // For simplicity, assuming source_id is 1 byte (< 128)
-        if self.payload.len() >= 2 {
-            EncodingType::from_u8(self.payload[1])
-        } else {
-            None
+        // Decode the varint to find where the encoding byte starts.
+        let mut pos = 0;
+        while pos < self.payload.len() {
+            let byte = self.payload[pos];
+            pos += 1;
+            if byte & 0x80 == 0 {
+                // End of varint — next byte is the encoding type
+                return self.payload.get(pos).and_then(|&b| EncodingType::from_u8(b));
+            }
         }
+        None
     }
 
     /// Serialize the entire message to bytes

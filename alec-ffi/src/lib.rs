@@ -115,7 +115,9 @@ fn hash_source_id(source_id: *const c_char) -> u32 {
         return 0;
     }
     let bytes = unsafe { CStr::from_ptr(source_id) }.to_bytes();
-    xxhash_rust::xxh64::xxh64(bytes, 0) as u32
+    // Map to 1..=127 so the source_id always encodes as a 1-byte varint.
+    // 0 is reserved for NULL / "no source".
+    (xxhash_rust::xxh64::xxh64(bytes, 0) % 127 + 1) as u32
 }
 
 /// Result codes for ALEC FFI functions
@@ -903,13 +905,13 @@ mod tests {
         // NULL returns 0
         assert_eq!(hash_source_id(ptr::null()), 0);
 
-        // Non-null returns a deterministic nonzero hash
+        // Non-null returns a deterministic hash in 1..=127 (1-byte varint)
         let a = b"temperature\0";
         let b = b"pressure\0";
         let ha = hash_source_id(a.as_ptr() as *const c_char);
         let hb = hash_source_id(b.as_ptr() as *const c_char);
-        assert_ne!(ha, 0);
-        assert_ne!(hb, 0);
+        assert!(ha >= 1 && ha <= 127, "hash out of 1-byte varint range: {}", ha);
+        assert!(hb >= 1 && hb <= 127, "hash out of 1-byte varint range: {}", hb);
         assert_ne!(ha, hb);
 
         // Same input → same hash
