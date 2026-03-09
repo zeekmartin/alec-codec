@@ -416,7 +416,7 @@ impl Encoder {
         // Separate into buckets by priority tier
         let mut must_include: Vec<(&ChannelInput, &Classification)> = Vec::new(); // P1-P3
         let mut deferred: Vec<(&ChannelInput, &Classification)> = Vec::new(); // P4
-        // P5: excluded from frame
+                                                                              // P5: excluded from frame
 
         for (ch, cls) in &classified {
             match cls.priority {
@@ -489,12 +489,7 @@ impl Encoder {
     ///
     /// Uses `name_id as u32` as the context key for encoding decisions, since
     /// the decoder only has the name_id from the wire and must use the same key.
-    fn write_channel_entry(
-        &self,
-        ch: &ChannelInput,
-        context: &Context,
-        payload: &mut Vec<u8>,
-    ) {
+    fn write_channel_entry(&self, ch: &ChannelInput, context: &Context, payload: &mut Vec<u8>) {
         // name_id (2B BE)
         payload.extend_from_slice(&ch.name_id.to_be_bytes());
 

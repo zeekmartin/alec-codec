@@ -352,7 +352,10 @@ impl EncodedMessage {
             pos += 1;
             if byte & 0x80 == 0 {
                 // End of varint — next byte is the encoding type
-                return self.payload.get(pos).and_then(|&b| EncodingType::from_u8(b));
+                return self
+                    .payload
+                    .get(pos)
+                    .and_then(|&b| EncodingType::from_u8(b));
             }
         }
         None

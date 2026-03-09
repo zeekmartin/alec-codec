@@ -60,7 +60,10 @@ fn compression_diagnostic() {
 
     println!();
     println!("=============================================================================");
-    println!("  ALEC COMPRESSION DIAGNOSTIC — 50 messages, source_id=\"temp\" (hash={:#010x})", source_id);
+    println!(
+        "  ALEC COMPRESSION DIAGNOSTIC — 50 messages, source_id=\"temp\" (hash={:#010x})",
+        source_id
+    );
     println!("  scale_factor = {}", context.scale_factor());
     println!("=============================================================================");
     println!();
@@ -85,7 +88,11 @@ fn compression_diagnostic() {
         let scale = context.scale_factor() as f64;
         let scaled_delta = pred_delta.map(|d| {
             let raw = d * scale;
-            if raw >= 0.0 { raw + 0.5 } else { raw - 0.5 }
+            if raw >= 0.0 {
+                raw + 0.5
+            } else {
+                raw - 0.5
+            }
         });
         let fits_i8 = scaled_delta
             .map(|sd| sd >= i8::MIN as f64 && sd <= i8::MAX as f64)
@@ -103,23 +110,53 @@ fn compression_diagnostic() {
         // Use both: the now-fixed encoding_type() and our manual parser for cross-check
         let encoding = message.encoding_type();
         let encoding_manual = extract_encoding_type(&message.payload);
-        assert_eq!(encoding, encoding_manual,
-            "encoding_type() disagrees with manual varint parse at message {}", i);
+        assert_eq!(
+            encoding, encoding_manual,
+            "encoding_type() disagrees with manual varint parse at message {}",
+            i
+        );
 
         // ── Observe (update context AFTER encoding, like FFI does) ─
         context.observe(&raw_data);
 
         // ── Bookkeeping ─────────────────────────────────────────────
         let enc_type_str = match encoding {
-            Some(EncodingType::Raw64) => { raw64_count += 1; "Raw64" }
-            Some(EncodingType::Raw32) => { raw32_count += 1; "Raw32" }
-            Some(EncodingType::Delta8) => { delta8_count += 1; "Delta8" }
-            Some(EncodingType::Delta16) => { delta16_count += 1; "Delta16" }
-            Some(EncodingType::Delta32) => { delta32_count += 1; "Delta32" }
-            Some(EncodingType::Repeated) => { repeated_count += 1; "Repeated" }
-            Some(EncodingType::Interpolated) => { interpolated_count += 1; "Interpolated" }
-            Some(EncodingType::Pattern) | Some(EncodingType::PatternDelta) => { pattern_count_enc += 1; "Pattern" }
-            _ => { other_count += 1; "???" }
+            Some(EncodingType::Raw64) => {
+                raw64_count += 1;
+                "Raw64"
+            }
+            Some(EncodingType::Raw32) => {
+                raw32_count += 1;
+                "Raw32"
+            }
+            Some(EncodingType::Delta8) => {
+                delta8_count += 1;
+                "Delta8"
+            }
+            Some(EncodingType::Delta16) => {
+                delta16_count += 1;
+                "Delta16"
+            }
+            Some(EncodingType::Delta32) => {
+                delta32_count += 1;
+                "Delta32"
+            }
+            Some(EncodingType::Repeated) => {
+                repeated_count += 1;
+                "Repeated"
+            }
+            Some(EncodingType::Interpolated) => {
+                interpolated_count += 1;
+                "Interpolated"
+            }
+            Some(EncodingType::Pattern) | Some(EncodingType::PatternDelta) => {
+                pattern_count_enc += 1;
+                "Pattern"
+            }
+            _ => {
+                other_count += 1;
+                "???"
+            }
         };
 
         if first_non_raw32.is_none() && encoding != Some(EncodingType::Raw32) {
@@ -145,12 +182,18 @@ fn compression_diagnostic() {
         println!("    ema_confidence = {:?}", ema_conf);
         println!("    pred_delta     = {:?}", pred_delta);
         println!("    scaled_delta   = {:?}  (scale={})", scaled_delta, scale);
-        println!("    fits_i8?       = {}   fits_i16? = {}", fits_i8, fits_i16);
+        println!(
+            "    fits_i8?       = {}   fits_i16? = {}",
+            fits_i8, fits_i16
+        );
         println!("  OUTPUT:");
         println!("    encoding       = {}", enc_type_str);
         println!("    total_bytes    = {}", encoded.len());
         println!("    payload_hex    = {}", hex_dump(&message.payload));
-        println!("    ratio_vs_f64   = {:.2}x", 8.0 / message.payload.len().max(1) as f64);
+        println!(
+            "    ratio_vs_f64   = {:.2}x",
+            8.0 / message.payload.len().max(1) as f64
+        );
         println!("  CONTEXT (after observe):");
         println!("    pattern_count  = {}", context.pattern_count());
         println!("    context_ver    = {}", context.version());
@@ -183,5 +226,9 @@ fn compression_diagnostic() {
 }
 
 fn hex_dump(bytes: &[u8]) -> String {
-    bytes.iter().map(|b| format!("{:02x}", b)).collect::<Vec<_>>().join(" ")
+    bytes
+        .iter()
+        .map(|b| format!("{:02x}", b))
+        .collect::<Vec<_>>()
+        .join(" ")
 }

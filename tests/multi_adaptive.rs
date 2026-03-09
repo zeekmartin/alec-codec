@@ -58,7 +58,11 @@ fn test_encode_multi_adaptive() {
     }
     pos += 1; // end of varint
 
-    assert_eq!(payload[pos], EncodingType::Multi as u8, "Expected Multi tag");
+    assert_eq!(
+        payload[pos],
+        EncodingType::Multi as u8,
+        "Expected Multi tag"
+    );
     pos += 1;
 
     let count = payload[pos];
@@ -172,8 +176,7 @@ fn test_encode_multi_shared_header() {
     let channels = make_channels(&base, &drift);
 
     // Multi-channel encode: one shared header
-    let (multi_msg, _) =
-        encoder_multi.encode_multi_adaptive(&channels, 300, &context, &classifier);
+    let (multi_msg, _) = encoder_multi.encode_multi_adaptive(&channels, 300, &context, &classifier);
     let multi_bytes = multi_msg.to_bytes();
 
     // Single-channel encode: 5 separate headers
@@ -203,7 +206,11 @@ fn test_encode_multi_shared_header() {
 
     // Multi should save substantially (header amortisation + P5 exclusion)
     let saved = single_total - multi_bytes.len();
-    println!("Saved: {} bytes ({:.0}%)", saved, (saved as f64 / single_total as f64) * 100.0);
+    println!(
+        "Saved: {} bytes ({:.0}%)",
+        saved,
+        (saved as f64 / single_total as f64) * 100.0
+    );
     // At minimum, we save several headers. The exact amount depends on how many
     // channels are included vs excluded as P5.
     assert!(
@@ -251,6 +258,11 @@ fn test_encode_multi_adaptive_decode_roundtrip() {
             "ch[{}] expected={:.4} decoded={:.4} error={:.6}",
             name_id, ch.value, decoded_val, error
         );
-        assert!(error < 0.5, "Decode error too large for ch[{}]: {}", name_id, error);
+        assert!(
+            error < 0.5,
+            "Decode error too large for ch[{}]: {}",
+            name_id,
+            error
+        );
     }
 }

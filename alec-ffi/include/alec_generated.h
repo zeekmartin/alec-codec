@@ -179,11 +179,11 @@ enum AlecResult alec_encode_value(struct AlecEncoder *encoder,
  * * `values` - Array of f64 values to encode (one per channel)
  * * `value_count` - Number of channels
  * * `timestamps` - Per-channel timestamps (array of uint64_t), or NULL to
- *                   use 0 for all channels
+ *   use 0 for all channels
  * * `source_ids` - Per-channel source identifier strings (array of
- *                   `const char*`), or NULL for automatic index-based IDs
+ *   `const char*`), or NULL for automatic index-based IDs
  * * `priorities` - Per-channel priority overrides (1–5), or NULL for
- *                   classifier-assigned priorities
+ *   classifier-assigned priorities
  * * `output` - Output buffer for encoded data
  * * `output_capacity` - Size of output buffer in bytes
  * * `output_len` - Pointer to store actual encoded length
