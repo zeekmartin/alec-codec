@@ -185,7 +185,7 @@ enum AlecResult alec_encode_value(struct AlecEncoder *encoder,
  * `ALEC_OK` on success, error code otherwise.
  */
 enum AlecResult alec_encode_multi(struct AlecEncoder *encoder,
-                                  const double *values,
+                                  const float *values,
                                   uintptr_t value_count,
                                   uint64_t timestamp,
                                   const char *_source_id,

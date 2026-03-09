@@ -19,6 +19,14 @@ et ce projet adhère au [Semantic Versioning](https://semver.org/lang/fr/).
   `ALEC_ERR_NULL_POINTER` (rc=5) on the first call to
   `alec_encode_multi()`. Validated on Nordic nRF9151 / Zephyr RTOS.
 
+- **`alec-ffi` `alec_encode_multi()` type mismatch**: change `values`
+  parameter from `*const f64` to `*const f32` to match the C header
+  declaration (`const float*`). The previous f64 signature caused Rust
+  to read 8 bytes per value from a buffer of 4-byte floats, reading
+  past allocated memory (UB) on Cortex-M33 and returning
+  `ALEC_ERR_NULL_POINTER` (rc=5). The f32 values are now widened to
+  f64 inside the FFI shim before being passed to the encoder.
+
 ### Changed
 
 - `alec` and `alec-ffi` version bumped to 1.2.4

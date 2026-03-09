@@ -174,7 +174,7 @@ AlecResult alec_encode_value(
  */
 AlecResult alec_encode_multi(
     AlecEncoder* encoder,
-    const double* values,
+    const float* values,
     size_t value_count,
     uint64_t timestamp,
     const char* source_id,

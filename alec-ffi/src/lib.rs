@@ -344,7 +344,7 @@ pub extern "C" fn alec_encode_value(
 #[no_mangle]
 pub extern "C" fn alec_encode_multi(
     encoder: *mut AlecEncoder,
-    values: *const f64,
+    values: *const f32,
     value_count: usize,
     timestamp: u64,
     _source_id: *const c_char,
@@ -364,11 +364,11 @@ pub extern "C" fn alec_encode_multi(
     let enc = unsafe { &mut *encoder };
     let values_slice = unsafe { slice::from_raw_parts(values, value_count) };
 
-    // Convert to (name_id, value) pairs
+    // Convert f32 → f64 and build (name_id, value) pairs
     let value_pairs: Vec<(u16, f64)> = values_slice
         .iter()
         .enumerate()
-        .map(|(i, &v)| (i as u16, v))
+        .map(|(i, &v)| (i as u16, v as f64))
         .collect();
 
     // Encode multi
@@ -394,7 +394,7 @@ pub extern "C" fn alec_encode_multi(
 
     // Observe all values
     for &v in values_slice {
-        let rd = RawData::new(v, timestamp);
+        let rd = RawData::new(v as f64, timestamp);
         enc.context.observe(&rd);
     }
 
@@ -786,7 +786,7 @@ mod tests {
     #[test]
     fn test_encode_multi() {
         let enc = alec_encoder_new();
-        let values = [22.0, 22.5, 23.0, 22.8];
+        let values: [f32; 4] = [22.0, 22.5, 23.0, 22.8];
         let mut output = [0u8; 256];
         let mut output_len: usize = 0;
 
