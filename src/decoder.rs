@@ -336,15 +336,19 @@ impl Decoder {
         Ok(base_value + (delta as f64 / scale))
     }
 
-    /// Decode multi-value message
+    /// Decode multi-value message.
+    ///
+    /// Handles all per-channel encoding types (Raw64, Raw32, Delta8, Delta16,
+    /// Delta32, Repeated, Interpolated). The `name_id` of each channel is used
+    /// as its `source_id` (cast to `u32`) for context-dependent decodings.
     pub fn decode_multi(
         &mut self,
         message: &EncodedMessage,
-        _context: &Context,
+        context: &Context,
     ) -> Result<Vec<(u16, f64)>> {
         let payload = &message.payload;
 
-        // Source ID
+        // Source ID (frame-level, ignored for per-channel decode)
         let (_source_id, mut offset) = self.decode_varint(payload)?;
 
         // Encoding type (should be Multi)
@@ -401,25 +405,59 @@ impl Decoder {
                 }
                 .into());
             }
-            let value_encoding = payload[offset];
+            let value_encoding_byte = payload[offset];
             offset += 1;
 
-            // Value (assuming Raw32 for now)
-            if value_encoding == EncodingType::Raw32 as u8 {
-                if offset + 4 > payload.len() {
-                    return Err(DecodeError::BufferTooShort {
-                        needed: offset + 4,
-                        available: payload.len(),
+            let enc_type = EncodingType::from_u8(value_encoding_byte)
+                .ok_or(DecodeError::UnknownEncodingType(value_encoding_byte))?;
+
+            // Use name_id as per-channel source_id (matches encoder convention)
+            let ch_source_id = name_id as u32;
+
+            let value = match enc_type {
+                EncodingType::Raw64 => {
+                    let v = self.decode_raw64(&payload[offset..])?;
+                    offset += 8;
+                    v
+                }
+                EncodingType::Raw32 => {
+                    let v = self.decode_raw32(&payload[offset..])?;
+                    offset += 4;
+                    v
+                }
+                EncodingType::Delta8 => {
+                    let v = self.decode_delta8(&payload[offset..], ch_source_id, context)?;
+                    offset += 1;
+                    v
+                }
+                EncodingType::Delta16 => {
+                    let v = self.decode_delta16(&payload[offset..], ch_source_id, context)?;
+                    offset += 2;
+                    v
+                }
+                EncodingType::Delta32 => {
+                    let v = self.decode_delta32(&payload[offset..], ch_source_id, context)?;
+                    offset += 4;
+                    v
+                }
+                EncodingType::Repeated => {
+                    self.decode_repeated(ch_source_id, context)?
+                    // 0 extra bytes
+                }
+                EncodingType::Interpolated => {
+                    self.decode_interpolated(ch_source_id, context)?
+                    // 0 extra bytes
+                }
+                _ => {
+                    return Err(DecodeError::MalformedMessage {
+                        offset,
+                        reason: "Unsupported encoding in multi frame".to_string(),
                     }
                     .into());
                 }
-                let bytes: [u8; 4] = payload[offset..offset + 4].try_into().unwrap();
-                let value = f32::from_be_bytes(bytes) as f64;
-                offset += 4;
-                values.push((name_id, value));
-            } else {
-                return Err(DecodeError::UnknownEncodingType(value_encoding).into());
-            }
+            };
+
+            values.push((name_id, value));
         }
 
         Ok(values)

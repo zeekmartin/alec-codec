@@ -78,7 +78,9 @@ pub use decoder::Decoder;
 pub use encoder::Encoder;
 pub use error::{AlecError, Result};
 pub use metrics::{CompressionMetrics, ContextMetrics};
-pub use protocol::{EncodedMessage, EncodingType, MessageHeader, MessageType, Priority, RawData};
+pub use protocol::{
+    ChannelInput, EncodedMessage, EncodingType, MessageHeader, MessageType, Priority, RawData,
+};
 pub use sync::{
     SyncAnnounce, SyncConfig, SyncDiff, SyncMessage, SyncRequest, SyncState, Synchronizer,
 };

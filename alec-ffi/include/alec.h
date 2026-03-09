@@ -156,16 +156,24 @@ AlecResult alec_encode_value(
 );
 
 /**
- * Encode multiple values at once.
+ * Encode multiple values with adaptive per-channel compression.
  *
- * More efficient than encoding values individually when you have
- * multiple readings from the same timestamp.
+ * Each channel is independently classified and encoded using the optimal
+ * strategy (Repeated, Delta8, Delta16, Raw32, Raw64). A single shared
+ * header (13 bytes) covers all channels, amortising the header cost.
+ *
+ * P5 (disposable) channels are excluded from the output frame but their
+ * context is still updated for future predictions.
  *
  * @param encoder         Encoder handle.
- * @param values          Array of values to encode.
- * @param value_count     Number of values in the array.
- * @param timestamp       Timestamp for the values.
- * @param source_id       Source identifier string (can be NULL).
+ * @param values          Array of f64 values (one per channel).
+ * @param value_count     Number of channels.
+ * @param timestamps      Per-channel timestamps (array of uint64_t),
+ *                        or NULL to use 0 for all channels.
+ * @param source_ids      Per-channel source identifier strings (array of
+ *                        const char*), or NULL for automatic index-based IDs.
+ * @param priorities      Per-channel priority overrides (1-5),
+ *                        or NULL for classifier-assigned priorities.
  * @param output          Output buffer for encoded data.
  * @param output_capacity Size of output buffer in bytes.
  * @param output_len      Pointer to store actual encoded length.
@@ -174,10 +182,11 @@ AlecResult alec_encode_value(
  */
 AlecResult alec_encode_multi(
     AlecEncoder* encoder,
-    const float* values,
+    const double* values,
     size_t value_count,
-    uint64_t timestamp,
-    const char* source_id,
+    const uint64_t* timestamps,
+    const char* const* source_ids,
+    const uint8_t* priorities,
     uint8_t* output,
     size_t output_capacity,
     size_t* output_len
