@@ -36,11 +36,11 @@
 #[cfg(not(feature = "std"))]
 use alloc::{vec, vec::Vec};
 
-use crate::classifier::Classification;
+use crate::classifier::{Classification, Classifier};
 use crate::context::Context;
 use crate::metrics::CompressionMetrics;
 use crate::protocol::{
-    EncodedMessage, EncodingType, MessageHeader, MessageType, Priority, RawData,
+    ChannelInput, EncodedMessage, EncodingType, MessageHeader, MessageType, Priority, RawData,
 };
 
 /// Encoder for ALEC messages.
@@ -381,6 +381,129 @@ impl Encoder {
         };
 
         EncodedMessage::new(header, payload)
+    }
+
+    /// Maximum frame size for P4 inclusion (BLE ATT_MTU)
+    const MULTI_FRAME_CAP: usize = 127;
+
+    /// Encode multiple channels into a single frame with adaptive per-channel
+    /// compression and priority-based inclusion.
+    ///
+    /// - P1–P3 channels: always included, adaptively encoded
+    /// - P4 channels: included only if frame stays under `MULTI_FRAME_CAP`
+    /// - P5 channels: excluded from the frame (context still updated by caller)
+    ///
+    /// Returns the encoded message and a list of classifications (one per input
+    /// channel, in the same order) so the caller can observe P5 channels.
+    pub fn encode_multi_adaptive(
+        &mut self,
+        channels: &[ChannelInput],
+        timestamp: u64,
+        context: &Context,
+        classifier: &Classifier,
+    ) -> (EncodedMessage, Vec<Classification>) {
+        // Classify every channel using name_id as context key
+        // (matches decoder convention: name_id → source_id for multi frames)
+        let classified: Vec<(&ChannelInput, Classification)> = channels
+            .iter()
+            .map(|ch| {
+                let raw = RawData::with_source(ch.name_id as u32, ch.value, timestamp);
+                let cls = classifier.classify(&raw, context);
+                (ch, cls)
+            })
+            .collect();
+
+        // Separate into buckets by priority tier
+        let mut must_include: Vec<(&ChannelInput, &Classification)> = Vec::new(); // P1-P3
+        let mut deferred: Vec<(&ChannelInput, &Classification)> = Vec::new(); // P4
+        // P5: excluded from frame
+
+        for (ch, cls) in &classified {
+            match cls.priority {
+                Priority::P1Critical | Priority::P2Important | Priority::P3Normal => {
+                    must_include.push((ch, cls));
+                }
+                Priority::P4Deferred => {
+                    deferred.push((ch, cls));
+                }
+                Priority::P5Disposable => {} // skip
+            }
+        }
+
+        // Sort must_include by priority (P1 first)
+        must_include.sort_by_key(|(_, cls)| cls.priority);
+
+        // Build payload
+        let mut payload = Vec::new();
+
+        // Source ID 0 for the frame-level (channels carry their own)
+        self.encode_varint(0, &mut payload);
+
+        // Multi encoding tag
+        payload.push(EncodingType::Multi as u8);
+
+        // Count placeholder — we'll fill it after building entries
+        let count_pos = payload.len();
+        payload.push(0u8);
+
+        let mut included_count: u8 = 0;
+
+        // Encode must-include channels (P1–P3)
+        for (ch, _cls) in &must_include {
+            self.write_channel_entry(ch, context, &mut payload);
+            included_count += 1;
+        }
+
+        // Try to fit P4 (deferred) channels
+        let header_overhead = MessageHeader::SIZE;
+        for (ch, _cls) in &deferred {
+            // Speculatively encode into a temp buffer to check size
+            let mut tmp = Vec::new();
+            self.write_channel_entry(ch, context, &mut tmp);
+            if header_overhead + payload.len() + tmp.len() <= Self::MULTI_FRAME_CAP {
+                payload.extend(tmp);
+                included_count += 1;
+            }
+        }
+
+        // Fill the count byte
+        payload[count_pos] = included_count;
+
+        let header = MessageHeader {
+            version: crate::PROTOCOL_VERSION,
+            message_type: MessageType::Data,
+            priority: must_include
+                .first()
+                .map(|(_, cls)| cls.priority)
+                .unwrap_or(Priority::P3Normal),
+            sequence: self.next_sequence(),
+            timestamp: (timestamp & 0xFFFFFFFF) as u32,
+            context_version: context.version(),
+        };
+
+        let classifications = classified.into_iter().map(|(_, cls)| cls).collect();
+        (EncodedMessage::new(header, payload), classifications)
+    }
+
+    /// Write one channel entry into the multi payload.
+    ///
+    /// Uses `name_id as u32` as the context key for encoding decisions, since
+    /// the decoder only has the name_id from the wire and must use the same key.
+    fn write_channel_entry(
+        &self,
+        ch: &ChannelInput,
+        context: &Context,
+        payload: &mut Vec<u8>,
+    ) {
+        // name_id (2B BE)
+        payload.extend_from_slice(&ch.name_id.to_be_bytes());
+
+        // Use name_id as context key (matches decoder's name_id→source_id mapping)
+        let data = RawData::with_source(ch.name_id as u32, ch.value, 0);
+        let (encoding_type, encoded_value) = self.choose_encoding(&data, context);
+
+        payload.push(encoding_type as u8);
+        payload.extend(encoded_value);
     }
 }
 

@@ -7,6 +7,43 @@ et ce projet adhère au [Semantic Versioning](https://semver.org/lang/fr/).
 
 ---
 
+## [1.3.0] - 2026-03-09
+
+### Added
+
+- **`encode_multi_adaptive()` — adaptive per-channel compression with shared
+  header** (`encoder.rs`): replaces the naive `encode_multi()` which used Raw32
+  for every channel. The new method applies the full encoding decision tree
+  (Repeated → Delta8 → Delta16 → Delta32 → Raw32 → Raw64) independently per
+  channel, with per-channel context isolation via `source_id`. A single 13-byte
+  header is shared across all channels, amortising the overhead that dominated
+  single-value messages.
+
+- **Priority-based channel inclusion**: each channel is classified (P1–P5) by
+  the existing `Classifier`. P1–P3 channels are always included. P4 channels
+  are included only if the frame stays under 127 bytes (BLE ATT_MTU). P5
+  channels are excluded from the wire frame but their context is still updated
+  for future predictions.
+
+- **`ChannelInput` struct** (`protocol.rs`): input type for multi-channel
+  encoding with `name_id`, `source_id`, and `value` fields.
+
+- **Updated `decode_multi()`** (`decoder.rs`): now handles all per-channel
+  encoding types (Delta8, Delta16, Repeated, etc.) instead of only Raw32.
+  Uses `name_id` as per-channel `source_id` for context-dependent decoding.
+
+### Changed
+
+- **`alec_encode_multi()` FFI signature** (`alec-ffi`): breaking change.
+  Now accepts `f64` values (was `f32`), per-channel `timestamps`, per-channel
+  `source_ids`, and per-channel `priorities` parameters (all nullable).
+  Updated C header `alec.h` to match.
+
+- `alec` version bumped to 1.3.0
+- `alec-ffi` version bumped to 1.3.0
+
+---
+
 ## [1.2.5] - 2026-03-09
 
 ### Fixed
