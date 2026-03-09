@@ -18,6 +18,7 @@
   <a href="#features">Features</a> •
   <a href="#use-cases">Use Cases</a> •
   <a href="#quick-start">Quick Start</a> •
+  <a href="#embedded--nostd">Embedded / no_std</a> •
   <a href="#documentation">Documentation</a> •
   <a href="#contributing">Contributing</a>
 </p>
@@ -110,26 +111,29 @@ ALEC consists of multiple crates:
 | Crate | Description | Features |
 |-------|-------------|----------|
 | `alec` | Core compression codec | Encoder, Decoder, Context |
+| `alec-ffi` | C/C++ bindings | FFI interface, embedded targets |
 | `alec-gateway` | Multi-sensor orchestration | Channel management, Frame aggregation |
 | `alec-gateway[metrics]` | Entropy observability | TC, H_joint, Resilience R |
 | `alec-complexity` | Anomaly detection | Baseline, Z-scores, Events |
-| `alec-ffi` | C/C++ bindings | FFI interface |
 
 ### Quick Install
 
 ```toml
 # Core codec only
 [dependencies]
-alec = "1.0"
+alec = "1.2"
 
-# Gateway with metrics
+# C FFI (std)
 [dependencies]
-alec-gateway = { version = "0.1", features = ["metrics"] }
+alec-ffi = "1.2"
 
-# Full observability stack
+# C FFI for embedded (bare-metal, no RTOS)
 [dependencies]
-alec-gateway = { version = "0.1", features = ["metrics"] }
-alec-complexity = { version = "0.1", features = ["gateway"] }
+alec-ffi = { version = "1.2", default-features = false, features = ["bare-metal"] }
+
+# C FFI for Zephyr RTOS
+[dependencies]
+alec-ffi = { version = "1.2", default-features = false, features = ["zephyr"] }
 ```
 
 ---
@@ -139,19 +143,14 @@ alec-complexity = { version = "0.1", features = ["gateway"] }
 ### Prerequisites
 
 - Rust 1.70+ (encoder and decoder)
-- Or: C compiler (embedded encoder only)
+- Or: C compiler (embedded encoder only via `alec-ffi`)
 
 ### Installation
 
 ```bash
-# Clone the repo
 git clone https://github.com/zeekmartin/alec-codec.git
 cd alec-codec
-
-# Build
 cargo build --release
-
-# Run tests
 cargo test
 ```
 
@@ -161,34 +160,101 @@ cargo test
 use alec::{Encoder, Decoder, Context, RawData};
 
 fn main() {
-    // Create encoder and decoder with shared context
     let mut ctx_emitter = Context::new();
     let mut ctx_receiver = Context::new();
-    
+
     let encoder = Encoder::new();
     let decoder = Decoder::new();
-    
-    // Simulate measurements
+
     for i in 0..100 {
         let data = RawData::new(20.0 + (i as f64 * 0.1), i);
-        
+
         // Encode
         let message = encoder.encode(&data, &ctx_emitter);
         ctx_emitter.observe(&data);
-        
-        // ... transmit message ...
-        
+
         // Decode
         let decoded = decoder.decode(&message, &ctx_receiver).unwrap();
         ctx_receiver.observe(&decoded);
-        
-        println!("Original: {:.1}, Size: {} bytes", 
-                 data.value, message.len());
+
+        println!("Original: {:.1}, Size: {} bytes", data.value, message.len());
     }
 }
 ```
 
 ➡️ [Complete getting started guide](docs/getting-started.md)
+
+---
+
+## Embedded / no_std
+
+ALEC supports embedded targets from version 1.2.0. The `alec-ffi` crate provides C bindings with three feature tiers:
+
+### Feature comparison
+
+| Feature | Allocator | Panic handler | Target |
+|---------|-----------|---------------|--------|
+| `std` (default) | System | System | Linux, macOS, Windows |
+| `no_std` | User-provided | User-provided | Any embedded |
+| `bare-metal` | `embedded-alloc` (8KB heap) | `loop {}` | Bare-metal (no RTOS) |
+| `zephyr` | Zephyr `k_malloc`/`k_free` | `loop {}` | Zephyr RTOS |
+
+### Bare-metal (no RTOS)
+
+```toml
+alec-ffi = { version = "1.2", default-features = false, features = ["bare-metal"] }
+```
+
+```bash
+rustup target add thumbv8m.main-none-eabihf
+cargo build --release --target thumbv8m.main-none-eabihf --no-default-features --features bare-metal
+```
+
+### Zephyr RTOS
+
+```toml
+alec-ffi = { version = "1.2", default-features = false, features = ["zephyr"] }
+```
+
+```bash
+rustup target add thumbv8m.main-none-eabi
+cargo build --release --target thumbv8m.main-none-eabi --no-default-features --features zephyr
+```
+
+> **Note on target selection for Zephyr:** Use `thumbv8m.main-none-eabi` (not `eabihf`). Zephyr's nRF91 toolchain compiles in `nofp` mode — using the `hf` variant causes an ABI mismatch at link time.
+
+### CMakeLists.txt integration (Zephyr)
+
+```cmake
+add_library(alec_ffi STATIC IMPORTED GLOBAL)
+set_target_properties(alec_ffi PROPERTIES
+    IMPORTED_LOCATION ${CMAKE_CURRENT_SOURCE_DIR}/libalec_ffi.a
+)
+target_include_directories(alec_ffi INTERFACE
+    ${CMAKE_CURRENT_SOURCE_DIR}/include
+)
+# Do NOT use --whole-archive — causes premature static initialisation before Zephyr heap is ready
+```
+
+Add a `critical_section.c` to your Zephyr app:
+
+```c
+#include <zephyr/kernel.h>
+
+static unsigned int cs_irq_key;
+
+void _critical_section_1_0_acquire(void) { cs_irq_key = irq_lock(); }
+void _critical_section_1_0_release(void) { irq_unlock(cs_irq_key); }
+```
+
+### Validated embedded platforms
+
+| Platform | SoC | Feature | Status |
+|----------|-----|---------|--------|
+| Nordic nRF9151 SMA-DK | Cortex-M33 | `zephyr` | ✅ Validated |
+| Generic Cortex-M33 | thumbv8m | `bare-metal` | ✅ Builds |
+
+➡️ [See the full NB-IoT demo](https://github.com/zeekmartin/alec-nrf9151-demo)
 
 ---
 
@@ -212,16 +278,7 @@ fn main() {
 | [Metrics Guide](docs/METRICS.md) | Entropy and resilience computation |
 | [Complexity Guide](docs/COMPLEXITY.md) | Baseline learning and anomaly detection |
 | [Configuration](docs/CONFIGURATION.md) | Complete configuration reference |
-| [JSON Schemas](docs/JSON_SCHEMAS.md) | Snapshot JSON formats |
 | [Integration](docs/INTEGRATION.md) | Integration patterns |
-
-### Additional Resources
-
-| Document | Description |
-|----------|-------------|
-| [Applications](docs/applications.md) | Detailed use cases |
-| [API Reference](docs/intra-application.md) | Interfaces and APIs |
-| [Glossary](docs/glossary.md) | Glossary of terms |
 
 ---
 
@@ -239,11 +296,12 @@ Results on reference dataset (temperature sensor, 24h, 1 measurement/min):
 
 ## Roadmap
 
-- [x] **v0.1** — Functional prototype ✅
-- [x] **v0.2** — Evolving context ✅
-- [x] **v0.3** — Automatic synchronization ✅
-- [x] **v0.4** — Fleet mode ✅
 - [x] **v1.0** — Production ready ✅
+- [x] **v1.2.0** — no_std support ✅
+- [x] **v1.2.1** — bare-metal embedded (Cortex-M) ✅
+- [x] **v1.2.3** — Zephyr RTOS support ✅
+- [ ] **v1.3** — RIOT OS support
+- [ ] **v1.4** — FreeRTOS support
 
 ➡️ [See the complete roadmap](todo.md)
 
@@ -257,14 +315,6 @@ Contributions are welcome! See:
 - [prompts/](prompts/) — Templates for features, bugfixes, etc.
 - [examples/](examples/) — Example workflows
 
-```bash
-# Typical workflow
-1. Fork the repo
-2. Create a branch: git checkout -b feature/my-feature
-3. Follow the appropriate template in prompts/
-4. Submit a PR
-```
-
 ---
 
 ## License
@@ -274,11 +324,10 @@ ALEC is **dual-licensed**:
 ### Open Source (AGPL-3.0)
 
 Free for open source projects, research, and personal use.
-You must open-source your code if you distribute ALEC or use it in a network service.
 
 ```toml
 [dependencies]
-alec = "1.0"
+alec = "1.2"
 ```
 
 ### Commercial License
