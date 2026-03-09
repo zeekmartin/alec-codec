@@ -7,6 +7,27 @@ et ce projet adhère au [Semantic Versioning](https://semver.org/lang/fr/).
 
 ---
 
+## [1.2.5] - 2026-03-09
+
+### Fixed
+
+- **`alec-ffi` `alec_encode_value()` source_id hashing**: the `source_id`
+  C string parameter was ignored (`_source_id`), and `RawData::new()` was
+  called with `source_id=0` unconditionally. This pooled all channels
+  (temperature, pressure, humidity, etc.) into a single context slot,
+  making EMA predictions meaningless and preventing adaptive compression.
+  The parameter is now hashed via `xxh64()` to a `u32` and passed to
+  `RawData::with_source()` for per-channel context isolation. NULL
+  source_id defaults to `0` (backward-compatible).
+
+### Changed
+
+- `alec-ffi` version bumped to 1.2.5
+- `alec-ffi` version string updated to "1.2.5"
+- Added `xxhash-rust` dependency to `alec-ffi` (`no_std`-compatible)
+
+---
+
 ## [1.2.4] - 2026-03-09
 
 ### Fixed

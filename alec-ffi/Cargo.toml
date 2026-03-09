@@ -1,6 +1,6 @@
 [package]
 name = "alec-ffi"
-version = "1.2.4"
+version = "1.2.5"
 edition = "2021"
 rust-version = "1.70"
 authors = ["David Martin Venti <contact@alec-codec.com>"]
@@ -17,6 +17,7 @@ crate-type = ["staticlib", "cdylib"]
 
 [dependencies]
 alec = { path = "..", version = "1.2", default-features = false }
+xxhash-rust = { version = "0.8", default-features = false, features = ["xxh64"] }
 embedded-alloc = { version = "0.6", optional = true, default-features = false, features = ["llff"] }
 cortex-m = { version = "0.7", optional = true, features = ["critical-section-single-core"] }
 
