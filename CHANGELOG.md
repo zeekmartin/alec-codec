@@ -7,6 +7,25 @@ et ce projet adhère au [Semantic Versioning](https://semver.org/lang/fr/).
 
 ---
 
+## [1.2.4] - 2026-03-09
+
+### Fixed
+
+- **`alec-ffi` ZephyrAllocator alignment**: replace `k_malloc` with
+  `k_aligned_alloc` to respect Rust's layout alignment requirements.
+  `k_malloc` returns 4-byte aligned memory on ARM; types such as
+  `Vec<(u16, f64)>` and `BTreeMap` nodes require 8-byte alignment,
+  causing misaligned access (UB) on Cortex-M33 and
+  `ALEC_ERR_NULL_POINTER` (rc=5) on the first call to
+  `alec_encode_multi()`. Validated on Nordic nRF9151 / Zephyr RTOS.
+
+### Changed
+
+- `alec` and `alec-ffi` version bumped to 1.2.4
+- `alec-ffi` version string updated to "1.2.4"
+
+---
+
 ## [1.2.3] - 2026-03-08
 
 ### Fixed

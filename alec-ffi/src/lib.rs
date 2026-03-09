@@ -30,7 +30,11 @@ mod zephyr_support {
     use core::alloc::{GlobalAlloc, Layout};
 
     extern "C" {
-        fn k_malloc(size: usize) -> *mut u8;
+        // k_aligned_alloc is required instead of k_malloc because k_malloc
+        // returns 4-byte aligned memory on ARM. Rust types such as
+        // Vec<(u16, f64)> and BTreeMap nodes require 8-byte alignment;
+        // using k_malloc causes misaligned access (UB) on Cortex-M33.
+        fn k_aligned_alloc(align: usize, size: usize) -> *mut u8;
         fn k_free(ptr: *mut u8);
     }
 
@@ -38,7 +42,7 @@ mod zephyr_support {
 
     unsafe impl GlobalAlloc for ZephyrAllocator {
         unsafe fn alloc(&self, layout: Layout) -> *mut u8 {
-            unsafe { k_malloc(layout.size()) }
+            unsafe { k_aligned_alloc(layout.align(), layout.size()) }
         }
 
         unsafe fn dealloc(&self, ptr: *mut u8, _layout: Layout) {
@@ -168,7 +172,7 @@ pub struct AlecDecoder {
 #[no_mangle]
 pub extern "C" fn alec_version() -> *const c_char {
     // Include null terminator
-    static VERSION: &[u8] = b"1.2.3\0";
+    static VERSION: &[u8] = b"1.2.4\0";
     VERSION.as_ptr() as *const c_char
 }
 
@@ -706,7 +710,7 @@ mod tests {
         let version = alec_version();
         assert!(!version.is_null());
         let version_str = unsafe { CStr::from_ptr(version) }.to_str().unwrap();
-        assert_eq!(version_str, "1.2.3");
+        assert_eq!(version_str, "1.2.4");
     }
 
     #[test]
