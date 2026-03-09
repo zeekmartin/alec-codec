@@ -167,15 +167,23 @@ enum AlecResult alec_encode_value(struct AlecEncoder *encoder,
                                   uintptr_t *output_len);
 
 /**
- * Encode multiple values at once
+ * Encode multiple values with adaptive per-channel compression.
+ *
+ * Each channel is independently classified (P1–P5) and encoded using the
+ * optimal strategy (Repeated, Delta8, Delta16, etc.). P5 channels are
+ * excluded from the output frame but their context is still updated.
  *
  * # Arguments
  *
  * * `encoder` - Encoder handle
- * * `values` - Array of values to encode
- * * `value_count` - Number of values in the array
- * * `timestamp` - Timestamp for the values
- * * `source_id` - Source identifier string (null-terminated, can be NULL)
+ * * `values` - Array of f64 values to encode (one per channel)
+ * * `value_count` - Number of channels
+ * * `timestamps` - Per-channel timestamps (array of uint64_t), or NULL to
+ *                   use 0 for all channels
+ * * `source_ids` - Per-channel source identifier strings (array of
+ *                   `const char*`), or NULL for automatic index-based IDs
+ * * `priorities` - Per-channel priority overrides (1–5), or NULL for
+ *                   classifier-assigned priorities
  * * `output` - Output buffer for encoded data
  * * `output_capacity` - Size of output buffer in bytes
  * * `output_len` - Pointer to store actual encoded length
@@ -185,10 +193,11 @@ enum AlecResult alec_encode_value(struct AlecEncoder *encoder,
  * `ALEC_OK` on success, error code otherwise.
  */
 enum AlecResult alec_encode_multi(struct AlecEncoder *encoder,
-                                  const float *values,
+                                  const double *values,
                                   uintptr_t value_count,
-                                  uint64_t timestamp,
-                                  const char *_source_id,
+                                  const uint64_t *timestamps,
+                                  const char *const *source_ids,
+                                  const uint8_t *priorities,
                                   uint8_t *output,
                                   uintptr_t output_capacity,
                                   uintptr_t *output_len);
