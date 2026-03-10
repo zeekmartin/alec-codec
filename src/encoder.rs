@@ -254,7 +254,12 @@ impl Encoder {
     }
 
     /// Encode as raw (fallback)
-    fn encode_raw(&mut self, data: &RawData, priority: Priority, context: &Context) -> EncodedMessage {
+    fn encode_raw(
+        &mut self,
+        data: &RawData,
+        priority: Priority,
+        context: &Context,
+    ) -> EncodedMessage {
         let mut payload = Vec::new();
 
         // Source ID
