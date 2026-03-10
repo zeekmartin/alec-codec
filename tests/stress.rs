@@ -231,11 +231,11 @@ fn stress_test_multi_value_encoding() {
 
     for i in 0..iterations {
         let base_timestamp = (i * values_per_message) as u64;
-        let mut values: Vec<(u16, f64)> = Vec::with_capacity(values_per_message);
+        let mut values: Vec<(u8, f64)> = Vec::with_capacity(values_per_message);
 
         for j in 0..values_per_message {
             let value = 20.0 + (((i * values_per_message + j) as f64) * 0.01).sin() * 5.0;
-            values.push((j as u16, value));
+            values.push((j as u8, value));
         }
 
         // Encode multi-value

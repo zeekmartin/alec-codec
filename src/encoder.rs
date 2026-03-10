@@ -56,7 +56,7 @@ use crate::protocol::{
 #[derive(Debug, Clone)]
 pub struct Encoder {
     /// Next sequence number
-    sequence: u32,
+    sequence: u16,
     /// Whether to include checksum in encoded bytes
     include_checksum: bool,
 }
@@ -108,7 +108,7 @@ impl Encoder {
     /// Get the current sequence number.
     ///
     /// Sequence numbers are used to detect message loss and ordering issues.
-    pub fn sequence(&self) -> u32 {
+    pub fn sequence(&self) -> u16 {
         self.sequence
     }
 
@@ -222,7 +222,7 @@ impl Encoder {
         // Check for invalid values
         if data.value.is_nan() || data.value.is_infinite() {
             // Fall back to raw encoding for invalid values
-            return self.encode_raw(data, classification.priority);
+            return self.encode_raw(data, classification.priority, context);
         }
 
         // Choose encoding based on context
@@ -246,7 +246,7 @@ impl Encoder {
             message_type: MessageType::Data,
             priority: classification.priority,
             sequence: self.next_sequence(),
-            timestamp: (data.timestamp & 0xFFFFFFFF) as u32,
+            timestamp: (data.timestamp / 1000) as u32,
             context_version: context.version(),
         };
 
@@ -254,7 +254,7 @@ impl Encoder {
     }
 
     /// Encode as raw (fallback)
-    fn encode_raw(&mut self, data: &RawData, priority: Priority) -> EncodedMessage {
+    fn encode_raw(&mut self, data: &RawData, priority: Priority, context: &Context) -> EncodedMessage {
         let mut payload = Vec::new();
 
         // Source ID
@@ -271,8 +271,8 @@ impl Encoder {
             message_type: MessageType::Data,
             priority,
             sequence: self.next_sequence(),
-            timestamp: (data.timestamp & 0xFFFFFFFF) as u32,
-            context_version: 0,
+            timestamp: (data.timestamp / 1000) as u32,
+            context_version: context.version(),
         };
 
         EncodedMessage::new(header, payload)
@@ -335,7 +335,7 @@ impl Encoder {
     }
 
     /// Get next sequence number
-    fn next_sequence(&mut self) -> u32 {
+    fn next_sequence(&mut self) -> u16 {
         let seq = self.sequence;
         self.sequence = self.sequence.wrapping_add(1);
         seq
@@ -344,7 +344,7 @@ impl Encoder {
     /// Encode multiple values in one message
     pub fn encode_multi(
         &mut self,
-        values: &[(u16, f64)], // (name_id, value) pairs
+        values: &[(u8, f64)], // (name_id, value) pairs
         source_id: u32,
         timestamp: u64,
         priority: Priority,
@@ -363,8 +363,8 @@ impl Encoder {
 
         // Each value
         for (name_id, value) in values {
-            // Name ID (2 bytes BE)
-            payload.extend_from_slice(&name_id.to_be_bytes());
+            // Name ID (1 byte)
+            payload.push(*name_id);
 
             // Simple encoding for multi (just use Raw32 for simplicity)
             payload.push(EncodingType::Raw32 as u8);
@@ -376,7 +376,7 @@ impl Encoder {
             message_type: MessageType::Data,
             priority,
             sequence: self.next_sequence(),
-            timestamp: (timestamp & 0xFFFFFFFF) as u32,
+            timestamp: (timestamp / 1000) as u32,
             context_version: context.version(),
         };
 
@@ -477,7 +477,7 @@ impl Encoder {
                 .map(|(_, cls)| cls.priority)
                 .unwrap_or(Priority::P3Normal),
             sequence: self.next_sequence(),
-            timestamp: (timestamp & 0xFFFFFFFF) as u32,
+            timestamp: (timestamp / 1000) as u32,
             context_version: context.version(),
         };
 
@@ -490,8 +490,8 @@ impl Encoder {
     /// Uses `name_id as u32` as the context key for encoding decisions, since
     /// the decoder only has the name_id from the wire and must use the same key.
     fn write_channel_entry(&self, ch: &ChannelInput, context: &Context, payload: &mut Vec<u8>) {
-        // name_id (2B BE)
-        payload.extend_from_slice(&ch.name_id.to_be_bytes());
+        // name_id (1B)
+        payload.push(ch.name_id);
 
         // Use name_id as context key (matches decoder's name_id→source_id mapping)
         let data = RawData::with_source(ch.name_id as u32, ch.value, 0);
@@ -536,7 +536,7 @@ impl MessageBuilder {
     }
 
     /// Set sequence number
-    pub fn sequence(mut self, seq: u32) -> Self {
+    pub fn sequence(mut self, seq: u16) -> Self {
         self.header.sequence = seq;
         self
     }
@@ -669,7 +669,7 @@ mod tests {
         let mut encoder = Encoder::new();
         let context = Context::new();
 
-        let values = vec![
+        let values: Vec<(u8, f64)> = vec![
             (1, 22.5),    // temperature
             (2, 65.0),    // humidity
             (3, 1013.25), // pressure

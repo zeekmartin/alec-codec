@@ -61,8 +61,8 @@ impl RawData {
 /// Input for one channel in a multi-channel encode_multi_adaptive() call
 #[derive(Debug, Clone, PartialEq)]
 pub struct ChannelInput {
-    /// Channel identifier (included in the wire frame)
-    pub name_id: u16,
+    /// Channel identifier (included in the wire frame as 1 byte)
+    pub name_id: u8,
     /// Source identifier for per-channel context isolation
     pub source_id: u32,
     /// The measured value
@@ -227,7 +227,7 @@ impl EncodingType {
     }
 }
 
-/// Message header (13 bytes total)
+/// Message header (10 bytes total)
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct MessageHeader {
     /// Protocol version (2 bits in header byte)
@@ -236,11 +236,11 @@ pub struct MessageHeader {
     pub message_type: MessageType,
     /// Priority level (3 bits in header byte)
     pub priority: Priority,
-    /// Sequence number
-    pub sequence: u32,
-    /// Timestamp
+    /// Sequence number (u16, wraps every 65 536 frames)
+    pub sequence: u16,
+    /// Timestamp (Unix seconds)
     pub timestamp: u32,
-    /// Context version used for encoding
+    /// Context version used for encoding (serialized as u24, max 16 777 215)
     pub context_version: u32,
 }
 
@@ -258,7 +258,7 @@ impl MessageHeader {
     }
 
     /// Header size in bytes
-    pub const SIZE: usize = 13;
+    pub const SIZE: usize = 10;
 
     /// Encode the header byte (version + type + priority)
     pub fn encode_header_byte(&self) -> u8 {
@@ -280,9 +280,10 @@ impl MessageHeader {
     pub fn to_bytes(&self) -> [u8; Self::SIZE] {
         let mut bytes = [0u8; Self::SIZE];
         bytes[0] = self.encode_header_byte();
-        bytes[1..5].copy_from_slice(&self.sequence.to_be_bytes());
-        bytes[5..9].copy_from_slice(&self.timestamp.to_be_bytes());
-        bytes[9..13].copy_from_slice(&self.context_version.to_be_bytes());
+        bytes[1..3].copy_from_slice(&self.sequence.to_be_bytes());
+        bytes[3..7].copy_from_slice(&self.timestamp.to_be_bytes());
+        let cv = self.context_version & 0x00FFFFFF;
+        bytes[7..10].copy_from_slice(&cv.to_be_bytes()[1..]);
         bytes
     }
 
@@ -296,9 +297,9 @@ impl MessageHeader {
         let msg_type = msg_type?;
         let priority = priority?;
 
-        let sequence = u32::from_be_bytes([bytes[1], bytes[2], bytes[3], bytes[4]]);
-        let timestamp = u32::from_be_bytes([bytes[5], bytes[6], bytes[7], bytes[8]]);
-        let context_version = u32::from_be_bytes([bytes[9], bytes[10], bytes[11], bytes[12]]);
+        let sequence = u16::from_be_bytes([bytes[1], bytes[2]]);
+        let timestamp = u32::from_be_bytes([bytes[3], bytes[4], bytes[5], bytes[6]]);
+        let context_version = u32::from_be_bytes([0, bytes[7], bytes[8], bytes[9]]);
 
         Some(Self {
             version,

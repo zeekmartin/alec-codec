@@ -7,6 +7,23 @@ et ce projet adhère au [Semantic Versioning](https://semver.org/lang/fr/).
 
 ---
 
+## [1.3.1] - 2026-03-10
+
+### Fixed
+- Timestamp stored as Unix seconds (÷1000) instead of truncated milliseconds — fixes silent wrap every 49 days
+- `encode_raw()` now uses `context.version()` instead of hardcoded 0
+
+### Changed
+- `MessageHeader::sequence` reduced from u32 to u16 (-2B per frame)
+- `MessageHeader::context_version` serialized as u24 (-1B per frame)
+- `MessageHeader::SIZE` reduced from 13 to 10
+- `name_id` serialized as u8 instead of u16 in multi-channel frame
+  (-1B per channel, -5B on 5-channel payload)
+- `ChannelInput.name_id` field type changed from u16 to u8
+- Total header + frame saving vs 1.3.0: up to 8B on 5-channel demo
+
+---
+
 ## [1.3.0] - 2026-03-09
 
 ### Added
