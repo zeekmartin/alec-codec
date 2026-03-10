@@ -10,17 +10,23 @@ et ce projet adhère au [Semantic Versioning](https://semver.org/lang/fr/).
 ## [1.3.1] - 2026-03-10
 
 ### Fixed
-- Timestamp stored as Unix seconds (÷1000) instead of truncated milliseconds — fixes silent wrap every 49 days
-- `encode_raw()` now uses `context.version()` instead of hardcoded 0
+- Timestamp serialized as Unix seconds instead of milliseconds (fixes 49-day overflow bug)
+- encode_raw() now reads context_version from Context instead of hardcoded 0
 
 ### Changed
-- `MessageHeader::sequence` reduced from u32 to u16 (-2B per frame)
-- `MessageHeader::context_version` serialized as u24 (-1B per frame)
-- `MessageHeader::SIZE` reduced from 13 to 10
-- `name_id` serialized as u8 instead of u16 in multi-channel frame
-  (-1B per channel, -5B on 5-channel payload)
-- `ChannelInput.name_id` field type changed from u16 to u8
-- Total header + frame saving vs 1.3.0: up to 8B on 5-channel demo
+- Header: 13B → 10B (-3B/frame)
+  - sequence: u32 → u16 (-2B on wire)
+  - context_version: u32 → u24 (-1B on wire)
+- name_id serialized as u8 instead of u16 in multi-channel frame (-1B/channel, -5B on 5-channel payload)
+- Total saving vs 1.3.0: up to 8B on a 5-channel NB-IoT frame
+
+### Added
+- 11 regression tests in tests/protocol_header_v2.rs
+- ROADMAP.md: v1.4 section documenting Pattern & Interpolated encoding (planned)
+
+### Validated
+- Nordic nRF9151 / Zephyr / NB-IoT hardware
+- 17B stable from seq=13, 72-73% vs JSON equivalent, 118+ sequences
 
 ---
 
