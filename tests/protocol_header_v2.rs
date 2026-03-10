@@ -5,10 +5,8 @@
 //! - encode_raw() uses context.version() instead of hardcoded 0
 //! - name_id serialized as u8 instead of u16 in multi-channel frame
 
-use alec::{
-    Classifier, Context, Encoder, MessageHeader, MessageType, Priority, RawData,
-};
 use alec::protocol::{ChannelInput, EncodingType};
+use alec::{Classifier, Context, Encoder, MessageHeader, MessageType, Priority, RawData};
 
 #[test]
 fn test_timestamp_seconds_not_ms() {
@@ -200,8 +198,7 @@ fn test_name_id_1_byte_in_frame() {
         })
         .collect();
 
-    let (message, _) =
-        encoder.encode_multi_adaptive(&channels, 1000, &context, &classifier);
+    let (message, _) = encoder.encode_multi_adaptive(&channels, 1000, &context, &classifier);
 
     let payload = &message.payload;
 
@@ -229,7 +226,11 @@ fn test_name_id_1_byte_in_frame() {
     }
 
     // We should have consumed exactly the whole payload
-    assert_eq!(pos, payload.len(), "Payload not fully consumed — name_id is not 1 byte");
+    assert_eq!(
+        pos,
+        payload.len(),
+        "Payload not fully consumed — name_id is not 1 byte"
+    );
 }
 
 #[test]
@@ -245,8 +246,7 @@ fn test_name_id_max_u8() {
         value: 42.0,
     }];
 
-    let (message, _) =
-        encoder.encode_multi_adaptive(&channels, 1000, &context, &classifier);
+    let (message, _) = encoder.encode_multi_adaptive(&channels, 1000, &context, &classifier);
     let decoded = decoder.decode_multi(&message, &context).unwrap();
 
     assert_eq!(decoded.len(), 1);
@@ -283,8 +283,7 @@ fn test_name_id_roundtrip() {
         })
         .collect();
 
-    let (message, _) =
-        encoder.encode_multi_adaptive(&channels, 2000, &context, &classifier);
+    let (message, _) = encoder.encode_multi_adaptive(&channels, 2000, &context, &classifier);
     let decoded = decoder.decode_multi(&message, &context).unwrap();
 
     assert_eq!(decoded.len(), 5);
