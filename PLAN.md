@@ -1,178 +1,134 @@
-# Implementation Plan: v1.3 — encode_multi() Adaptive Compression
+# Implementation Plan: Protocol Header V2 — 3 Fixes (v1.3.1)
 
-## Problem Statement
+## Files Touched (8 files)
 
-Current `encode_multi()` (encoder.rs:344–384) uses a **naive flat format**: 1 shared header (13B) + source_id varint (1B) + Multi encoding tag (1B) + count (1B), then **per-channel**: 2B name_id + 1B encoding tag + 4B Raw32 = **7 bytes per channel, always Raw32, no context, no classification**.
+| File | Nature of Change |
+|------|-----------------|
+| `src/protocol.rs` | MessageHeader struct (sequence u32→u16), SIZE 13→10, to_bytes/from_bytes rewritten, doc comment |
+| `src/encoder.rs` | Encoder.sequence u32→u16, next_sequence() return u16, encode_raw() takes &Context, 4 timestamp sites ÷1000, MessageBuilder.sequence() takes u16 |
+| `src/decoder.rs` | Decoder.last_sequence Option<u32>→Option<u16>, last_sequence() return type, wrapping_add type |
+| `tests/protocol_header_v2.rs` | **NEW** — 8 regression tests (written first, must fail before fixes) |
+| `tests/multi_adaptive.rs` | Line 218: assertion message "26B" → "20B" |
+| `CHANGELOG.md` | Add [1.3.1] - 2026-03-10 entry |
+| `Cargo.toml` | version "1.3.0" → "1.3.1" |
+| `alec-ffi/Cargo.toml` | version "1.3.0" → "1.3.1" |
 
-For 5 channels: 13 + 1 + 1 + 1 + (5 × 7) = **51 bytes**. Five separate `encode_value()` calls at best-case (Repeated) = 5 × 15 = 75B, so current multi saves on headers but wastes on encoding.
-
-The goal: shared header + adaptive per-channel encoding + priority-based inclusion = **13B + ~1–2B per warm channel** in the common IoT case (slow drift / hold).
-
-## Wire Format v1.3
+## Byte Layout Change
 
 ```
-[Header 13B] [source_id varint 1B] [0x40 Multi] [count 1B] [channel entries...]
+BEFORE (13 bytes, SIZE=13):
+  [0]       header byte (version 2b | type 3b | priority 3b)
+  [1..5]    sequence       u32  4 bytes BE
+  [5..9]    timestamp      u32  4 bytes BE
+  [9..13]   context_ver    u32  4 bytes BE
 
-Per-channel entry:
-  [name_id 2B BE] [priority 3 bits | encoding_type 5 bits = 1B] [value 0–8B]
-
-Encoding type codes (already defined, fit in 5 bits):
-  0x00 Raw64(8B) 0x01 Raw32(4B) 0x10 Delta8(1B) 0x11 Delta16(2B)
-  0x12 Delta32(4B) 0x30 Repeated(0B) 0x31 Interpolated(0B)
+AFTER (10 bytes, SIZE=10):
+  [0]       header byte (version 2b | type 3b | priority 3b)
+  [1..3]    sequence       u16  2 bytes BE
+  [3..7]    timestamp      u32  4 bytes BE
+  [7..10]   context_ver    u24  3 bytes BE (stored as u32, serialized as 3B)
 ```
 
-**Key design decision**: Pack priority (3 bits) and encoding type (5 bits) into a single byte per channel. This replaces the current encoding-type-only byte, and all existing EncodingType values fit in 5 bits (max = 0x40 = 64, but we remap inside multi to use 0–31 range).
-
-Actually — simpler approach: keep encoding_type as a full byte (already defined, decoder expects it), and add a **1-byte priority prefix per channel** only when priorities are non-uniform. But even simpler: the priority is a per-*frame* concept at the header level and channels either appear or don't. Let's follow the spec literally:
-
-**Revised**: Keep existing Multi tag byte. The `count` byte now counts only *included* channels (P5 excluded). Each channel entry has:
-- `name_id` (2B) — identifies the channel
-- `encoding_type` (1B) — full byte, same codes as single-value
-- `value` (0–8B) — depends on encoding type
-
-P5 channels: context updated (observe), but NOT written to payload.
-P4 channels: included only if total frame size stays under a configurable cap (default: 127B, fits in one BLE ATT_MTU).
-
-## Files to Change
-
-### 1. `src/encoder.rs` — Replace `encode_multi()`
-
-Current signature:
-```rust
-pub fn encode_multi(
-    &mut self,
-    values: &[(u16, f64)],
-    source_id: u32,
-    timestamp: u64,
-    priority: Priority,
-    context: &Context,
-) -> EncodedMessage
-```
-
-New signature:
-```rust
-pub fn encode_multi_adaptive(
-    &mut self,
-    channels: &[ChannelInput],
-    timestamp: u64,
-    context: &Context,
-    classifier: &Classifier,
-) -> EncodedMessage
-```
-
-Where `ChannelInput` is a new struct:
-```rust
-pub struct ChannelInput {
-    pub name_id: u16,
-    pub source_id: u32,
-    pub value: f64,
-}
-```
-
-**Algorithm**:
-1. For each channel, build a `RawData` with the channel's `source_id` and classify it
-2. Sort channels by priority (P1 first)
-3. Build payload:
-   - source_id varint (0 for multi — frame-level, not channel-level)
-   - 0x40 (Multi tag)
-   - count byte (placeholder, filled after filtering)
-   - For each channel where priority != P5:
-     - `name_id` (2B BE)
-     - Call `choose_encoding()` with channel's source_id + context → get encoding_type + encoded_value
-     - Write encoding_type byte + encoded_value
-   - If P4 and frame would exceed cap, stop including P4 channels
-4. Fill count byte with actual included count
-5. Return EncodedMessage with shared header
-
-Keep old `encode_multi()` unchanged for backward compatibility.
-
-### 2. `src/decoder.rs` — Update `decode_multi()`
-
-The per-channel encoding type byte is already there in the current format. The decoder already reads `encoding_type` per channel — but currently only handles Raw32. Extend the match to handle all encoding types using the existing `decode_value()` infrastructure.
-
-The decoder needs a `source_id` per channel for delta/repeated decoding. We'll derive it the same way: `name_id` as implicit source_id for multi frames (or pass through a mapping). Simplest: use `name_id as u32` as the per-channel source_id within multi frames.
-
-### 3. `alec-ffi/src/lib.rs` — New `alec_encode_multi()` signature
-
-Replace current `alec_encode_multi`:
-```rust
-pub extern "C" fn alec_encode_multi(
-    encoder: *mut AlecEncoder,
-    values: *const f64,        // was f32, now f64 for consistency
-    value_count: usize,
-    timestamps: *const u64,    // NEW: per-channel timestamps, or NULL for shared
-    source_ids: *const *const c_char, // NEW: array of strings, or NULL
-    priorities: *const u8,     // NEW: per-channel priority (1-5), or NULL = all P3
-    output: *mut u8,
-    output_capacity: usize,
-    output_len: *mut usize,
-) -> AlecResult
-```
-
-Implementation:
-- Build `Vec<ChannelInput>` from the C arrays
-- Hash each source_id string via `hash_source_id()`
-- Call `encoder.encode_multi_adaptive()`
-- Observe all channels in context (including P5)
-
-### 4. `alec-ffi/include/alec.h` — Update declaration
-
-Mirror the new Rust signature in C.
-
-### 5. `src/protocol.rs` — Add `ChannelInput` struct
-
-Add:
-```rust
-pub struct ChannelInput {
-    pub name_id: u16,
-    pub source_id: u32,
-    pub value: f64,
-}
-```
-
-### 6. Version bumps
-
-- `Cargo.toml` (root): `1.2.4` → `1.3.0`
-- `alec-ffi/Cargo.toml`: `1.2.5` → `1.3.0`
-- `alec-ffi/src/lib.rs` version string: `"1.2.5\0"` → `"1.3.0\0"`
-- `alec-ffi/Cargo.toml` dependency: `version = "1.2"` → `version = "1.3"`
-
-### 7. `CHANGELOG.md` — New `[1.3.0]` section
-
-### 8. Tests (new file: `tests/multi_adaptive.rs`)
-
-**test_encode_multi_adaptive**:
-- Warm up context with 20 observations per channel (5 channels, slow drift)
-- Encode with `encode_multi_adaptive`
-- Verify encoding types are Delta8/Delta16/Repeated, not Raw32
-
-**test_encode_multi_p5_suppression**:
-- Set thresholds so some channels classify as P5
-- Encode multi
-- Verify output count < input count
-- Verify P5 channels still observed in context
-
-**test_encode_multi_shared_header**:
-- Encode 5 channels via multi vs 5 × encode_value
-- Assert multi total < sum of individual totals
-- Target: multi should be < 50% of 5 × encode_value after warmup
+Saving: 3 bytes per frame.
 
 ## Execution Order
 
-1. Add `ChannelInput` to `src/protocol.rs`
-2. Add `encode_multi_adaptive()` to `src/encoder.rs`
-3. Update `decode_multi()` in `src/decoder.rs` to handle all encoding types
-4. Update FFI: `alec-ffi/src/lib.rs` new signature
-5. Update `alec-ffi/include/alec.h`
-6. Version bumps in both Cargo.toml files + version string
-7. Add `tests/multi_adaptive.rs`
-8. Update existing FFI test `test_encode_multi` to use new signature
-9. `CHANGELOG.md` — add `[1.3.0]` section
-10. `cargo test` — all pass
-11. Commit, push to `claude/encode-multi-adaptive-v1.3`
+### Phase 1: Write failing regression tests
 
-## Risks / Open Questions
+Create `tests/protocol_header_v2.rs` with 8 tests. They must compile and FAIL on current code (SIZE==13, sequence is u32, timestamp is truncated ms, encode_raw context_version==0).
 
-- **Decoder source_id mapping**: In multi frames, each channel needs a source_id for delta/repeated decode. Using `name_id as u32` is simple but means the decoder's context must have been trained with the same mapping. This is fine because the context is always kept in sync.
-- **Backward compatibility**: Old `encode_multi()` is kept as-is. New `encode_multi_adaptive()` produces frames with the same Multi tag (0x40) but per-channel encoding types differ. Old decoders that only handle Raw32 will fail on new frames — this is a **breaking wire format change** for multi, hence the minor version bump to 1.3.
-- **P4 cap**: Default 127B matches BLE ATT_MTU. Could be configurable via a new `MultiConfig` struct, but YAGNI for now — hardcode the cap.
+Tests:
+1. **test_timestamp_seconds_not_ms** — RawData ts=1_741_234_567_000 ms → header.timestamp == 1_741_234_567 (seconds)
+2. **test_timestamp_no_49day_wrap** — 50 days in ms (4_320_000_000) → header.timestamp == 4_320_000 (seconds)
+3. **test_sequence_u16_rollover** — 65,536 encode() calls → sequence wraps to 0, then 1
+4. **test_sequence_2_bytes_in_header** — MessageHeader::SIZE == 10, sequence at bytes[1..3]
+5. **test_context_version_u24_range** — context_version=0x00ABCDEF roundtrips through serialize/deserialize
+6. **test_context_version_3_bytes_in_header** — bytes[7..10] == [0x00, 0x00, 0xFF] for cv=255
+7. **test_header_roundtrip_all_fields** — full roundtrip: version=1, Sync, P2, seq=60000u16, ts=1_741_234_567, cv=0x00AABBCC
+8. **test_encode_raw_context_version_not_zero** — NaN value → encode_raw → context_version != 0
+
+### Phase 2: Fix 1 — Timestamp ÷1000
+
+**encoder.rs** — 4 timestamp construction sites:
+- Line 249: `(data.timestamp & 0xFFFFFFFF) as u32` → `(data.timestamp / 1000) as u32`
+- Line 274: same
+- Line 379: `(timestamp & 0xFFFFFFFF) as u32` → `(timestamp / 1000) as u32`
+- Line 480: same
+
+**encoder.rs** — encode_raw() context_version fix:
+- Line 257: change signature to add `context: &Context` parameter
+- Line 275: `context_version: 0` → `context_version: context.version()`
+- Line 225 (call site): add `context` argument
+
+### Phase 3: Fix 2 — Sequence u32 → u16
+
+**protocol.rs:**
+- Line 240: `pub sequence: u32` → `pub sequence: u16`
+- Line 261: `pub const SIZE: usize = 13` → `pub const SIZE: usize = 10` (combined with Fix 3)
+- Line 283: `bytes[1..5].copy_from_slice(&self.sequence.to_be_bytes())` → `bytes[1..3]`
+- Line 284: `bytes[5..9]` → `bytes[3..7]` (timestamp shifts left by 2)
+- Line 285: context_version serialization → u24 at bytes[7..10] (combined with Fix 3)
+- Line 299: `u32::from_be_bytes` → `u16::from_be_bytes([bytes[1], bytes[2]])`
+- Line 300: timestamp → `u32::from_be_bytes([bytes[3], bytes[4], bytes[5], bytes[6]])`
+- Line 301: context_version → `u32::from_be_bytes([0, bytes[7], bytes[8], bytes[9]])`
+- Line 230 doc: `13 bytes` → `10 bytes`
+
+**encoder.rs:**
+- Line 59: `sequence: u32` → `sequence: u16`
+- Line 111: `pub fn sequence(&self) -> u32` → `-> u16`
+- Line 338: `fn next_sequence(&mut self) -> u32` → `-> u16`
+- Line 539: `pub fn sequence(mut self, seq: u32)` → `seq: u16`
+
+**decoder.rs:**
+- Line 25: `last_sequence: Option<u32>` → `Option<u16>`
+- Line 472: `pub fn last_sequence(&self) -> Option<u32>` → `-> Option<u16>`
+
+### Phase 4: Fix 3 — context_version u24 serialization
+
+**protocol.rs to_bytes():**
+```rust
+let cv = self.context_version & 0x00FFFFFF;
+bytes[7..10].copy_from_slice(&cv.to_be_bytes()[1..]);
+```
+
+**protocol.rs from_bytes():**
+```rust
+let context_version = u32::from_be_bytes([0, bytes[7], bytes[8], bytes[9]]);
+```
+
+Field type stays `pub context_version: u32` — only wire format changes.
+
+### Phase 5: Update existing tests
+
+- **protocol.rs** existing tests: sequence values (12345, 42) fit u16, auto-OK. SIZE refs auto-update.
+- **tests/multi_adaptive.rs:218**: change string `"26B"` → `"20B"` in assertion message
+- **encoder.rs** tests: `.sequence(42)` fits u16. SIZE refs auto-update.
+
+### Phase 6: Verify
+
+1. `cargo test --release` — all tests pass (existing 178 + 8 new)
+2. `cargo clippy -- -D warnings` — zero warnings
+
+### Phase 7: Changelog & version bump
+
+**CHANGELOG.md** — prepend:
+```
+## [1.3.1] - 2026-03-10
+
+### Fixed
+- Timestamp stored as Unix seconds (÷1000) instead of truncated milliseconds — fixes silent wrap every 49 days
+- encode_raw() now uses context.version() instead of hardcoded 0
+
+### Changed
+- MessageHeader::sequence reduced from u32 to u16 (-2B per frame)
+- MessageHeader::context_version serialized as u24 (-1B per frame)
+- MessageHeader::SIZE reduced from 13 to 10
+- Total header saving: 3B per frame
+```
+
+**Cargo.toml**: `version = "1.3.0"` → `"1.3.1"`
+**alec-ffi/Cargo.toml**: `version = "1.3.0"` → `"1.3.1"`
+
+### Phase 8: Commit & push
+
+Single commit to branch `claude/alec-no-std-support-2iXfW`.
