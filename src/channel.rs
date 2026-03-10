@@ -274,7 +274,7 @@ mod tests {
     use super::*;
     use crate::protocol::{MessageHeader, MessageType, Priority};
 
-    fn make_test_message(seq: u32) -> EncodedMessage {
+    fn make_test_message(seq: u16) -> EncodedMessage {
         EncodedMessage::new(
             MessageHeader {
                 version: 1,

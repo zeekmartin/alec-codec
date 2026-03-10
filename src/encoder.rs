@@ -56,7 +56,7 @@ use crate::protocol::{
 #[derive(Debug, Clone)]
 pub struct Encoder {
     /// Next sequence number
-    sequence: u32,
+    sequence: u16,
     /// Whether to include checksum in encoded bytes
     include_checksum: bool,
 }
@@ -108,7 +108,7 @@ impl Encoder {
     /// Get the current sequence number.
     ///
     /// Sequence numbers are used to detect message loss and ordering issues.
-    pub fn sequence(&self) -> u32 {
+    pub fn sequence(&self) -> u16 {
         self.sequence
     }
 
@@ -222,7 +222,7 @@ impl Encoder {
         // Check for invalid values
         if data.value.is_nan() || data.value.is_infinite() {
             // Fall back to raw encoding for invalid values
-            return self.encode_raw(data, classification.priority);
+            return self.encode_raw(data, classification.priority, context);
         }
 
         // Choose encoding based on context
@@ -246,7 +246,7 @@ impl Encoder {
             message_type: MessageType::Data,
             priority: classification.priority,
             sequence: self.next_sequence(),
-            timestamp: (data.timestamp & 0xFFFFFFFF) as u32,
+            timestamp: (data.timestamp / 1000) as u32,
             context_version: context.version(),
         };
 
@@ -254,7 +254,7 @@ impl Encoder {
     }
 
     /// Encode as raw (fallback)
-    fn encode_raw(&mut self, data: &RawData, priority: Priority) -> EncodedMessage {
+    fn encode_raw(&mut self, data: &RawData, priority: Priority, context: &Context) -> EncodedMessage {
         let mut payload = Vec::new();
 
         // Source ID
@@ -271,8 +271,8 @@ impl Encoder {
             message_type: MessageType::Data,
             priority,
             sequence: self.next_sequence(),
-            timestamp: (data.timestamp & 0xFFFFFFFF) as u32,
-            context_version: 0,
+            timestamp: (data.timestamp / 1000) as u32,
+            context_version: context.version(),
         };
 
         EncodedMessage::new(header, payload)
@@ -335,7 +335,7 @@ impl Encoder {
     }
 
     /// Get next sequence number
-    fn next_sequence(&mut self) -> u32 {
+    fn next_sequence(&mut self) -> u16 {
         let seq = self.sequence;
         self.sequence = self.sequence.wrapping_add(1);
         seq
@@ -376,7 +376,7 @@ impl Encoder {
             message_type: MessageType::Data,
             priority,
             sequence: self.next_sequence(),
-            timestamp: (timestamp & 0xFFFFFFFF) as u32,
+            timestamp: (timestamp / 1000) as u32,
             context_version: context.version(),
         };
 
@@ -477,7 +477,7 @@ impl Encoder {
                 .map(|(_, cls)| cls.priority)
                 .unwrap_or(Priority::P3Normal),
             sequence: self.next_sequence(),
-            timestamp: (timestamp & 0xFFFFFFFF) as u32,
+            timestamp: (timestamp / 1000) as u32,
             context_version: context.version(),
         };
 
@@ -536,7 +536,7 @@ impl MessageBuilder {
     }
 
     /// Set sequence number
-    pub fn sequence(mut self, seq: u32) -> Self {
+    pub fn sequence(mut self, seq: u16) -> Self {
         self.header.sequence = seq;
         self
     }

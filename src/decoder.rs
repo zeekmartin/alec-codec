@@ -22,7 +22,7 @@ pub struct Decoder {
     /// Whether to verify checksum on incoming messages
     verify_checksum: bool,
     /// Last decoded sequence number (for gap detection)
-    last_sequence: Option<u32>,
+    last_sequence: Option<u16>,
 }
 
 impl Decoder {
@@ -469,7 +469,7 @@ impl Decoder {
     }
 
     /// Get last decoded sequence number
-    pub fn last_sequence(&self) -> Option<u32> {
+    pub fn last_sequence(&self) -> Option<u16> {
         self.last_sequence
     }
 }

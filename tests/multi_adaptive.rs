@@ -215,7 +215,7 @@ fn test_encode_multi_shared_header() {
     // channels are included vs excluded as P5.
     assert!(
         saved >= 2 * MessageHeader::SIZE,
-        "Should save at least 2 headers (26B), only saved {}",
+        "Should save at least 2 headers (20B), only saved {}",
         saved
     );
 }
