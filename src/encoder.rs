@@ -344,7 +344,7 @@ impl Encoder {
     /// Encode multiple values in one message
     pub fn encode_multi(
         &mut self,
-        values: &[(u16, f64)], // (name_id, value) pairs
+        values: &[(u8, f64)], // (name_id, value) pairs
         source_id: u32,
         timestamp: u64,
         priority: Priority,
@@ -363,8 +363,8 @@ impl Encoder {
 
         // Each value
         for (name_id, value) in values {
-            // Name ID (2 bytes BE)
-            payload.extend_from_slice(&name_id.to_be_bytes());
+            // Name ID (1 byte)
+            payload.push(*name_id);
 
             // Simple encoding for multi (just use Raw32 for simplicity)
             payload.push(EncodingType::Raw32 as u8);
@@ -490,8 +490,8 @@ impl Encoder {
     /// Uses `name_id as u32` as the context key for encoding decisions, since
     /// the decoder only has the name_id from the wire and must use the same key.
     fn write_channel_entry(&self, ch: &ChannelInput, context: &Context, payload: &mut Vec<u8>) {
-        // name_id (2B BE)
-        payload.extend_from_slice(&ch.name_id.to_be_bytes());
+        // name_id (1B)
+        payload.push(ch.name_id);
 
         // Use name_id as context key (matches decoder's name_id→source_id mapping)
         let data = RawData::with_source(ch.name_id as u32, ch.value, 0);
@@ -669,7 +669,7 @@ mod tests {
         let mut encoder = Encoder::new();
         let context = Context::new();
 
-        let values = vec![
+        let values: Vec<(u8, f64)> = vec![
             (1, 22.5),    // temperature
             (2, 65.0),    // humidity
             (3, 1013.25), // pressure

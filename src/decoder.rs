@@ -345,7 +345,7 @@ impl Decoder {
         &mut self,
         message: &EncodedMessage,
         context: &Context,
-    ) -> Result<Vec<(u16, f64)>> {
+    ) -> Result<Vec<(u8, f64)>> {
         let payload = &message.payload;
 
         // Source ID (frame-level, ignored for per-channel decode)
@@ -386,16 +386,16 @@ impl Decoder {
         let mut values = Vec::with_capacity(count);
 
         for _ in 0..count {
-            // Name ID (2 bytes)
-            if offset + 2 > payload.len() {
+            // Name ID (1 byte)
+            if offset >= payload.len() {
                 return Err(DecodeError::BufferTooShort {
-                    needed: offset + 2,
+                    needed: offset + 1,
                     available: payload.len(),
                 }
                 .into());
             }
-            let name_id = u16::from_be_bytes([payload[offset], payload[offset + 1]]);
-            offset += 2;
+            let name_id = payload[offset];
+            offset += 1;
 
             // Value encoding type
             if offset >= payload.len() {
@@ -563,7 +563,7 @@ mod tests {
         let mut decoder = Decoder::new();
         let context = Context::new();
 
-        let values = vec![(1, 22.5), (2, 65.0), (3, 1013.25)];
+        let values: Vec<(u8, f64)> = vec![(1, 22.5), (2, 65.0), (3, 1013.25)];
 
         let message = encoder.encode_multi(
             &values,

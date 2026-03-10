@@ -87,6 +87,42 @@ across all channels in one transmission. Target: ≤20B total for a
 
 ---
 
+## [v1.4] — Pattern & Interpolated Encoding
+
+### Pattern encoding (EncodingType::Pattern = 0x20)
+
+**Status:** Planned
+**Priority:** High
+
+EncodingType::Pattern and PatternDelta exist in the enum and wire format
+but the encoder decision tree never selects them. The encoder always falls
+through to Raw32/Raw64 when Delta32 is insufficient.
+
+Pattern encoding would match repeating signal signatures in the dictionary
+(e.g. day/night temperature cycles, periodic consumption curves) and encode
+the entire pattern as a 1-2 byte dictionary reference.
+
+**Expected gain:** 80-95% compression on periodic real-world signals.
+
+**Blocked by:** dictionary population logic in Context, pattern matching
+in the encoder decision tree.
+
+### Interpolated encoding (EncodingType::Interpolated = 0x31)
+
+**Status:** Planned
+**Priority:** Medium
+
+Interpolated encodes 0 bytes when the actual value matches the EMA
+prediction within tolerance. Currently the encoder checks for exact
+Repeated match only — it never evaluates prediction accuracy.
+
+**Expected gain:** significant reduction on smooth sensor curves
+(temperature drift, pressure trends) where EMA converges quickly.
+
+**Blocked by:** tolerance threshold design (fixed vs adaptive per channel).
+
+---
+
 ## Platform Notes
 
 ### Zephyr allocator — alignment requirement (resolved in v1.2.4)

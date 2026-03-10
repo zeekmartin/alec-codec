@@ -396,7 +396,7 @@ pub extern "C" fn alec_encode_multi(
             };
 
             ChannelInput {
-                name_id: i as u16,
+                name_id: i as u8,
                 source_id: sid,
                 value: values_slice[i],
             }

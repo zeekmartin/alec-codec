@@ -11,7 +11,7 @@ use alec::{Decoder, Encoder};
 fn make_channels(base: &[f64; 5], drift: &[f64; 5]) -> Vec<ChannelInput> {
     (0..5)
         .map(|i| ChannelInput {
-            name_id: i as u16,
+            name_id: i as u8,
             source_id: (i as u32) + 1, // caller's logical id (not used for multi context)
             value: base[i] + drift[i],
         })
@@ -72,9 +72,9 @@ fn test_encode_multi_adaptive() {
 
     let mut saw_delta_or_repeated = false;
     for ch_idx in 0..count {
-        // name_id (2B)
-        let name_id = u16::from_be_bytes([payload[pos], payload[pos + 1]]);
-        pos += 2;
+        // name_id (1B)
+        let name_id = payload[pos];
+        pos += 1;
 
         // encoding type (1B)
         let enc_byte = payload[pos];

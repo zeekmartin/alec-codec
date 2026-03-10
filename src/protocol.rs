@@ -61,8 +61,8 @@ impl RawData {
 /// Input for one channel in a multi-channel encode_multi_adaptive() call
 #[derive(Debug, Clone, PartialEq)]
 pub struct ChannelInput {
-    /// Channel identifier (included in the wire frame)
-    pub name_id: u16,
+    /// Channel identifier (included in the wire frame as 1 byte)
+    pub name_id: u8,
     /// Source identifier for per-channel context isolation
     pub source_id: u32,
     /// The measured value

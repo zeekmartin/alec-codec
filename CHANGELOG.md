@@ -17,7 +17,10 @@ et ce projet adhère au [Semantic Versioning](https://semver.org/lang/fr/).
 - `MessageHeader::sequence` reduced from u32 to u16 (-2B per frame)
 - `MessageHeader::context_version` serialized as u24 (-1B per frame)
 - `MessageHeader::SIZE` reduced from 13 to 10
-- Total header saving: 3B per frame
+- `name_id` serialized as u8 instead of u16 in multi-channel frame
+  (-1B per channel, -5B on 5-channel payload)
+- `ChannelInput.name_id` field type changed from u16 to u8
+- Total header + frame saving vs 1.3.0: up to 8B on 5-channel demo
 
 ---
 
