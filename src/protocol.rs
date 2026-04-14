@@ -142,10 +142,15 @@ pub enum MessageType {
     Ack = 4,
     /// Negative acknowledgment
     Nack = 5,
-    /// Keep-alive heartbeat
+    /// Keep-alive heartbeat (repurposed by the fixed-channel path as
+    /// a keyframe signal on the wire via marker byte 0xA2).
     Heartbeat = 6,
-    /// Reserved for future use
-    Reserved = 7,
+    /// Fixed-channel data frame used by the Milesight integration.
+    /// The wire format for this variant does NOT use `MessageHeader` —
+    /// it uses `CompactHeader` (4 bytes) prefixed by a marker byte
+    /// (0xA1 data / 0xA2 keyframe). This enum value only exists so
+    /// higher-level abstractions can tag frames by type internally.
+    DataFixedChannel = 7,
 }
 
 impl MessageType {
@@ -159,10 +164,145 @@ impl MessageType {
             4 => Some(MessageType::Ack),
             5 => Some(MessageType::Nack),
             6 => Some(MessageType::Heartbeat),
-            7 => Some(MessageType::Reserved),
+            7 => Some(MessageType::DataFixedChannel),
             _ => None,
         }
     }
+}
+
+// ============================================================================
+// Compact fixed-channel header (Milesight EM500-CO2 integration)
+//
+// Wire format:
+//
+//     byte 0       : marker        (0xA1 data, 0xA2 keyframe)
+//     byte 1..=2   : sequence      (u16 big-endian)
+//     byte 3..=4   : ctx_version   (u16 big-endian, low bits of ctx u32)
+//     byte 5..     : payload (bitmap + channel data — see encoder)
+//
+// Two dedicated markers are used (instead of stealing bit 15 of
+// ctx_version as a keyframe flag) so the full u16 range of the
+// context version is available on the wire, and so a JS passthrough
+// codec can identify any ALEC fixed-channel frame via `b & 0xFE == 0xA0`.
+// ============================================================================
+
+/// Marker byte for a regular fixed-channel data frame.
+pub const COMPACT_MARKER_DATA: u8 = 0xA1;
+
+/// Marker byte for a fixed-channel keyframe frame (all channels
+/// encoded as Raw32 so the decoder can resync unconditionally).
+pub const COMPACT_MARKER_KEYFRAME: u8 = 0xA2;
+
+/// Whether a byte is a fixed-channel ALEC marker.
+///
+/// Returns `Some(true)` for a keyframe marker, `Some(false)` for a
+/// regular data marker, `None` for any other byte.
+#[inline]
+pub fn classify_compact_marker(byte: u8) -> Option<bool> {
+    match byte {
+        COMPACT_MARKER_DATA => Some(false),
+        COMPACT_MARKER_KEYFRAME => Some(true),
+        _ => None,
+    }
+}
+
+/// 4-byte fixed-channel header — sequence + truncated context version.
+///
+/// The `context_version` field carries the low 16 bits of the encoder's
+/// internal `u32` version. Wraparound is handled with
+/// [`ctx_version_compatible`].
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct CompactHeader {
+    /// Frame sequence number (u16 big-endian on the wire).
+    pub sequence: u16,
+    /// Context version (low 16 bits of the encoder's u32 version),
+    /// big-endian on the wire.
+    pub context_version: u16,
+}
+
+impl CompactHeader {
+    /// Size of the compact header on the wire (excludes the marker byte).
+    pub const SIZE: usize = 4;
+
+    /// Create a new compact header.
+    pub fn new(sequence: u16, context_version: u16) -> Self {
+        Self {
+            sequence,
+            context_version,
+        }
+    }
+
+    /// Serialize the 4-byte header into `buf[..4]`.
+    ///
+    /// Returns the number of bytes written (always 4) or
+    /// `DecodeError::BufferTooShort` if the buffer is too small.
+    pub fn write(&self, buf: &mut [u8]) -> Result<usize, DecodeError> {
+        if buf.len() < Self::SIZE {
+            return Err(DecodeError::BufferTooShort {
+                needed: Self::SIZE,
+                available: buf.len(),
+            });
+        }
+        buf[0..2].copy_from_slice(&self.sequence.to_be_bytes());
+        buf[2..4].copy_from_slice(&self.context_version.to_be_bytes());
+        Ok(Self::SIZE)
+    }
+
+    /// Parse a 4-byte header from `buf[..4]`.
+    pub fn read(buf: &[u8]) -> Result<Self, DecodeError> {
+        if buf.len() < Self::SIZE {
+            return Err(DecodeError::BufferTooShort {
+                needed: Self::SIZE,
+                available: buf.len(),
+            });
+        }
+        let sequence = u16::from_be_bytes([buf[0], buf[1]]);
+        let context_version = u16::from_be_bytes([buf[2], buf[3]]);
+        Ok(Self {
+            sequence,
+            context_version,
+        })
+    }
+}
+
+/// Check whether an incoming u16 `context_version` is a "compatible"
+/// successor of the locally tracked `last` version.
+///
+/// The version is a ring in `u16` space. Any forward jump up to
+/// `max_forward_jump` — including one that wraps past 65535 — is
+/// accepted as compatible. A backward jump (i.e. a decrease larger
+/// than `u16::MAX - max_forward_jump`) is rejected as a mismatch.
+///
+/// The Milesight integration increments `context_version` once per
+/// observation, so in steady state successive frames have either
+/// equal versions (no new observation yet) or differ by at most a
+/// small amount. Callers pick `max_forward_jump` to bound the
+/// tolerated gap before flagging a sync error.
+///
+/// Returns `true` if compatible, `false` if the difference looks like
+/// a backwards jump or a forward jump larger than `max_forward_jump`.
+///
+/// # Example
+///
+/// ```
+/// use alec::protocol::ctx_version_compatible;
+///
+/// // Normal forward increment:
+/// assert!(ctx_version_compatible(11, 10, 32));
+/// // Wraparound is fine:
+/// assert!(ctx_version_compatible(0, 65535, 32));
+/// assert!(ctx_version_compatible(5, 65530, 32));
+/// // Large backward jump: not compatible.
+/// assert!(!ctx_version_compatible(10, 100, 32));
+/// // Forward jump larger than the tolerated threshold: not compatible.
+/// assert!(!ctx_version_compatible(1000, 10, 32));
+/// ```
+#[inline]
+pub fn ctx_version_compatible(incoming: u16, last: u16, max_forward_jump: u16) -> bool {
+    // u16 wrapping subtraction gives the forward distance (0..=65535).
+    // Any value <= max_forward_jump is treated as a forward step.
+    let forward = incoming.wrapping_sub(last);
+    forward <= max_forward_jump as u16
 }
 
 /// Encoding types for data compression
@@ -605,5 +745,79 @@ mod tests {
 
         let result = EncodedMessage::from_bytes_with_checksum(&short_bytes);
         assert!(matches!(result, Err(DecodeError::BufferTooShort { .. })));
+    }
+
+    // ========================================================================
+    // Bloc B1: Compact fixed-channel header
+    // ========================================================================
+
+    #[test]
+    fn test_compact_header_roundtrip() {
+        let h = CompactHeader::new(12345, 6789);
+        let mut buf = [0u8; CompactHeader::SIZE];
+        assert_eq!(h.write(&mut buf).unwrap(), CompactHeader::SIZE);
+        // Big-endian layout check.
+        assert_eq!(buf, [0x30, 0x39, 0x1A, 0x85]);
+        let back = CompactHeader::read(&buf).unwrap();
+        assert_eq!(back, h);
+    }
+
+    #[test]
+    fn test_compact_header_buffer_too_short() {
+        let h = CompactHeader::new(1, 2);
+        let mut buf = [0u8; 3];
+        assert!(matches!(
+            h.write(&mut buf),
+            Err(DecodeError::BufferTooShort { .. })
+        ));
+        assert!(matches!(
+            CompactHeader::read(&buf),
+            Err(DecodeError::BufferTooShort { .. })
+        ));
+    }
+
+    #[test]
+    fn test_classify_compact_marker() {
+        assert_eq!(classify_compact_marker(0xA1), Some(false));
+        assert_eq!(classify_compact_marker(0xA2), Some(true));
+        assert_eq!(classify_compact_marker(0x00), None);
+        assert_eq!(classify_compact_marker(0xFF), None);
+        // Legacy TLV first byte can never collide:
+        // version 1 | DataFixedChannel=7 | P3=2 → 0b01_111_010 = 0x7A.
+        assert_eq!(classify_compact_marker(0x7A), None);
+    }
+
+    #[test]
+    fn test_message_type_data_fixed_channel() {
+        // Variant is placed at the Reserved=7 slot.
+        assert_eq!(MessageType::DataFixedChannel as u8, 7);
+        assert_eq!(MessageType::from_u8(7), Some(MessageType::DataFixedChannel));
+    }
+
+    #[test]
+    fn test_ctx_version_compatible_forward_and_wraparound() {
+        // Same version (no new observation yet) is compatible.
+        assert!(ctx_version_compatible(100, 100, 32));
+        // Normal forward increments.
+        assert!(ctx_version_compatible(101, 100, 32));
+        assert!(ctx_version_compatible(131, 100, 32));
+        // Right at the threshold.
+        assert!(ctx_version_compatible(132, 100, 32));
+        // Past the threshold.
+        assert!(!ctx_version_compatible(133, 100, 32));
+
+        // Wraparound across 65535 → 0.
+        assert!(ctx_version_compatible(0, 65535, 32));
+        // forward distance from 65530 to 5 = (5 - 65530) wrapping = 11, < 32 OK.
+        assert!(ctx_version_compatible(5, 65530, 32));
+        // forward distance from 65530 to 26 = 32, exactly at threshold.
+        assert!(ctx_version_compatible(26, 65530, 32));
+        // forward distance from 65530 to 31 = 37, past threshold.
+        assert!(!ctx_version_compatible(31, 65530, 32));
+        // Wraparound past the threshold.
+        assert!(!ctx_version_compatible(1000, 65530, 32));
+
+        // Backward jump (ring direction counts as very large forward).
+        assert!(!ctx_version_compatible(10, 100, 32));
     }
 }

@@ -394,6 +394,93 @@ AlecResult alec_decoder_load_context(
  */
 uint32_t alec_decoder_context_version(const AlecDecoder* decoder);
 
+/* ============================================================================
+ * Fixed-channel encode / decode (Milesight EM500-CO2 compact wire format)
+ *
+ * Wire layout for an ALEC fixed-channel frame:
+ *
+ *     byte 0         : marker        (0xA1 data, 0xA2 keyframe)
+ *     byte 1..=2     : sequence      (u16 big-endian)
+ *     byte 3..=4     : ctx_version   (u16 big-endian, low 16 bits of u32)
+ *     byte 5..=5+B-1 : encoding bitmap (2 bits per channel,
+ *                      B = ceil(channel_count / 4) bytes)
+ *     byte 5+B..     : per-channel encoded data
+ *
+ * Encoding bitmap codes:
+ *
+ *     00 Repeated    (0 bytes of data)
+ *     01 Delta8      (1 byte)
+ *     10 Delta16     (2 bytes)
+ *     11 Raw32       (4 bytes)
+ *
+ * The channel count is NOT encoded on the wire — encoder and decoder
+ * must agree on it out-of-band (e.g. via the LoRaWAN device model).
+ * ============================================================================ */
+
+/**
+ * Encode a fixed-channel frame using the compact 4-byte header.
+ *
+ * If the encoder's `keyframe_interval` has been reached OR
+ * `alec_force_keyframe` was called since the last encode (and
+ * `smart_resync` is enabled), this frame is emitted as a keyframe
+ * (marker 0xA2, Raw32 for every channel). Otherwise a regular data
+ * frame (marker 0xA1) is emitted.
+ *
+ * The caller must compare *output_len against the 11-byte LoRaWAN
+ * ceiling. If the encoded frame exceeds 11 bytes (notably cold-start
+ * frames and keyframes) the integrator should fall back to a legacy
+ * TLV frame for that message.
+ *
+ * @param encoder         Encoder handle.
+ * @param values          Per-channel f64 values (positional).
+ * @param channel_count   Number of channels in `values`.
+ * @param output          Destination buffer for the wire bytes.
+ * @param output_capacity Size of `output` in bytes.
+ * @param output_len      Pointer receiving the number of bytes written.
+ *
+ * @return ALEC_OK on success; ALEC_ERROR_BUFFER_TOO_SMALL if the
+ *         encoded frame does not fit; ALEC_ERROR_INVALID_INPUT for
+ *         zero channels; ALEC_ERROR_NULL_POINTER for a NULL pointer.
+ */
+AlecResult alec_encode_multi_fixed(
+    AlecEncoder* encoder,
+    const double* values,
+    size_t channel_count,
+    uint8_t* output,
+    size_t output_capacity,
+    size_t* output_len
+);
+
+/**
+ * Decode a fixed-channel frame produced by alec_encode_multi_fixed.
+ *
+ * The channel count is passed explicitly — it must match the value
+ * used by the encoder. On success, decoded values are written in
+ * channel order to `output[..channel_count]`, and the decoder's
+ * gap and sequence tracking are updated (see
+ * alec_decoder_gap_detected).
+ *
+ * @param decoder         Decoder handle.
+ * @param input           Wire bytes (starting at the marker byte).
+ * @param input_len       Length of the input in bytes.
+ * @param channel_count   Number of channels in the frame.
+ * @param output          Destination buffer for decoded values.
+ * @param output_capacity Size of `output` in number of f64 entries.
+ *
+ * @return ALEC_OK on success; ALEC_ERROR_INVALID_INPUT for a
+ *         non-ALEC marker byte or zero channel_count;
+ *         ALEC_ERROR_BUFFER_TOO_SMALL if capacity/input too short;
+ *         ALEC_ERROR_DECODING_FAILED for any other decode failure.
+ */
+AlecResult alec_decode_multi_fixed(
+    AlecDecoder* decoder,
+    const uint8_t* input,
+    size_t input_len,
+    size_t channel_count,
+    double* output,
+    size_t output_capacity
+);
+
 /**
  * Check whether the most recent decode detected a sequence gap.
  *

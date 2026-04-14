@@ -464,6 +464,77 @@ enum AlecResult alec_decoder_load_context(struct AlecDecoder *decoder, const cha
  */
 uint32_t alec_decoder_context_version(const struct AlecDecoder *decoder);
 
+/**
+ * Encode a fixed-channel frame using the compact 4-byte header
+ * (Milesight EM500-CO2 wire format).
+ *
+ * The number of channels is passed explicitly and must match the
+ * value used by the peer decoder — the wire format does not carry
+ * it. The encoder keeps a positional view of the channels, so
+ * `values[i]` is the value for channel index `i`.
+ *
+ * If `keyframe_interval > 0` and `messages_since_keyframe`
+ * has reached that interval, OR if `alec_force_keyframe` was called
+ * since the last encode AND `smart_resync` is enabled, this frame
+ * is emitted as a **keyframe** (marker 0xA2, Raw32 for every
+ * channel). Otherwise a regular data frame (marker 0xA1) is emitted.
+ *
+ * # Arguments
+ *
+ * * `encoder`         - Encoder handle (must not be NULL).
+ * * `values`          - Per-channel f64 values, positional.
+ * * `channel_count`   - Number of channels in `values`.
+ * * `output`          - Destination buffer for the wire bytes.
+ * * `output_capacity` - Size of `output` in bytes.
+ * * `out_len`         - Pointer receiving the number of bytes
+ *                       written to `output`.
+ *
+ * # Returns
+ *
+ * `ALEC_OK` on success. `ALEC_ERROR_BUFFER_TOO_SMALL` if the
+ * encoded frame does not fit in `output`. `ALEC_ERROR_INVALID_INPUT`
+ * for zero channels. `ALEC_ERROR_NULL_POINTER` for any required
+ * NULL pointer.
+ *
+ * The caller can detect that the frame must be replaced by the
+ * legacy TLV fallback by comparing `*out_len` against the 11-byte
+ * LoRaWAN ceiling: if `*out_len > 11`, emit the TLV frame instead.
+ */
+enum AlecResult alec_encode_multi_fixed(struct AlecEncoder *encoder,
+                                        const double *values,
+                                        uintptr_t channel_count,
+                                        uint8_t *output,
+                                        uintptr_t output_capacity,
+                                        uintptr_t *out_len);
+
+/**
+ * Decode a fixed-channel frame produced by `alec_encode_multi_fixed`.
+ *
+ * The number of channels is passed explicitly — the wire format does
+ * not carry it. Must match the value used by the encoder.
+ *
+ * On a successful decode:
+ *   - `output[..channel_count]` receives the decoded values in channel order.
+ *   - The decoder's last-sequence and last-ctx-version are updated.
+ *   - The gap size (if any) is available via `alec_decoder_gap_detected`.
+ *
+ * # Returns
+ *
+ * * `ALEC_OK`                         on success.
+ * * `ALEC_ERROR_INVALID_INPUT`        for zero channels or a non-ALEC marker byte.
+ * * `ALEC_ERROR_BUFFER_TOO_SMALL`     if `output_capacity < channel_count`
+ *                                     or the input is shorter than the
+ *                                     header + bitmap + data bytes.
+ * * `ALEC_ERROR_DECODING_FAILED`      for any other decode error.
+ * * `ALEC_ERROR_NULL_POINTER`         for a NULL required pointer.
+ */
+enum AlecResult alec_decode_multi_fixed(struct AlecDecoder *decoder,
+                                        const uint8_t *input,
+                                        uintptr_t input_len,
+                                        uintptr_t channel_count,
+                                        double *output,
+                                        uintptr_t output_capacity);
+
 extern uint8_t *k_aligned_alloc(uintptr_t align, uintptr_t size);
 
 extern void k_free(uint8_t *ptr);

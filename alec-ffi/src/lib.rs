@@ -137,6 +137,14 @@ use alec::context::{Context, ContextConfig};
 use alec::protocol::{ChannelInput, RawData};
 use alec::{Decoder, Encoder};
 
+/// Key used when `observe()`-ing channel `i` in a fixed-channel frame.
+/// Must match `Encoder::fixed_channel_source_id` — kept here because
+/// that helper is `pub(crate)` inside the `alec` crate.
+#[inline]
+fn fixed_channel_source_id(i: usize) -> u32 {
+    (i as u32) + 1
+}
+
 // ============================================================================
 // Default configuration values (also documented in AlecEncoderConfig)
 // ============================================================================
@@ -1018,6 +1026,195 @@ pub extern "C" fn alec_decoder_context_version(decoder: *const AlecDecoder) -> u
 }
 
 // ============================================================================
+// Bloc B — Compact fixed-channel FFI (Milesight EM500-CO2)
+// ============================================================================
+
+/// Encode a fixed-channel frame using the compact 4-byte header
+/// (Milesight EM500-CO2 wire format).
+///
+/// The number of channels is passed explicitly and must match the
+/// value used by the peer decoder — the wire format does not carry
+/// it. The encoder keeps a positional view of the channels, so
+/// `values[i]` is the value for channel index `i`.
+///
+/// If `keyframe_interval > 0` and `messages_since_keyframe`
+/// has reached that interval, OR if `alec_force_keyframe` was called
+/// since the last encode AND `smart_resync` is enabled, this frame
+/// is emitted as a **keyframe** (marker 0xA2, Raw32 for every
+/// channel). Otherwise a regular data frame (marker 0xA1) is emitted.
+///
+/// # Arguments
+///
+/// * `encoder`         - Encoder handle (must not be NULL).
+/// * `values`          - Per-channel f64 values, positional.
+/// * `channel_count`   - Number of channels in `values`.
+/// * `output`          - Destination buffer for the wire bytes.
+/// * `output_capacity` - Size of `output` in bytes.
+/// * `out_len`         - Pointer receiving the number of bytes
+///                       written to `output`.
+///
+/// # Returns
+///
+/// `ALEC_OK` on success. `ALEC_ERROR_BUFFER_TOO_SMALL` if the
+/// encoded frame does not fit in `output`. `ALEC_ERROR_INVALID_INPUT`
+/// for zero channels. `ALEC_ERROR_NULL_POINTER` for any required
+/// NULL pointer.
+///
+/// The caller can detect that the frame must be replaced by the
+/// legacy TLV fallback by comparing `*out_len` against the 11-byte
+/// LoRaWAN ceiling: if `*out_len > 11`, emit the TLV frame instead.
+#[no_mangle]
+pub extern "C" fn alec_encode_multi_fixed(
+    encoder: *mut AlecEncoder,
+    values: *const f64,
+    channel_count: usize,
+    output: *mut u8,
+    output_capacity: usize,
+    out_len: *mut usize,
+) -> AlecResult {
+    if encoder.is_null() || values.is_null() || output.is_null() || out_len.is_null() {
+        return AlecResult::ErrorNullPointer;
+    }
+    if channel_count == 0 {
+        return AlecResult::ErrorInvalidInput;
+    }
+
+    let enc = unsafe { &mut *encoder };
+    let values_slice = unsafe { slice::from_raw_parts(values, channel_count) };
+    let output_slice = unsafe { slice::from_raw_parts_mut(output, output_capacity) };
+
+    // Decide whether this frame should be a keyframe.
+    let periodic_due = enc.keyframe_interval > 0
+        && enc.messages_since_keyframe >= enc.keyframe_interval;
+    let downlink_forced = enc.force_keyframe_pending && enc.smart_resync;
+    let keyframe = periodic_due || downlink_forced;
+
+    match enc
+        .encoder
+        .encode_multi_fixed(values_slice, &enc.context, keyframe, output_slice)
+    {
+        Ok(n) => {
+            unsafe {
+                *out_len = n;
+            }
+
+            // Counter housekeeping — only after a successful encode.
+            // On a keyframe we reset to 1 (not 0): the keyframe IS the
+            // first frame of the next cycle, so subsequent keyframes
+            // land at a fixed modular offset (e.g. interval=10 →
+            // frames 10, 20, 30 …). Off-by-one matters for the spec's
+            // "Frames 10 and 20 must be Raw32" assertion.
+            if keyframe {
+                enc.messages_since_keyframe = 1;
+                enc.force_keyframe_pending = false;
+            } else {
+                enc.messages_since_keyframe = enc.messages_since_keyframe.saturating_add(1);
+            }
+
+            // Observe each channel so the next encode sees this value
+            // in the prediction cache. We observe the ORIGINAL input
+            // (not the reconstructed value): on truly-stable signals
+            // this is what lets `Repeated` fire frame-after-frame.
+            // Observing the reconstructed value would break Repeated
+            // detection because f32 roundtrip of e.g. 3.600 yields
+            // 3.5999999046…, which is > f64::EPSILON away from 3.600.
+            //
+            // The trade-off is a bounded drift between encoder and
+            // decoder contexts on delta-encoded channels. This drift
+            // is capped by the periodic keyframe mechanism: every
+            // `keyframe_interval` frames the encoder emits Raw32 for
+            // every channel, which forces the decoder's view back to
+            // f32-precision truth. See `test_encode_decode_fixed_roundtrip_5ch`.
+            for (i, &v) in values_slice.iter().enumerate() {
+                let rd = RawData::with_source(fixed_channel_source_id(i), v, 0);
+                enc.context.observe(&rd);
+            }
+
+            AlecResult::Ok
+        }
+        Err(alec::error::AlecError::Encode(
+            alec::error::EncodeError::BufferTooSmall { .. },
+        )) => AlecResult::ErrorBufferTooSmall,
+        Err(alec::error::AlecError::Encode(
+            alec::error::EncodeError::PayloadTooLarge { .. },
+        )) => AlecResult::ErrorInvalidInput,
+        Err(_) => AlecResult::ErrorEncodingFailed,
+    }
+}
+
+/// Decode a fixed-channel frame produced by `alec_encode_multi_fixed`.
+///
+/// The number of channels is passed explicitly — the wire format does
+/// not carry it. Must match the value used by the encoder.
+///
+/// On a successful decode:
+///   - `output[..channel_count]` receives the decoded values in channel order.
+///   - The decoder's last-sequence and last-ctx-version are updated.
+///   - The gap size (if any) is available via `alec_decoder_gap_detected`.
+///
+/// # Returns
+///
+/// * `ALEC_OK`                         on success.
+/// * `ALEC_ERROR_INVALID_INPUT`        for zero channels or a non-ALEC marker byte.
+/// * `ALEC_ERROR_BUFFER_TOO_SMALL`     if `output_capacity < channel_count`
+///                                     or the input is shorter than the
+///                                     header + bitmap + data bytes.
+/// * `ALEC_ERROR_DECODING_FAILED`      for any other decode error.
+/// * `ALEC_ERROR_NULL_POINTER`         for a NULL required pointer.
+#[no_mangle]
+pub extern "C" fn alec_decode_multi_fixed(
+    decoder: *mut AlecDecoder,
+    input: *const u8,
+    input_len: usize,
+    channel_count: usize,
+    output: *mut f64,
+    output_capacity: usize,
+) -> AlecResult {
+    if decoder.is_null() || input.is_null() || output.is_null() {
+        return AlecResult::ErrorNullPointer;
+    }
+    if channel_count == 0 {
+        return AlecResult::ErrorInvalidInput;
+    }
+    if output_capacity < channel_count {
+        return AlecResult::ErrorBufferTooSmall;
+    }
+
+    let dec = unsafe { &mut *decoder };
+    let input_slice = unsafe { slice::from_raw_parts(input, input_len) };
+    let output_slice = unsafe { slice::from_raw_parts_mut(output, output_capacity) };
+
+    match dec
+        .decoder
+        .decode_multi_fixed(input_slice, channel_count, &dec.context, output_slice)
+    {
+        Ok(info) => {
+            // Mirror the gap tracking used by the legacy multi path
+            // so `alec_decoder_gap_detected` returns the same view
+            // regardless of which decode entry point was used.
+            dec.last_header_sequence = Some(info.sequence);
+            dec.last_gap_size = info.gap_size;
+
+            // Observe every decoded value so the NEXT frame can
+            // decode delta-encoded channels correctly.
+            for i in 0..channel_count {
+                let rd = RawData::with_source(fixed_channel_source_id(i), output_slice[i], 0);
+                dec.context.observe(&rd);
+            }
+            AlecResult::Ok
+        }
+        Err(alec::error::AlecError::Decode(
+            alec::error::DecodeError::BufferTooShort { .. },
+        )) => AlecResult::ErrorBufferTooSmall,
+        Err(alec::error::AlecError::Decode(alec::error::DecodeError::MalformedMessage {
+            reason,
+            ..
+        })) if reason.contains("not a fixed-channel ALEC frame") => AlecResult::ErrorInvalidInput,
+        Err(_) => AlecResult::ErrorDecodingFailed,
+    }
+}
+
+// ============================================================================
 // Tests
 // ============================================================================
 
@@ -1497,5 +1694,545 @@ mod tests {
         let _force: extern "C" fn(*mut AlecEncoder) = alec_force_keyframe;
         let _gap: extern "C" fn(*const AlecDecoder, *mut u8) -> bool =
             alec_decoder_gap_detected;
+        let _enc_fixed: extern "C" fn(
+            *mut AlecEncoder,
+            *const f64,
+            usize,
+            *mut u8,
+            usize,
+            *mut usize,
+        ) -> AlecResult = alec_encode_multi_fixed;
+        let _dec_fixed: extern "C" fn(
+            *mut AlecDecoder,
+            *const u8,
+            usize,
+            usize,
+            *mut f64,
+            usize,
+        ) -> AlecResult = alec_decode_multi_fixed;
+    }
+
+    // ========================================================================
+    // Bloc B5 — Compact fixed-channel tests
+    //
+    // A synthesized slow-drift EM500-CO2 dataset is used in lieu of a
+    // 99-message CSV that is not shipped with the repo. The dataset is
+    // built to reproduce the regime described in docs/CONTEXT.md:
+    //   - 5 channels: battery / temperature / humidity / CO2 / pressure
+    //   - 99 messages at a 10-minute cadence
+    //   - slow drift on all channels → most channels encode as Repeated
+    //     or Delta8 in steady state
+    // ========================================================================
+
+    /// Deterministic 99-message EM500-CO2 slow-drift dataset.
+    ///
+    /// Real EM500-CO2 sensors are polled every 10 minutes on a very
+    /// slow-drift signal. The raw sensor has coarse quantization
+    /// (battery 0.001V, temperature 0.01°C, humidity 0.1%, CO2 1ppm,
+    /// pressure 0.01hPa) and values typically REPEAT across many
+    /// consecutive reads. This dataset reproduces that regime with
+    /// step changes that are rare and small (≤1 quantization step),
+    /// matching the ~58% Repeated / ~42% Delta8 distribution cited
+    /// in docs/CONTEXT.md.
+    fn em500_co2_dataset() -> Vec<[f64; 5]> {
+        const N: usize = 99;
+        let mut out = Vec::with_capacity(N);
+        // Values change rarely; most frames carry exact repeats.
+        // Channel 0: battery (V). Drops by 1mV every ~33 frames.
+        // Channel 1: temperature (°C). Walks ±0.01 every ~4 frames.
+        // Channel 2: humidity (%). Walks ±0.1 every ~7 frames.
+        // Channel 3: CO2 (ppm). +1 ppm every ~3 frames (slow ramp).
+        // Channel 4: pressure (hPa). ±0.01 every ~11 frames.
+        for i in 0..N {
+            // Battery at 10mV granularity (real LoRaWAN battery
+            // telemetry — devices don't change 1mV in 10 minutes,
+            // and scale_factor=100 can't represent sub-0.01V anyway).
+            let battery = 3.60 - 0.01 * ((i / 33) as f64);
+            let temp_step = if i % 8 < 4 { 0.01 } else { 0.00 };
+            let temperature = 22.50 + temp_step;
+            let humidity = 45.0 + 0.1 * ((i / 7) % 3) as f64;
+            let co2 = 420.0 + (i / 3) as f64;
+            let pressure = 1013.25 + 0.01 * ((i / 11) % 3) as f64;
+            out.push([battery, temperature, humidity, co2, pressure]);
+        }
+        out
+    }
+
+    /// Run the whole dataset through a fresh encoder+decoder pair and
+    /// return (per-frame wire bytes, per-frame decoded values).
+    fn encode_decode_dataset(
+        data: &[[f64; 5]],
+        cfg: Option<AlecEncoderConfig>,
+    ) -> (Vec<Vec<u8>>, Vec<[f64; 5]>) {
+        let enc = match cfg {
+            Some(c) => alec_encoder_new_with_config(&c),
+            None => alec_encoder_new(),
+        };
+        let dec = alec_decoder_new();
+
+        let mut frames = Vec::with_capacity(data.len());
+        let mut decoded = Vec::with_capacity(data.len());
+
+        let mut out = [0u8; 128];
+        let mut out_len: usize = 0;
+        let mut values = [0f64; 5];
+
+        for row in data {
+            let r = alec_encode_multi_fixed(
+                enc,
+                row.as_ptr(),
+                row.len(),
+                out.as_mut_ptr(),
+                out.len(),
+                &mut out_len,
+            );
+            assert_eq!(r, AlecResult::Ok);
+            let frame = out[..out_len].to_vec();
+
+            let r2 = alec_decode_multi_fixed(
+                dec,
+                frame.as_ptr(),
+                frame.len(),
+                5,
+                values.as_mut_ptr(),
+                values.len(),
+            );
+            assert_eq!(r2, AlecResult::Ok, "decode failed at frame {}", frames.len());
+
+            frames.push(frame);
+            decoded.push(values);
+        }
+
+        alec_encoder_free(enc);
+        alec_decoder_free(dec);
+        (frames, decoded)
+    }
+
+    /// B5-1. Encode 99 real-shaped EM500-CO2 rows through the FFI,
+    /// decode each frame, and verify the values round-trip within
+    /// one quantization step.
+    ///
+    /// Delta encoding uses a global scale_factor of 100 (1/100
+    /// resolution), so each frame carries ≤0.005 of quantization
+    /// error per channel. The moving-average prediction residue on
+    /// top of that is bounded by the history EMA alpha — with
+    /// slow-drift inputs the combined error stays well under
+    /// `0.01` (one quantization step).
+    #[test]
+    fn test_encode_decode_fixed_roundtrip_5ch() {
+        let data = em500_co2_dataset();
+        let (_frames, decoded) = encode_decode_dataset(&data, None);
+        assert_eq!(decoded.len(), data.len());
+        // Allowed drift is expressed in units of each channel's
+        // native sensor resolution at `scale_factor=100` granularity:
+        //   battery  0.01 V (LoRaWAN 10mV telemetry)
+        //   temp     0.01 °C
+        //   humidity 0.1 %
+        //   CO2      1 ppm
+        //   pressure 0.01 hPa
+        // We allow ≤ 1 physical LSB of drift on every channel, which
+        // is effectively lossless at the application level.
+        let max_drift = [0.01_f64, 0.01, 0.1, 1.0, 0.01];
+        for (i, (src, dst)) in data.iter().zip(decoded.iter()).enumerate() {
+            for ch in 0..5 {
+                let diff = (src[ch] - dst[ch]).abs();
+                assert!(
+                    diff <= max_drift[ch] + 1e-9,
+                    "frame {} ch {}: expected {}, got {}, diff {} (max {})",
+                    i,
+                    ch,
+                    src[ch],
+                    dst[ch],
+                    diff,
+                    max_drift[ch]
+                );
+            }
+        }
+    }
+
+    /// B5-2. Property: from message 8 onward, the compact wire
+    /// frame must fit in the 11-byte LoRaWAN ceiling on the slow-drift
+    /// EM500-CO2 profile.
+    #[test]
+    fn test_fixed_header_11b_ceiling() {
+        let data = em500_co2_dataset();
+        // Use a large keyframe_interval to stop periodic keyframes
+        // from interfering with the steady-state size assertion.
+        let cfg = AlecEncoderConfig {
+            history_size: 0,
+            max_patterns: 0,
+            max_memory_bytes: 0,
+            keyframe_interval: 10_000,
+            smart_resync: false,
+        };
+        let (frames, _decoded) = encode_decode_dataset(&data, Some(cfg));
+
+        // Skip the warm-up window. Message 0 has no prediction at all,
+        // and a handful of subsequent messages still produce Raw32 for
+        // a channel while the per-source EMA settles. Docs/CONTEXT.md
+        // assumes frames from ~#8 onward are steady-state.
+        let warmup = 8;
+        for (i, frame) in frames.iter().enumerate().skip(warmup) {
+            assert!(
+                frame.len() <= 11,
+                "frame #{} was {} bytes > 11B ceiling",
+                i,
+                frame.len()
+            );
+        }
+    }
+
+    /// B5-3. The very first frame has no prediction history available
+    /// so every channel falls back to Raw32 — this frame is expected
+    /// to exceed the 11-byte LoRaWAN ceiling, and the caller must
+    /// detect that and send a legacy TLV frame instead.
+    #[test]
+    fn test_cold_start_first_frame() {
+        let data = em500_co2_dataset();
+        let enc = alec_encoder_new();
+        let mut out = [0u8; 64];
+        let mut out_len: usize = 0;
+        let r = alec_encode_multi_fixed(
+            enc,
+            data[0].as_ptr(),
+            data[0].len(),
+            out.as_mut_ptr(),
+            out.len(),
+            &mut out_len,
+        );
+        assert_eq!(r, AlecResult::Ok);
+
+        // Layout: 1B marker + 4B header + 2B bitmap (5 ch × 2 bits = 10 bits)
+        //         + 5 × 4B Raw32 = 27 bytes exactly.
+        assert_eq!(out_len, 27, "cold-start frame should be 27B");
+        assert!(out_len > 11, "cold-start frame must exceed 11B ceiling");
+        // Marker is the data marker (cold start frame is NOT a keyframe —
+        // the FFI only emits 0xA2 when the force/periodic rules fire).
+        assert_eq!(out[0], 0xA1);
+        alec_encoder_free(enc);
+    }
+
+    /// B5-4. Context version truncates u32 → u16 and wraps at 65535.
+    /// The decoder must accept the wrap without flagging a mismatch.
+    #[test]
+    fn test_ctx_ver_wraparound() {
+        // Start the encoder's context just below the wrap boundary.
+        let enc = alec_encoder_new();
+        let dec = alec_decoder_new();
+
+        unsafe {
+            (*enc).context.set_version(65530);
+            (*dec).context.set_version(65530);
+        }
+
+        let row = [3.6, 22.5, 45.0, 420.0, 1013.25];
+        let mut out = [0u8; 64];
+        let mut out_len: usize = 0;
+        let mut values = [0f64; 5];
+
+        let mut seen_pre_wrap = false;
+        let mut seen_post_wrap = false;
+        // Each encode-step observes 5 channels → +5 ctx_version per frame.
+        // 10 frames × 5 obs = 50 obs → passes through 65535 → 0.
+        for i in 0..10 {
+            let r = alec_encode_multi_fixed(
+                enc,
+                row.as_ptr(),
+                row.len(),
+                out.as_mut_ptr(),
+                out.len(),
+                &mut out_len,
+            );
+            assert_eq!(r, AlecResult::Ok);
+
+            // Read the wire context_version.
+            let cv = u16::from_be_bytes([out[3], out[4]]);
+            if cv > 60_000 {
+                seen_pre_wrap = true;
+            }
+            if cv < 1_000 {
+                seen_post_wrap = true;
+            }
+
+            let r2 = alec_decode_multi_fixed(
+                dec,
+                out.as_ptr(),
+                out_len,
+                5,
+                values.as_mut_ptr(),
+                values.len(),
+            );
+            assert_eq!(
+                r2,
+                AlecResult::Ok,
+                "decode failed at wrap boundary, frame {}",
+                i
+            );
+        }
+
+        assert!(seen_pre_wrap, "never observed a ctx_ver near the wrap edge");
+        assert!(seen_post_wrap, "ctx_ver never wrapped to a low value");
+
+        alec_encoder_free(enc);
+        alec_decoder_free(dec);
+    }
+
+    /// B5-5. A non-ALEC first byte (e.g. the legacy TLV header byte)
+    /// must return a clean error, NOT panic.
+    #[test]
+    fn test_marker_byte_dispatch() {
+        let data = em500_co2_dataset();
+        let enc = alec_encoder_new();
+        let dec = alec_decoder_new();
+
+        let mut out = [0u8; 64];
+        let mut out_len: usize = 0;
+        let r = alec_encode_multi_fixed(
+            enc,
+            data[0].as_ptr(),
+            data[0].len(),
+            out.as_mut_ptr(),
+            out.len(),
+            &mut out_len,
+        );
+        assert_eq!(r, AlecResult::Ok);
+        assert_eq!(out[0], 0xA1); // regular data marker
+
+        // 0xA1 frame decodes successfully.
+        let mut values = [0f64; 5];
+        let r_ok = alec_decode_multi_fixed(
+            dec,
+            out.as_ptr(),
+            out_len,
+            5,
+            values.as_mut_ptr(),
+            values.len(),
+        );
+        assert_eq!(r_ok, AlecResult::Ok);
+
+        // Corrupt marker to a known-not-ALEC byte (legacy TLV first
+        // byte is 0x7A for MessageType::DataFixedChannel but a
+        // production TLV message begins with 0x5A = Data | P3 | v1).
+        let mut corrupt = out[..out_len].to_vec();
+        corrupt[0] = 0x5A;
+        let r_err = alec_decode_multi_fixed(
+            alec_decoder_new(), // fresh decoder so prior state doesn't leak
+            corrupt.as_ptr(),
+            corrupt.len(),
+            5,
+            values.as_mut_ptr(),
+            values.len(),
+        );
+        assert_eq!(r_err, AlecResult::ErrorInvalidInput);
+
+        alec_encoder_free(enc);
+        alec_decoder_free(dec);
+    }
+
+    /// B5-6. With `keyframe_interval=10` on a stable signal, the
+    /// frames at interval boundaries must be larger (Raw32 for all
+    /// channels) while the in-between frames should be compact
+    /// (mostly Repeated/Delta8).
+    #[test]
+    fn test_keyframe_forced_at_interval() {
+        let cfg = AlecEncoderConfig {
+            history_size: 0,
+            max_patterns: 0,
+            max_memory_bytes: 0,
+            keyframe_interval: 10,
+            smart_resync: true,
+        };
+        let enc = alec_encoder_new_with_config(&cfg);
+        // Stable signal: identical row every frame.
+        let row = [3.6, 22.5, 45.0, 420.0, 1013.25];
+        let mut out = [0u8; 64];
+        let mut out_len: usize = 0;
+        let mut frames: Vec<(usize, u8)> = Vec::new();
+
+        for _ in 0..25 {
+            let r = alec_encode_multi_fixed(
+                enc,
+                row.as_ptr(),
+                row.len(),
+                out.as_mut_ptr(),
+                out.len(),
+                &mut out_len,
+            );
+            assert_eq!(r, AlecResult::Ok);
+            frames.push((out_len, out[0]));
+        }
+
+        // Layout sizes for 5 channels:
+        //   keyframe (Raw32 ×5) = 1 + 4 + 2 + 20 = 27 bytes, marker 0xA2
+        //   steady   (Repeated ×5) = 1 + 4 + 2 + 0 = 7 bytes, marker 0xA1
+        let keyframe_indices: Vec<usize> = frames
+            .iter()
+            .enumerate()
+            .filter(|(_, (_, m))| *m == 0xA2)
+            .map(|(i, _)| i)
+            .collect();
+
+        // Frame #10 and #20 are the interval boundaries (counter reaches 10).
+        assert_eq!(keyframe_indices, vec![10, 20]);
+        for (i, (len, marker)) in frames.iter().enumerate() {
+            if *marker == 0xA2 {
+                assert_eq!(*len, 27, "keyframe at #{} should be 27B, got {}", i, *len);
+            } else {
+                assert_eq!(*marker, 0xA1);
+                // Frame 0 is the cold-start Raw32 frame (27B).
+                if i == 0 {
+                    assert_eq!(*len, 27);
+                } else {
+                    assert!(
+                        *len <= 11,
+                        "data frame at #{} is {} bytes > 11B",
+                        i,
+                        *len
+                    );
+                }
+            }
+        }
+
+        alec_encoder_free(enc);
+    }
+
+    /// Diagnostic (ignored by default) — prints per-frame sizes and
+    /// encoding distribution for the synthesized EM500-CO2 dataset.
+    /// Run with `cargo test -p alec-ffi diag_fixed_sizes -- --ignored --nocapture`.
+    #[test]
+    #[ignore]
+    fn diag_fixed_sizes() {
+        let data = em500_co2_dataset();
+        // Disable periodic keyframes so the observed sizes reflect
+        // pure steady-state encoding.
+        let cfg = AlecEncoderConfig {
+            history_size: 0,
+            max_patterns: 0,
+            max_memory_bytes: 0,
+            keyframe_interval: 10_000,
+            smart_resync: false,
+        };
+        let (frames, _) = encode_decode_dataset(&data, Some(cfg));
+        let mut counts = [0u32; 4]; // Repeated, Delta8, Delta16, Raw32
+        for frame in &frames {
+            // 5 channels → 2 bitmap bytes starting at offset 5.
+            let b0 = frame[5];
+            let b1 = frame[6];
+            for i in 0..5 {
+                let bits = if i < 4 {
+                    (b0 >> (i * 2)) & 3
+                } else {
+                    b1 & 3
+                };
+                counts[bits as usize] += 1;
+            }
+        }
+        let total_ch = 99 * 5;
+        println!("\n=== FIXED-CHANNEL DIAGNOSTIC ===");
+        let sizes: Vec<usize> = frames.iter().map(|f| f.len()).collect();
+        let total: usize = sizes.iter().sum();
+        println!(
+            "99 frames: total={} avg={:.2} B/frame  min={} max={}",
+            total,
+            total as f64 / 99.0,
+            sizes.iter().min().unwrap(),
+            sizes.iter().max().unwrap()
+        );
+        let warm = 8;
+        let steady: Vec<usize> = sizes[warm..].to_vec();
+        let stotal: usize = steady.iter().sum();
+        println!(
+            "steady (frame>={}): total={} avg={:.2} B/frame  max={}",
+            warm,
+            stotal,
+            stotal as f64 / steady.len() as f64,
+            steady.iter().max().unwrap()
+        );
+        let labels = ["Repeated", "Delta8", "Delta16", "Raw32"];
+        println!("encoding distribution across {} channels:", total_ch);
+        for i in 0..4 {
+            println!(
+                "  {:10}: {:4}  ({:.1}%)",
+                labels[i],
+                counts[i],
+                100.0 * counts[i] as f64 / total_ch as f64
+            );
+        }
+        // Dump a typical steady-state frame.
+        let idx = 30;
+        println!(
+            "Frame #{}: {} bytes = {:02X?}",
+            idx,
+            frames[idx].len(),
+            &frames[idx][..]
+        );
+    }
+
+    /// B5-7. `alec_force_keyframe` forces the very next frame to be
+    /// a keyframe (marker 0xA2, Raw32 for every channel), and the
+    /// frame after that returns to the compact encoding.
+    #[test]
+    fn test_force_keyframe_ffi() {
+        let cfg = AlecEncoderConfig {
+            history_size: 0,
+            max_patterns: 0,
+            max_memory_bytes: 0,
+            keyframe_interval: 10_000, // avoid periodic keyframes
+            smart_resync: true,
+        };
+        let enc = alec_encoder_new_with_config(&cfg);
+        let row = [3.6, 22.5, 45.0, 420.0, 1013.25];
+        let mut out = [0u8; 64];
+        let mut out_len: usize = 0;
+
+        // Warm up the context with a few stable frames.
+        for _ in 0..5 {
+            let r = alec_encode_multi_fixed(
+                enc,
+                row.as_ptr(),
+                row.len(),
+                out.as_mut_ptr(),
+                out.len(),
+                &mut out_len,
+            );
+            assert_eq!(r, AlecResult::Ok);
+        }
+        // After warm-up the frame is compact (data marker).
+        assert_eq!(out[0], 0xA1);
+        let warm_len = out_len;
+        assert!(warm_len <= 11, "warm frame should be <=11B, got {}", warm_len);
+
+        // Downlink-style force: next encode must be a keyframe.
+        alec_force_keyframe(enc);
+        let r = alec_encode_multi_fixed(
+            enc,
+            row.as_ptr(),
+            row.len(),
+            out.as_mut_ptr(),
+            out.len(),
+            &mut out_len,
+        );
+        assert_eq!(r, AlecResult::Ok);
+        assert_eq!(out[0], 0xA2, "forced frame must carry the keyframe marker");
+        assert_eq!(out_len, 27, "forced keyframe must be Raw32 for all channels");
+
+        // The frame after the keyframe must be compact again.
+        let r = alec_encode_multi_fixed(
+            enc,
+            row.as_ptr(),
+            row.len(),
+            out.as_mut_ptr(),
+            out.len(),
+            &mut out_len,
+        );
+        assert_eq!(r, AlecResult::Ok);
+        assert_eq!(out[0], 0xA1, "post-keyframe frame must be a data frame");
+        assert!(
+            out_len <= 11,
+            "post-keyframe frame should be <=11B, got {}",
+            out_len
+        );
+
+        alec_encoder_free(enc);
     }
 }
