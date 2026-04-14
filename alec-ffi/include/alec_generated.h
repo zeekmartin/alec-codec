@@ -7,6 +7,31 @@
 #include <stdlib.h>
 
 /**
+ * Default history size per source (validated on 99-message EM500-CO2 dataset).
+ */
+#define ALEC_DEFAULT_HISTORY_SIZE 20
+
+/**
+ * Default maximum number of patterns retained in the dictionary.
+ */
+#define ALEC_DEFAULT_MAX_PATTERNS 256
+
+/**
+ * Default maximum memory budget for the context (bytes).
+ */
+#define ALEC_DEFAULT_MAX_MEMORY_BYTES 2048
+
+/**
+ * Default keyframe interval (messages between forced Raw32 keyframes).
+ */
+#define ALEC_DEFAULT_KEYFRAME_INTERVAL 50
+
+/**
+ * Default for smart-resync via LoRaWAN downlink.
+ */
+#define ALEC_DEFAULT_SMART_RESYNC true
+
+/**
  * Result codes for ALEC FFI functions
  */
 typedef enum AlecResult {
@@ -63,6 +88,41 @@ typedef struct AlecDecoder AlecDecoder;
  * Do not access internal fields directly.
  */
 typedef struct AlecEncoder AlecEncoder;
+
+/**
+ * Runtime configuration for a new ALEC encoder.
+ *
+ * Mirrors the Milesight-integration defaults (history=20,
+ * patterns=256, memory=2048B, keyframe=50, smart_resync=true).
+ *
+ * Pass a NULL pointer to `alec_encoder_new_with_config` to use all
+ * defaults. Any field set to 0 is also replaced by its default, so
+ * callers can opt in to a single override while keeping the rest.
+ */
+typedef struct AlecEncoderConfig {
+  /**
+   * Per-source history window size. Default: 20.
+   */
+  uint32_t history_size;
+  /**
+   * Maximum patterns retained in the context dictionary. Default: 256.
+   */
+  uint32_t max_patterns;
+  /**
+   * Maximum memory budget for the context in bytes. Default: 2048.
+   */
+  uint32_t max_memory_bytes;
+  /**
+   * Interval (in messages) between forced Raw32 keyframes. Default: 50.
+   * Set to 0 to disable periodic keyframes.
+   */
+  uint32_t keyframe_interval;
+  /**
+   * If true, the encoder honours downlink-driven resync requests
+   * (via `alec_force_keyframe`). Default: true.
+   */
+  bool smart_resync;
+} AlecEncoderConfig;
 
 #ifdef __cplusplus
 extern "C" {
@@ -127,6 +187,44 @@ struct AlecEncoder *alec_encoder_new(void);
  * A pointer to a new encoder with checksum enabled, or NULL on failure.
  */
 struct AlecEncoder *alec_encoder_new_with_checksum(void);
+
+/**
+ * Create a new ALEC encoder with a custom configuration.
+ *
+ * Mirrors the Milesight integration requirements: the caller specifies
+ * `history_size`, `max_patterns`, `max_memory_bytes`, `keyframe_interval`
+ * and `smart_resync`. See `AlecEncoderConfig` for defaults.
+ *
+ * # Arguments
+ *
+ * * `config` - Pointer to an `AlecEncoderConfig`. If NULL, all defaults
+ *              are used. Numeric fields set to 0 are replaced by their
+ *              default (except `keyframe_interval`, where 0 disables
+ *              periodic keyframes).
+ *
+ * # Returns
+ *
+ * A pointer to a new encoder, or NULL on allocation failure.
+ * Must be freed with `alec_encoder_free()`.
+ */
+struct AlecEncoder *alec_encoder_new_with_config(const struct AlecEncoderConfig *config);
+
+/**
+ * Force the next encode call to emit a keyframe (Raw32 for all channels).
+ *
+ * Intended to be called from a LoRaWAN downlink handler receiving the
+ * 0xFF resync command from the server-side sidecar. The flag is
+ * consumed by the fixed-channel encode path (Bloc B/C); until that
+ * path lands, calling this only sets the internal flag.
+ *
+ * No-op if `encoder` is NULL or if the encoder was configured with
+ * `smart_resync = false`.
+ *
+ * # Arguments
+ *
+ * * `encoder` - Encoder handle.
+ */
+void alec_force_keyframe(struct AlecEncoder *encoder);
 
 /**
  * Free an encoder
@@ -266,6 +364,27 @@ struct AlecDecoder *alec_decoder_new(void);
 struct AlecDecoder *alec_decoder_new_with_checksum(void);
 
 /**
+ * Check whether the most recent decode detected a sequence gap.
+ *
+ * The server-side sidecar uses this to decide whether to issue a
+ * resync downlink (0xFF) to the device. The gap size is the number
+ * of missing frames between the previous `last_sequence` and the
+ * current one, clipped to 255.
+ *
+ * # Arguments
+ *
+ * * `decoder`      - Decoder handle.
+ * * `out_gap_size` - Out parameter receiving the gap size (may be NULL).
+ *
+ * # Returns
+ *
+ * `true` if the most recent multi-frame decode observed missing
+ * frames (gap > 0). `false` if no gap, if no decode has been
+ * performed yet, or if `decoder` is NULL.
+ */
+bool alec_decoder_gap_detected(const struct AlecDecoder *decoder, uint8_t *out_gap_size);
+
+/**
  * Free a decoder
  *
  * # Arguments
@@ -364,6 +483,29 @@ void alec_heap_init(void);
  * Must be called exactly once, before any heap allocation.
  */
 void alec_heap_init(void);
+
+/**
+ * Initialize the heap allocator with a caller-provided buffer.
+ *
+ * Required on RTOSes (FreeRTOS, Milesight firmware) where the heap
+ * region is managed by the integrator and must not be statically
+ * embedded in the ALEC library itself.
+ *
+ * # Arguments
+ *
+ * * `buf` - Pointer to the start of the heap region. Must remain
+ *           valid for the lifetime of the program. Must be non-NULL.
+ * * `len` - Size of the heap region in bytes. Must be > 0.
+ *
+ * # Safety
+ *
+ * * Must be called exactly once, before any ALEC allocation.
+ * * `buf` must point to `len` bytes of writable memory that stays
+ *   valid for the lifetime of the process.
+ * * This function must not be combined with `alec_heap_init()`.
+ * * No-op if `buf` is NULL or `len == 0`.
+ */
+void alec_heap_init_with_buffer(uint8_t *buf, uintptr_t len);
 
 #ifdef __cplusplus
 } // extern "C"

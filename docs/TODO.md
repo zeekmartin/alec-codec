@@ -1,32 +1,65 @@
 # ALEC Milesight Integration — Todo
 
-Last updated: 2026-04-10
+Last updated: 2026-04-14
 
 ---
 
 ## Phase 1 — alec-codec (repo public)
 
 ### Bloc A: Config FFI
-- [ ] A1. alec_encoder_new_with_config() FFI
-  - [ ] AlecEncoderConfig C struct
+- [x] A1. alec_encoder_new_with_config() FFI
+  - [x] AlecEncoderConfig C struct
         (history_size, max_patterns, max_memory_bytes,
          keyframe_interval, smart_resync)
-  - [ ] alec_heap_init_with_buffer()
-  - [ ] alec_force_keyframe() FFI
-  - [ ] alec_decoder_gap_detected() FFI
-  - [ ] Regenerate alec.h via cbindgen
-  - [ ] Unit tests for each new FFI function
+  - [x] alec_heap_init_with_buffer() (bare-metal only)
+  - [x] alec_force_keyframe() FFI
+  - [x] alec_decoder_gap_detected() FFI
+  - [x] Regenerate alec.h via cbindgen
+        (auto-generated include/alec_generated.h +
+         hand-written include/alec.h updated)
+  - [x] Unit tests for each new FFI function
+        (24 total, 9 new — all passing)
 
-- [ ] A2. Build M4 (thumbv7em-none-eabi)
-  - [ ] Verify build success
-  - [ ] Measure .text / .bss sizes
-  - [ ] Try thumbv7em-none-eabihf (hardware FPU)
-  - [ ] Compare M3 / M4 / M4F sizes
+- [x] A2. Build M4 (thumbv7em-none-eabi)
+  - [x] Verify build success
+  - [x] Measure .text / .bss sizes
+  - [x] Try thumbv7em-none-eabihf (hardware FPU)
+  - [x] Compare M3 / M4 / M4F sizes — see table below
 
-- [ ] A3. Build M0+ (thumbv6m-none-eabi)
-  - [ ] Fix portable-atomic shim if needed
-  - [ ] Measure .text / .bss sizes
+- [x] A3. Build M0+ (thumbv6m-none-eabi)
+  - [x] Fix portable-atomic shim if needed
+        (not needed — cortex-m 0.7 feature
+         `critical-section-single-core` already
+         supplies a single-core critical_section impl
+         that LlffHeap uses for thread-safety)
+  - [x] Measure .text / .bss sizes
   - [ ] Verify f64 soft-float acceptable latency
+        (deferred: requires on-device benchmark;
+         compiler_builtins includes all soft-float
+         routines — ~170 KB of .text)
+
+#### Bloc A — Build sizes (release, archive-level upper bound)
+
+|  Target                 | ALEC .text | compiler_builtins .text | other .text | TOTAL .text | .bss   |
+|-------------------------|-----------:|------------------------:|------------:|------------:|-------:|
+| M3  (thumbv7m-none-eabi)  |    54 887 |                 167 350 |       7 900 |     230 137 | 8 220 |
+| M4  (thumbv7em-none-eabi) |    54 891 |                 166 654 |       7 820 |     229 365 | 8 220 |
+| M4F (thumbv7em-none-eabihf)|   56 159 |                 173 442 |       7 732 |     237 333 | 8 220 |
+| M0+ (thumbv6m-none-eabi)  |    53 331 |                 174 356 |       8 068 |     235 755 | 8 220 |
+
+Notes on the sizes:
+- Numbers are **archive-level** totals (`llvm-size -t libalec_ffi.a`).
+  Final firmware link with `--gc-sections` will drop unused
+  symbols — expect Milesight to see substantially less.
+- "ALEC .text" is alec + alec-ffi only, filtered on object
+  file prefix. ~54 KB across all targets.
+- compiler_builtins carries the f64 soft-float routines;
+  Milesight's firmware may already include its own copy.
+- "other" is mostly xxhash-rust (~8 KB).
+- .bss is constant at 8 220 B = 8 192 B HEAP_MEM + 28 B
+  LlffHeap allocator state (the built-in static buffer from
+  `alec_heap_init`). With `alec_heap_init_with_buffer` the
+  .bss drops to 28 B.
 
 ### Bloc B: Compact 4B header
 - [ ] B1. MessageType::DataFixedChannel = 7

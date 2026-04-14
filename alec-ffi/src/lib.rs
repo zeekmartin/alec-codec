@@ -89,6 +89,35 @@ mod bare_metal_support {
         }
     }
 
+    /// Initialize the heap allocator with a caller-provided buffer.
+    ///
+    /// Required on RTOSes (FreeRTOS, Milesight firmware) where the heap
+    /// region is managed by the integrator and must not be statically
+    /// embedded in the ALEC library itself.
+    ///
+    /// # Arguments
+    ///
+    /// * `buf` - Pointer to the start of the heap region. Must remain
+    ///           valid for the lifetime of the program. Must be non-NULL.
+    /// * `len` - Size of the heap region in bytes. Must be > 0.
+    ///
+    /// # Safety
+    ///
+    /// * Must be called exactly once, before any ALEC allocation.
+    /// * `buf` must point to `len` bytes of writable memory that stays
+    ///   valid for the lifetime of the process.
+    /// * This function must not be combined with `alec_heap_init()`.
+    /// * No-op if `buf` is NULL or `len == 0`.
+    #[no_mangle]
+    pub unsafe extern "C" fn alec_heap_init_with_buffer(buf: *mut u8, len: usize) {
+        if buf.is_null() || len == 0 {
+            return;
+        }
+        unsafe {
+            HEAP.init(buf as usize, len);
+        }
+    }
+
     #[panic_handler]
     fn panic(_info: &core::panic::PanicInfo) -> ! {
         loop {}
@@ -104,9 +133,100 @@ use core::slice;
 use std::path::Path;
 
 use alec::classifier::Classifier;
-use alec::context::Context;
+use alec::context::{Context, ContextConfig};
 use alec::protocol::{ChannelInput, RawData};
 use alec::{Decoder, Encoder};
+
+// ============================================================================
+// Default configuration values (also documented in AlecEncoderConfig)
+// ============================================================================
+
+/// Default history size per source (validated on 99-message EM500-CO2 dataset).
+pub const ALEC_DEFAULT_HISTORY_SIZE: u32 = 20;
+/// Default maximum number of patterns retained in the dictionary.
+pub const ALEC_DEFAULT_MAX_PATTERNS: u32 = 256;
+/// Default maximum memory budget for the context (bytes).
+pub const ALEC_DEFAULT_MAX_MEMORY_BYTES: u32 = 2048;
+/// Default keyframe interval (messages between forced Raw32 keyframes).
+pub const ALEC_DEFAULT_KEYFRAME_INTERVAL: u32 = 50;
+/// Default for smart-resync via LoRaWAN downlink.
+pub const ALEC_DEFAULT_SMART_RESYNC: bool = true;
+
+/// Runtime configuration for a new ALEC encoder.
+///
+/// Mirrors the Milesight-integration defaults (history=20,
+/// patterns=256, memory=2048B, keyframe=50, smart_resync=true).
+///
+/// Pass a NULL pointer to `alec_encoder_new_with_config` to use all
+/// defaults. Any field set to 0 is also replaced by its default, so
+/// callers can opt in to a single override while keeping the rest.
+#[repr(C)]
+#[derive(Debug, Clone, Copy)]
+pub struct AlecEncoderConfig {
+    /// Per-source history window size. Default: 20.
+    pub history_size: u32,
+    /// Maximum patterns retained in the context dictionary. Default: 256.
+    pub max_patterns: u32,
+    /// Maximum memory budget for the context in bytes. Default: 2048.
+    pub max_memory_bytes: u32,
+    /// Interval (in messages) between forced Raw32 keyframes. Default: 50.
+    /// Set to 0 to disable periodic keyframes.
+    pub keyframe_interval: u32,
+    /// If true, the encoder honours downlink-driven resync requests
+    /// (via `alec_force_keyframe`). Default: true.
+    pub smart_resync: bool,
+}
+
+impl AlecEncoderConfig {
+    /// Return a config pre-populated with all Milesight defaults.
+    pub fn defaults() -> Self {
+        Self {
+            history_size: ALEC_DEFAULT_HISTORY_SIZE,
+            max_patterns: ALEC_DEFAULT_MAX_PATTERNS,
+            max_memory_bytes: ALEC_DEFAULT_MAX_MEMORY_BYTES,
+            keyframe_interval: ALEC_DEFAULT_KEYFRAME_INTERVAL,
+            smart_resync: ALEC_DEFAULT_SMART_RESYNC,
+        }
+    }
+
+    /// Resolve the effective config, replacing any 0 numeric field by
+    /// its default. Numeric fields set to 0 are treated as "use default"
+    /// rather than "disable" — except `keyframe_interval`, where 0 is a
+    /// legitimate way to disable the keyframe mechanism.
+    fn resolved(self) -> Self {
+        let d = Self::defaults();
+        Self {
+            history_size: if self.history_size == 0 {
+                d.history_size
+            } else {
+                self.history_size
+            },
+            max_patterns: if self.max_patterns == 0 {
+                d.max_patterns
+            } else {
+                self.max_patterns
+            },
+            max_memory_bytes: if self.max_memory_bytes == 0 {
+                d.max_memory_bytes
+            } else {
+                self.max_memory_bytes
+            },
+            // keyframe_interval == 0 is a valid value (disabled), so keep as-is.
+            keyframe_interval: self.keyframe_interval,
+            smart_resync: self.smart_resync,
+        }
+    }
+
+    /// Build an `alec::context::ContextConfig` from this FFI config.
+    fn to_context_config(self) -> ContextConfig {
+        let r = self.resolved();
+        let mut cfg = ContextConfig::default();
+        cfg.history_size = r.history_size as usize;
+        cfg.max_patterns = r.max_patterns as usize;
+        cfg.max_memory = r.max_memory_bytes as usize;
+        cfg
+    }
+}
 
 /// Hash a C source_id string to a u32 for context keying.
 /// Returns 0 if the pointer is null.
@@ -152,6 +272,20 @@ pub struct AlecEncoder {
     encoder: Encoder,
     classifier: Classifier,
     context: Context,
+    /// If set, the next encode call should emit a keyframe (Raw32 for all
+    /// channels). Consumed by the Bloc B/C fixed-channel encode path.
+    /// Plumbed here in Bloc A so downlink handlers can set the flag
+    /// immediately without waiting for the encode path to land.
+    force_keyframe_pending: bool,
+    /// Number of encoded messages since the last keyframe. Used by the
+    /// fixed-channel encode path (Bloc C) to trigger periodic keyframes.
+    #[allow(dead_code)] // Consumed by Bloc C keyframe mechanism.
+    messages_since_keyframe: u32,
+    /// Configured keyframe interval (0 disables periodic keyframes).
+    #[allow(dead_code)] // Consumed by Bloc C keyframe mechanism.
+    keyframe_interval: u32,
+    /// Honour downlink-driven resync.
+    smart_resync: bool,
 }
 
 /// Opaque decoder handle
@@ -161,6 +295,12 @@ pub struct AlecEncoder {
 pub struct AlecDecoder {
     decoder: Decoder,
     context: Context,
+    /// Header sequence number observed on the most recent multi-frame
+    /// decode (None if none has been decoded yet).
+    last_header_sequence: Option<u16>,
+    /// Number of missing frames detected on the most recent decode
+    /// (clipped to 255). 0 means no gap.
+    last_gap_size: u8,
 }
 
 // ============================================================================
@@ -235,10 +375,15 @@ pub extern "C" fn alec_result_to_string(result: AlecResult) -> *const c_char {
 /// ```
 #[no_mangle]
 pub extern "C" fn alec_encoder_new() -> *mut AlecEncoder {
+    let defaults = AlecEncoderConfig::defaults();
     let encoder = Box::new(AlecEncoder {
         encoder: Encoder::new(),
         classifier: Classifier::default(),
         context: Context::new(),
+        force_keyframe_pending: false,
+        messages_since_keyframe: 0,
+        keyframe_interval: defaults.keyframe_interval,
+        smart_resync: defaults.smart_resync,
     });
     Box::into_raw(encoder)
 }
@@ -250,12 +395,82 @@ pub extern "C" fn alec_encoder_new() -> *mut AlecEncoder {
 /// A pointer to a new encoder with checksum enabled, or NULL on failure.
 #[no_mangle]
 pub extern "C" fn alec_encoder_new_with_checksum() -> *mut AlecEncoder {
+    let defaults = AlecEncoderConfig::defaults();
     let encoder = Box::new(AlecEncoder {
         encoder: Encoder::with_checksum(),
         classifier: Classifier::default(),
         context: Context::new(),
+        force_keyframe_pending: false,
+        messages_since_keyframe: 0,
+        keyframe_interval: defaults.keyframe_interval,
+        smart_resync: defaults.smart_resync,
     });
     Box::into_raw(encoder)
+}
+
+/// Create a new ALEC encoder with a custom configuration.
+///
+/// Mirrors the Milesight integration requirements: the caller specifies
+/// `history_size`, `max_patterns`, `max_memory_bytes`, `keyframe_interval`
+/// and `smart_resync`. See `AlecEncoderConfig` for defaults.
+///
+/// # Arguments
+///
+/// * `config` - Pointer to an `AlecEncoderConfig`. If NULL, all defaults
+///              are used. Numeric fields set to 0 are replaced by their
+///              default (except `keyframe_interval`, where 0 disables
+///              periodic keyframes).
+///
+/// # Returns
+///
+/// A pointer to a new encoder, or NULL on allocation failure.
+/// Must be freed with `alec_encoder_free()`.
+#[no_mangle]
+pub extern "C" fn alec_encoder_new_with_config(
+    config: *const AlecEncoderConfig,
+) -> *mut AlecEncoder {
+    let cfg = if config.is_null() {
+        AlecEncoderConfig::defaults()
+    } else {
+        unsafe { *config }.resolved()
+    };
+
+    let context = Context::with_config(cfg.to_context_config());
+    let encoder = Box::new(AlecEncoder {
+        encoder: Encoder::new(),
+        classifier: Classifier::default(),
+        context,
+        force_keyframe_pending: false,
+        messages_since_keyframe: 0,
+        keyframe_interval: cfg.keyframe_interval,
+        smart_resync: cfg.smart_resync,
+    });
+    Box::into_raw(encoder)
+}
+
+/// Force the next encode call to emit a keyframe (Raw32 for all channels).
+///
+/// Intended to be called from a LoRaWAN downlink handler receiving the
+/// 0xFF resync command from the server-side sidecar. The flag is
+/// consumed by the fixed-channel encode path (Bloc B/C); until that
+/// path lands, calling this only sets the internal flag.
+///
+/// No-op if `encoder` is NULL or if the encoder was configured with
+/// `smart_resync = false`.
+///
+/// # Arguments
+///
+/// * `encoder` - Encoder handle.
+#[no_mangle]
+pub extern "C" fn alec_force_keyframe(encoder: *mut AlecEncoder) {
+    if encoder.is_null() {
+        return;
+    }
+    let enc = unsafe { &mut *encoder };
+    if !enc.smart_resync {
+        return;
+    }
+    enc.force_keyframe_pending = true;
 }
 
 /// Free an encoder
@@ -561,6 +776,8 @@ pub extern "C" fn alec_decoder_new() -> *mut AlecDecoder {
     let decoder = Box::new(AlecDecoder {
         decoder: Decoder::new(),
         context: Context::new(),
+        last_header_sequence: None,
+        last_gap_size: 0,
     });
     Box::into_raw(decoder)
 }
@@ -575,8 +792,45 @@ pub extern "C" fn alec_decoder_new_with_checksum() -> *mut AlecDecoder {
     let decoder = Box::new(AlecDecoder {
         decoder: Decoder::with_checksum_verification(),
         context: Context::new(),
+        last_header_sequence: None,
+        last_gap_size: 0,
     });
     Box::into_raw(decoder)
+}
+
+/// Check whether the most recent decode detected a sequence gap.
+///
+/// The server-side sidecar uses this to decide whether to issue a
+/// resync downlink (0xFF) to the device. The gap size is the number
+/// of missing frames between the previous `last_sequence` and the
+/// current one, clipped to 255.
+///
+/// # Arguments
+///
+/// * `decoder`      - Decoder handle.
+/// * `out_gap_size` - Out parameter receiving the gap size (may be NULL).
+///
+/// # Returns
+///
+/// `true` if the most recent multi-frame decode observed missing
+/// frames (gap > 0). `false` if no gap, if no decode has been
+/// performed yet, or if `decoder` is NULL.
+#[no_mangle]
+pub extern "C" fn alec_decoder_gap_detected(
+    decoder: *const AlecDecoder,
+    out_gap_size: *mut u8,
+) -> bool {
+    if decoder.is_null() {
+        if !out_gap_size.is_null() {
+            unsafe { *out_gap_size = 0 };
+        }
+        return false;
+    }
+    let dec = unsafe { &*decoder };
+    if !out_gap_size.is_null() {
+        unsafe { *out_gap_size = dec.last_gap_size };
+    }
+    dec.last_gap_size > 0
 }
 
 /// Free a decoder
@@ -670,6 +924,25 @@ pub extern "C" fn alec_decode_multi(
         Some(msg) => msg,
         None => return AlecResult::ErrorDecodingFailed,
     };
+
+    // Gap detection: compute the number of missing frames between the
+    // previous header sequence and this one. `decode_multi` does not
+    // touch `Decoder::last_sequence`, so we track it here at the FFI
+    // layer. Clipped to 255 to fit `last_gap_size: u8`.
+    let cur_seq = message.header.sequence;
+    dec.last_gap_size = match dec.last_header_sequence {
+        Some(prev) => {
+            let diff = cur_seq.wrapping_sub(prev);
+            if diff == 0 {
+                0 // same frame replayed — treat as no gap
+            } else {
+                let missing = diff.saturating_sub(1);
+                missing.min(u8::MAX as u16) as u8
+            }
+        }
+        None => 0,
+    };
+    dec.last_header_sequence = Some(cur_seq);
 
     match dec.decoder.decode_multi(&message, &dec.context) {
         Ok(value_pairs) => {
@@ -1001,5 +1274,228 @@ mod tests {
 
         alec_encoder_free(enc);
         alec_decoder_free(dec);
+    }
+
+    // ============================================================================
+    // Bloc A1: Config FFI + keyframe + gap detection
+    // ============================================================================
+
+    #[test]
+    fn test_encoder_config_defaults_constants() {
+        // Guard against silent drift of the Milesight-integration defaults.
+        assert_eq!(ALEC_DEFAULT_HISTORY_SIZE, 20);
+        assert_eq!(ALEC_DEFAULT_MAX_PATTERNS, 256);
+        assert_eq!(ALEC_DEFAULT_MAX_MEMORY_BYTES, 2048);
+        assert_eq!(ALEC_DEFAULT_KEYFRAME_INTERVAL, 50);
+        assert!(ALEC_DEFAULT_SMART_RESYNC);
+
+        let d = AlecEncoderConfig::defaults();
+        assert_eq!(d.history_size, ALEC_DEFAULT_HISTORY_SIZE);
+        assert_eq!(d.max_patterns, ALEC_DEFAULT_MAX_PATTERNS);
+        assert_eq!(d.max_memory_bytes, ALEC_DEFAULT_MAX_MEMORY_BYTES);
+        assert_eq!(d.keyframe_interval, ALEC_DEFAULT_KEYFRAME_INTERVAL);
+        assert!(d.smart_resync);
+    }
+
+    #[test]
+    fn test_encoder_new_with_config_null_uses_defaults() {
+        let enc = alec_encoder_new_with_config(ptr::null());
+        assert!(!enc.is_null());
+        let e = unsafe { &*enc };
+        assert_eq!(e.keyframe_interval, ALEC_DEFAULT_KEYFRAME_INTERVAL);
+        assert!(e.smart_resync);
+        assert!(!e.force_keyframe_pending);
+        assert_eq!(e.messages_since_keyframe, 0);
+        alec_encoder_free(enc);
+    }
+
+    #[test]
+    fn test_encoder_new_with_config_custom() {
+        let cfg = AlecEncoderConfig {
+            history_size: 10,
+            max_patterns: 128,
+            max_memory_bytes: 1024,
+            keyframe_interval: 25,
+            smart_resync: false,
+        };
+        let enc = alec_encoder_new_with_config(&cfg);
+        assert!(!enc.is_null());
+        let e = unsafe { &*enc };
+        assert_eq!(e.keyframe_interval, 25);
+        assert!(!e.smart_resync);
+        alec_encoder_free(enc);
+    }
+
+    #[test]
+    fn test_encoder_new_with_config_zero_uses_defaults() {
+        // Numeric fields set to 0 (except keyframe_interval) should
+        // fall back to the Milesight defaults.
+        let cfg = AlecEncoderConfig {
+            history_size: 0,
+            max_patterns: 0,
+            max_memory_bytes: 0,
+            keyframe_interval: 0, // 0 means "disabled", kept as-is
+            smart_resync: true,
+        };
+        let enc = alec_encoder_new_with_config(&cfg);
+        assert!(!enc.is_null());
+        let e = unsafe { &*enc };
+        // keyframe_interval=0 must be preserved verbatim (disabled).
+        assert_eq!(e.keyframe_interval, 0);
+        // Encoding should still succeed — history/patterns/memory got defaults.
+        let mut output = [0u8; 256];
+        let mut output_len: usize = 0;
+        let result = alec_encode_value(
+            enc,
+            22.5,
+            0,
+            ptr::null(),
+            output.as_mut_ptr(),
+            output.len(),
+            &mut output_len,
+        );
+        assert_eq!(result, AlecResult::Ok);
+        alec_encoder_free(enc);
+    }
+
+    #[test]
+    fn test_force_keyframe_sets_flag() {
+        let enc = alec_encoder_new();
+        assert!(!enc.is_null());
+        assert!(!unsafe { &*enc }.force_keyframe_pending);
+        alec_force_keyframe(enc);
+        assert!(unsafe { &*enc }.force_keyframe_pending);
+        alec_encoder_free(enc);
+    }
+
+    #[test]
+    fn test_force_keyframe_null_is_noop() {
+        // Must not crash on NULL.
+        alec_force_keyframe(ptr::null_mut());
+    }
+
+    #[test]
+    fn test_force_keyframe_respects_smart_resync_disabled() {
+        let cfg = AlecEncoderConfig {
+            history_size: 0,
+            max_patterns: 0,
+            max_memory_bytes: 0,
+            keyframe_interval: 50,
+            smart_resync: false,
+        };
+        let enc = alec_encoder_new_with_config(&cfg);
+        alec_force_keyframe(enc);
+        // smart_resync=false → force_keyframe is a no-op.
+        assert!(!unsafe { &*enc }.force_keyframe_pending);
+        alec_encoder_free(enc);
+    }
+
+    #[test]
+    fn test_gap_detected_null_decoder() {
+        let mut gap: u8 = 42;
+        let detected = alec_decoder_gap_detected(ptr::null(), &mut gap);
+        assert!(!detected);
+        assert_eq!(gap, 0);
+
+        // NULL out_gap_size is also fine.
+        let detected2 = alec_decoder_gap_detected(ptr::null(), ptr::null_mut());
+        assert!(!detected2);
+    }
+
+    #[test]
+    fn test_gap_detected_fresh_decoder() {
+        // No decode has happened yet — no gap.
+        let dec = alec_decoder_new();
+        let mut gap: u8 = 99;
+        let detected = alec_decoder_gap_detected(dec, &mut gap);
+        assert!(!detected);
+        assert_eq!(gap, 0);
+        alec_decoder_free(dec);
+    }
+
+    /// End-to-end: encode 5 multi-frames, drop two between frame #1 and #2
+    /// from the decoder's perspective, verify the gap is reported.
+    #[test]
+    fn test_gap_detected_after_dropped_frames() {
+        let enc = alec_encoder_new();
+        let dec = alec_decoder_new();
+
+        let values: [f64; 4] = [22.0, 22.5, 23.0, 22.8];
+        let mut frames: Vec<Vec<u8>> = Vec::new();
+        for _ in 0..5 {
+            let mut out = [0u8; 128];
+            let mut out_len = 0usize;
+            let res = alec_encode_multi(
+                enc,
+                values.as_ptr(),
+                values.len(),
+                ptr::null(),
+                ptr::null(),
+                ptr::null(),
+                out.as_mut_ptr(),
+                out.len(),
+                &mut out_len,
+            );
+            assert_eq!(res, AlecResult::Ok);
+            frames.push(out[..out_len].to_vec());
+        }
+
+        // Decode frame 0 (no gap yet).
+        let mut vals = [0f64; 4];
+        let mut vcount: usize = 0;
+        let r0 = alec_decode_multi(
+            dec,
+            frames[0].as_ptr(),
+            frames[0].len(),
+            vals.as_mut_ptr(),
+            vals.len(),
+            &mut vcount,
+        );
+        assert_eq!(r0, AlecResult::Ok);
+        let mut gap: u8 = 0;
+        assert!(!alec_decoder_gap_detected(dec, &mut gap));
+        assert_eq!(gap, 0);
+
+        // Skip frames 1 and 2, decode frame 3 → gap of 2.
+        let r3 = alec_decode_multi(
+            dec,
+            frames[3].as_ptr(),
+            frames[3].len(),
+            vals.as_mut_ptr(),
+            vals.len(),
+            &mut vcount,
+        );
+        assert_eq!(r3, AlecResult::Ok);
+        let mut gap: u8 = 0;
+        assert!(alec_decoder_gap_detected(dec, &mut gap));
+        assert_eq!(gap, 2);
+
+        // Decode frame 4 — contiguous with frame 3 → no gap.
+        let r4 = alec_decode_multi(
+            dec,
+            frames[4].as_ptr(),
+            frames[4].len(),
+            vals.as_mut_ptr(),
+            vals.len(),
+            &mut vcount,
+        );
+        assert_eq!(r4, AlecResult::Ok);
+        let mut gap: u8 = 99;
+        assert!(!alec_decoder_gap_detected(dec, &mut gap));
+        assert_eq!(gap, 0);
+
+        alec_encoder_free(enc);
+        alec_decoder_free(dec);
+    }
+
+    /// cbindgen should surface the new symbols. This test is a compile-time
+    /// guarantee that the FFI entry points exist with the expected signatures.
+    #[test]
+    fn test_ffi_symbols_exist() {
+        let _new: extern "C" fn(*const AlecEncoderConfig) -> *mut AlecEncoder =
+            alec_encoder_new_with_config;
+        let _force: extern "C" fn(*mut AlecEncoder) = alec_force_keyframe;
+        let _gap: extern "C" fn(*const AlecDecoder, *mut u8) -> bool =
+            alec_decoder_gap_detected;
     }
 }
