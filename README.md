@@ -341,6 +341,57 @@ See [LICENSE](LICENSE) for details.
 
 ---
 
+## Compact fixed-channel mode (v1.3.2+)
+
+For constrained LoRaWAN deployments with hard payload
+ceilings (e.g. 11 bytes), ALEC now supports a compact
+fixed-channel wire format:
+
+- 4-byte header (sequence u16 + context_version u16)
+- 2-byte bitmap (2 bits per channel, up to 64 channels)
+- No name_ids, no device timestamp
+- Marker byte: 0xA1 (data) / 0xA2 (keyframe)
+- Steady-state avg: ~8B for 5 channels
+- Fits in 11-byte LoRaWAN payload ceiling
+
+### Packet loss recovery
+
+ALEC is a stateful differential codec. To handle
+lossy networks:
+
+- Periodic keyframe every N transmissions (default 50)
+  forces Raw32 for all channels — automatic recovery
+- Sequence gap detection triggers context reset
+- LoRaWAN downlink smart resync: send 0xFF command
+  to request immediate keyframe, reducing worst-case
+  drift from N×interval to 1×interval
+
+### Context persistence
+
+For server-side decoder persistence across restarts:
+
+- `alec_decoder_export_state()` → ALCS binary format
+  (~1.5 KB for 5 channels)
+- `alec_decoder_import_state()` → restore decoder
+- Bit-exact round-trip verified
+- CRC32 checksum, format-versioned (ALCS v1)
+
+### Multi-architecture support
+
+Verified bare-metal builds:
+
+| Target                  | Use case    | .text (ALEC) |
+|-------------------------|-------------|-------------:|
+| `thumbv7m-none-eabi`    | Cortex-M3   | ~55 KB       |
+| `thumbv7em-none-eabi`   | Cortex-M4   | ~55 KB       |
+| `thumbv7em-none-eabihf` | Cortex-M4F  | ~56 KB       |
+| `thumbv6m-none-eabi`    | Cortex-M0+  | ~53 KB       |
+
+Note: final linked size with `--gc-sections` will be
+significantly smaller.
+
+---
+
 ## Acknowledgments
 
 ALEC draws inspiration from:

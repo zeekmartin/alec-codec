@@ -1,135 +1,78 @@
 # ALEC Codec — Roadmap
 
-## v1.3 Planned Features
+## v1.3.5 — Constrained network support (in progress)
 
-### Configurable encoder context size (`alec_encoder_new_with_options`)
+Target: validation on embedded hardware.
 
-**Status:** Planned — v1.3
-**Priority:** Medium
-**Discovered during:** Nordic nRF9151 NB-IoT validation (Zephyr RTOS, March 2026)
+- [x] Compact fixed-channel wire format (4B header)
+- [x] Multi-arch bare-metal (M3 / M4 / M4F / M0+)
+- [x] Periodic keyframe + sequence gap recovery
+- [x] LoRaWAN downlink smart resync (`0xFF` command)
+- [x] In-memory context persistence (ALCS format)
+- [ ] Hardware validation (Cortex-M embedded target)
+- [ ] Python decoder reference implementation
+- [ ] Docker sidecar reference implementation
 
-**Problem:**
-`alec_encoder_new()` provides no way to cap the encoder's internal memory footprint (dictionary + prediction tables). On MCUs with limited heap (<64 KB), the internal context allocation silently fails, returning a valid encoder pointer but causing `alec_encode_multi()` to fail with `rc=5` (null pointer).
+## v1.4.0 — Pattern encoding
 
-Validated RAM requirements by target:
+Target: 3–4 B/frame on periodic signals.
 
-| SoC | Total RAM | 64 KB heap | Viable |
-|-----|-----------|------------|--------|
-| nRF9151 | 211 KB NS | 30% | Comfortable |
-| nRF9160 | 256 KB | 25% | Comfortable |
-| STM32L4 | 128 KB | 50% | Tight |
-| STM32L0 | 20 KB | — | Not viable |
+Pattern and Interpolated encoding are currently defined
+in the encoding enum but not selected by the decision
+tree. v1.4 will activate them for signals with repeating
+daily/weekly cycles (environmental monitoring, energy
+metering).
 
-**Proposed API addition (C FFI):**
+- [ ] Pattern detection (FFT / autocorrelation)
+- [ ] Shared pattern dictionary encoder/decoder sync
+- [ ] Pattern encoding selected by `choose_encoding()`
+- [ ] Convergence: minimum 24h data at 10-min interval
+- [ ] Server-side pattern learning + device preload
+      via downlink
 
-```c
-typedef struct {
-    size_t max_context_bytes;  // 0 = default (no cap)
-    uint8_t max_channels;      // 0 = default
-} AlecEncoderOptions;
+Expected compression: ~3–4 B/frame on signals with
+strong periodic components (CO2, temperature,
+humidity day/night cycles).
 
-AlecEncoder *alec_encoder_new_with_options(const AlecEncoderOptions *opts);
-```
+## v1.5.0 — Bitmap optimization
 
-**Expected behavior:**
+Target: 6 B floor (vs current 7 B).
 
-- `max_context_bytes` caps internal heap usage.
-- If requested size is below functional minimum, return NULL with documented minimum.
-- Document minimum viable `max_context_bytes` per channel count.
+- [ ] 1-bit bitmap (Repeated / Delta8 only)
+- [ ] Reduces bitmap overhead 2 B → 1 B
+- [ ] Fallback rate increases for high-variance signals
 
-**Workaround (current):** Set `CONFIG_HEAP_MEM_POOL_SIZE=65536` in `prj.conf` (Zephyr). Valid on nRF9151/nRF9160. Not viable on STM32L0/SAMD21 class devices.
+## Beyond
 
-### encode_multi() — adaptive compression (context-aware)
-
-**Status:** Planned — v1.3
-**Priority:** High
-**Discovered during:** Nordic nRF9151 NB-IoT demo (March 2026)
-
-**Problem:**
-`alec_encode_multi()` unconditionally uses Raw32 encoding for every value.
-The context (BTreeMap patterns, EMA, last_value) is populated via `observe()`
-after each call but never consulted during encoding. The adaptive compression
-path (delta, repeated, interpolated) only exists in `alec_encode_value()`.
-
-**Impact:**
-- 5-channel payload: always 99 bytes (5 × 19B headers + raw values)
-- No compression benefit regardless of message count
-- Workaround: call `alec_encode_value()` per channel and concatenate —
-  but this multiplies per-message header overhead (5 × 13B = 65B headers)
-
-**Requested change:**
-Implement context-aware encoding in `encode_multi()` matching the decision
-tree in `encode()`: Repeated → Delta8 → Delta16 → Delta32 → Raw32 → Raw64.
-Per-channel context must be keyed by channel index or source_id.
+- MQTT-native sidecar
+- Python / Node.js bindings (PyO3 / napi-rs)
+- WASM decoder for browser / serverless
 
 ---
 
-### Protocol header overhead reduction for multi-channel payloads
-
-**Status:** Planned — v1.3
-**Priority:** Medium
-
-**Problem:**
-Each `alec_encode_value()` call produces a standalone message with:
-- 13-byte fixed header (version, type, priority, sequence, timestamp,
-  context_version)
-- 1-byte source_id varint
-- 1-byte encoding type
-- value bytes
-
-For a 5-channel device sending temp/rh/pressure/ts/seq, the per-message
-overhead is 5 × ~15B = 75B of headers for ~20B of actual sensor data.
-
-**Requested change:**
-Design a compact multi-value frame format that shares a single header
-across all channels in one transmission. Target: ≤20B total for a
-5-channel payload once context is warm, vs current 99B.
-
----
-
-## [v1.4] — Pattern & Interpolated Encoding
-
-### Pattern encoding (EncodingType::Pattern = 0x20)
-
-**Status:** Planned
-**Priority:** High
-
-EncodingType::Pattern and PatternDelta exist in the enum and wire format
-but the encoder decision tree never selects them. The encoder always falls
-through to Raw32/Raw64 when Delta32 is insufficient.
-
-Pattern encoding would match repeating signal signatures in the dictionary
-(e.g. day/night temperature cycles, periodic consumption curves) and encode
-the entire pattern as a 1-2 byte dictionary reference.
-
-**Expected gain:** 80-95% compression on periodic real-world signals.
-
-**Blocked by:** dictionary population logic in Context, pattern matching
-in the encoder decision tree.
-
-### Interpolated encoding (EncodingType::Interpolated = 0x31)
-
-**Status:** Planned
-**Priority:** Medium
-
-Interpolated encodes 0 bytes when the actual value matches the EMA
-prediction within tolerance. Currently the encoder checks for exact
-Repeated match only — it never evaluates prediction accuracy.
-
-**Expected gain:** significant reduction on smooth sensor curves
-(temperature drift, pressure trends) where EMA converges quickly.
-
-**Blocked by:** tolerance threshold design (fixed vs adaptive per channel).
-
----
-
-## Platform Notes
+## Platform notes
 
 ### Zephyr allocator — alignment requirement (resolved in v1.2.4)
 
 - `k_malloc` on Zephyr returns 4-byte aligned memory by default.
-- alec-ffi v1.2.3 and earlier passed only `layout.size()` to `k_malloc`,
-  discarding alignment — causing rc=5 on Cortex-M33 targets.
+- `alec-ffi` v1.2.3 and earlier passed only `layout.size()` to
+  `k_malloc`, discarding alignment — causing `rc=5` on Cortex-M33
+  targets.
 - Fixed in v1.2.4 via `k_aligned_alloc`.
-- Minimum viable `CONFIG_HEAP_MEM_POOL_SIZE` on nRF9151: 65536 bytes (64 KB)
-  out of 211 KB available NS zone (~30% — comfortable).
+- Minimum viable `CONFIG_HEAP_MEM_POOL_SIZE` on nRF9151: 65536 bytes
+  (64 KB) out of 211 KB available NS zone (~30 % — comfortable).
+
+### Historical notes (shipped in v1.3.x)
+
+The following items from earlier roadmap drafts have
+landed in the v1.3.x line and are no longer tracked as
+open work:
+
+- Configurable encoder context (`alec_encoder_new_with_config`,
+  `AlecEncoderConfig`) — shipped in v1.3.5.
+- Adaptive `encode_multi()` — shipped in v1.3.1
+  (`encode_multi_adaptive`); v1.3.5 adds the compact
+  fixed-channel variant (`encode_multi_fixed`).
+- Compact multi-channel frame format — shipped in v1.3.5
+  (1 marker + 4 header + 2 bitmap + per-channel data,
+  steady-state ~8 B for 5 channels).

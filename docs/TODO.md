@@ -1,6 +1,28 @@
 # ALEC Milesight Integration — Todo
 
-Last updated: 2026-04-15 (Session 4 — Bloc D complete → Phase 1 DONE)
+Last updated: 2026-04-15 (Documentation session — Phase 1 docs ready for v1.3.5)
+
+---
+
+## Documentation (Phase 1 release)
+
+Public-facing docs prepared for the v1.3.5 tag. All use
+neutral language — no customer names, no integration-
+partner details.
+
+- [x] README updated with compact mode section
+      (Compact fixed-channel mode v1.3.2+ / Packet loss
+       recovery / Context persistence / Multi-arch
+       support table)
+- [x] CHANGELOG.md created (Unreleased — v1.3.5 entry
+      prepended, Added / Fixed / Notes sections,
+      previous v1.3.1 entry preserved)
+- [x] ROADMAP.md created (v1.3.5 / v1.4.0 / v1.5.0 /
+      Beyond, plus Platform notes and v1.3.x historical
+      notes preserved as appendix)
+
+Tag `v1.3.5` will be created **after** hardware
+validation on an embedded target — not in this session.
 
 ---
 
@@ -305,7 +327,12 @@ Redis-persistence pattern (1 key per DevEUI).
 
 ---
 
-## Phase 2 — alec-milesight (repo privé)
+## Phase 2 — alec-milesight (private repo)
+Status: **PENDING** — starts after hardware validation.
+
+- [ ] Bloc E: Python decoder + channel schemas
+- [ ] Bloc F: FreeRTOS C example
+- [ ] Bloc G: ChirpStack + Docker sidecar
 
 ### Bloc E: Python decoder
 - [ ] E1. decode_alec_fixed.py
@@ -362,7 +389,9 @@ Redis-persistence pattern (1 key per DevEUI).
 
 ---
 
-## Phase 3 — nRF9151 validation (parallel to Phase 2)
+## Phase 3 — nRF9151 hardware validation
+Status: **PENDING** — prerequisite for the `v1.3.5` tag.
+(Runs in parallel with Phase 2 — see Bloc H1-H3 below.)
 
 - [ ] H1. Build alec-ffi thumbv8m.main-none-eabi
       with compact header + config FFI + keyframe
