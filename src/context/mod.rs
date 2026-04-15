@@ -910,7 +910,396 @@ impl Context {
             }
         }
     }
+
+    // ========================================================================
+    // Bloc D — In-memory context-state persistence
+    //
+    // `to_preload_bytes` / `from_preload_bytes` serialize a Context to and
+    // from a self-contained byte buffer, WITHOUT any filesystem I/O — so
+    // they work in `no_std + alloc` builds and are the primary mechanism
+    // the Milesight ChirpStack sidecar uses to persist per-DevEUI decoder
+    // state across restarts (e.g. via Redis).
+    //
+    // Wire format (ALCS = "ALec Context State"):
+    //
+    //     magic      [4]  b"ALCS"
+    //     version    [4]  u32 LE format version (currently 1)
+    //     ctx_ver    [4]  u32 LE Context::version() (full u32, not u16-truncated)
+    //     scale      [4]  u32 LE Context::scale_factor()
+    //     obs_count  [8]  u64 LE Context::observation_count()
+    //     next_code  [4]  u32 LE dictionary's next code assignment
+    //     sens_len   [1]  u8   sensor_type length (0..=255)
+    //     sensor     [N]  UTF-8 sensor-type identifier (e.g. "em500-co2")
+    //     src_count  [4]  u32 LE number of per-source SourceStats entries
+    //     for each source (sorted by source_id):
+    //         source_id   [4] u32 LE
+    //         count       [8] u64 LE observations count for this source
+    //         last_value  [8] f64 LE
+    //         ema         [8] f64 LE
+    //         ema_alpha   [8] f64 LE
+    //         sum_sq_diff [8] f64 LE
+    //         mean        [8] f64 LE
+    //         max_history [4] u32 LE
+    //         hist_len    [4] u32 LE
+    //         history     [hist_len × 8] f64 LE
+    //     dict_count [4]  u32 LE number of patterns in the dictionary
+    //     for each pattern (sorted by code):
+    //         code       [4] u32 LE
+    //         data_len   [2] u16 LE (max 255, per MAX_PATTERN_SIZE)
+    //         data       [data_len] bytes
+    //         frequency  [8] u64 LE
+    //         last_used  [8] u64 LE
+    //         created_at [8] u64 LE
+    //     checksum   [4]  CRC32 (CRC_32_ISO_HDLC) over the whole buffer
+    //                     up to this point, written last
+    //
+    // Distinction from the older `PreloadFile` format (magic b"ALEC"):
+    // the ALEC format was designed for **training preloads** (one
+    // PreloadStatistics aggregate + dictionary + prediction-model
+    // metadata); it cannot represent per-source SourceStats state and
+    // therefore cannot round-trip a running decoder. ALCS is
+    // specifically for runtime state persistence and preserves every
+    // field the encoder / decoder rely on.
+    // ========================================================================
+
+    /// Serialize this context to a self-contained byte buffer.
+    ///
+    /// Intended for per-DevEUI sidecar state persistence (Redis etc.).
+    /// Pure in-memory; works in `no_std + alloc`.
+    ///
+    /// # Arguments
+    ///
+    /// * `sensor_type` - Human-readable device-model identifier (≤ 255 bytes).
+    ///
+    /// # Returns
+    ///
+    /// Serialized bytes, typically ~1-2 KB per context.
+    ///
+    /// # Errors
+    ///
+    /// * `ContextError::PatternTooLarge` if `sensor_type` is longer than 255 bytes.
+    pub fn to_preload_bytes(&self, sensor_type: &str) -> Result<Vec<u8>> {
+        let sens_bytes = sensor_type.as_bytes();
+        if sens_bytes.len() > 255 {
+            return Err(crate::error::ContextError::PatternTooLarge {
+                size: sens_bytes.len(),
+                max: 255,
+            }
+            .into());
+        }
+
+        let mut out: Vec<u8> = Vec::with_capacity(256);
+        // Magic + format version
+        out.extend_from_slice(ALCS_MAGIC);
+        out.extend_from_slice(&ALCS_FORMAT_VERSION.to_le_bytes());
+        // Core context scalars
+        out.extend_from_slice(&self.version.to_le_bytes());
+        out.extend_from_slice(&self.scale_factor.to_le_bytes());
+        out.extend_from_slice(&self.observation_count.to_le_bytes());
+        out.extend_from_slice(&self.next_code.to_le_bytes());
+        // sensor_type
+        out.push(sens_bytes.len() as u8);
+        out.extend_from_slice(sens_bytes);
+
+        // Per-source SourceStats, sorted by source_id for determinism.
+        let mut source_ids: Vec<u32> = self.source_stats.keys().copied().collect();
+        source_ids.sort();
+        out.extend_from_slice(&(source_ids.len() as u32).to_le_bytes());
+        for sid in &source_ids {
+            let s = self.source_stats.get(sid).unwrap();
+            out.extend_from_slice(&sid.to_le_bytes());
+            out.extend_from_slice(&s.count.to_le_bytes());
+            out.extend_from_slice(&s.last_value.to_le_bytes());
+            out.extend_from_slice(&s.ema.to_le_bytes());
+            out.extend_from_slice(&s.ema_alpha.to_le_bytes());
+            out.extend_from_slice(&s.sum_sq_diff.to_le_bytes());
+            out.extend_from_slice(&s.mean.to_le_bytes());
+            out.extend_from_slice(&(s.max_history as u32).to_le_bytes());
+            out.extend_from_slice(&(s.history.len() as u32).to_le_bytes());
+            for v in &s.history {
+                out.extend_from_slice(&v.to_le_bytes());
+            }
+        }
+
+        // Dictionary, sorted by code for determinism.
+        let mut codes: Vec<u32> = self.dictionary.keys().copied().collect();
+        codes.sort();
+        out.extend_from_slice(&(codes.len() as u32).to_le_bytes());
+        for code in &codes {
+            let p = self.dictionary.get(code).unwrap();
+            out.extend_from_slice(&code.to_le_bytes());
+            // Pattern data length capped at u16 (MAX_PATTERN_SIZE is 255 anyway).
+            let data_len = p.data.len().min(u16::MAX as usize) as u16;
+            out.extend_from_slice(&data_len.to_le_bytes());
+            out.extend_from_slice(&p.data[..data_len as usize]);
+            out.extend_from_slice(&p.frequency.to_le_bytes());
+            out.extend_from_slice(&p.last_used.to_le_bytes());
+            out.extend_from_slice(&p.created_at.to_le_bytes());
+        }
+
+        // CRC32 over everything so far.
+        use crc::{Crc, CRC_32_ISO_HDLC};
+        const CRC32: Crc<u32> = Crc::<u32>::new(&CRC_32_ISO_HDLC);
+        let crc = CRC32.checksum(&out);
+        out.extend_from_slice(&crc.to_le_bytes());
+
+        Ok(out)
+    }
+
+    /// Reconstruct a context from bytes produced by `to_preload_bytes`.
+    ///
+    /// # Errors
+    ///
+    /// * `DecodeError::BufferTooShort` / `InvalidHeader` / `MalformedMessage`
+    ///   for structural problems.
+    /// * `DecodeError::InvalidChecksum` if the CRC32 does not match.
+    pub fn from_preload_bytes(data: &[u8]) -> Result<Self> {
+        use crc::{Crc, CRC_32_ISO_HDLC};
+        const CRC32: Crc<u32> = Crc::<u32>::new(&CRC_32_ISO_HDLC);
+
+        // Minimum header (magic 4 + fmt 4 + ver 4 + scale 4 + obs 8 +
+        // next 4 + sens_len 1 + sens 0 + src_count 4 + dict_count 4 +
+        // crc 4) = 41 bytes.
+        if data.len() < 41 {
+            return Err(crate::error::DecodeError::BufferTooShort {
+                needed: 41,
+                available: data.len(),
+            }
+            .into());
+        }
+        if &data[..4] != ALCS_MAGIC {
+            return Err(crate::error::DecodeError::InvalidHeader.into());
+        }
+
+        // CRC32 is the LAST 4 bytes of the buffer.
+        let crc_offset = data.len() - 4;
+        let stored_crc = u32::from_le_bytes(data[crc_offset..].try_into().unwrap());
+        let computed_crc = CRC32.checksum(&data[..crc_offset]);
+        if stored_crc != computed_crc {
+            return Err(crate::error::DecodeError::InvalidChecksum {
+                expected: stored_crc,
+                actual: computed_crc,
+            }
+            .into());
+        }
+
+        let format_version = u32::from_le_bytes(data[4..8].try_into().unwrap());
+        if format_version != ALCS_FORMAT_VERSION {
+            return Err(crate::error::DecodeError::MalformedMessage {
+                offset: 4,
+                reason: {
+                    #[cfg(feature = "std")]
+                    {
+                        format!(
+                            "unsupported ALCS format version {} (expected {})",
+                            format_version, ALCS_FORMAT_VERSION
+                        )
+                    }
+                    #[cfg(not(feature = "std"))]
+                    {
+                        "unsupported ALCS format version".to_string()
+                    }
+                },
+            }
+            .into());
+        }
+
+        let version = u32::from_le_bytes(data[8..12].try_into().unwrap());
+        let scale_factor = u32::from_le_bytes(data[12..16].try_into().unwrap());
+        let observation_count = u64::from_le_bytes(data[16..24].try_into().unwrap());
+        let next_code = u32::from_le_bytes(data[24..28].try_into().unwrap());
+        let sens_len = data[28] as usize;
+
+        let mut offset: usize = 29;
+        if offset + sens_len > crc_offset {
+            return Err(crate::error::DecodeError::BufferTooShort {
+                needed: offset + sens_len + 4,
+                available: data.len(),
+            }
+            .into());
+        }
+        // We read but discard sensor_type — it's metadata for operators,
+        // not part of the runtime state. The FFI layer may surface it
+        // separately in a future revision.
+        offset += sens_len;
+
+        // === SourceStats ===
+        if offset + 4 > crc_offset {
+            return Err(crate::error::DecodeError::BufferTooShort {
+                needed: offset + 4,
+                available: data.len(),
+            }
+            .into());
+        }
+        let src_count = u32::from_le_bytes(data[offset..offset + 4].try_into().unwrap()) as usize;
+        offset += 4;
+
+        let mut source_stats: Map<u32, SourceStats> = Map::new();
+        for _ in 0..src_count {
+            // Fixed part: 4 + 8 + 5*8 + 4 + 4 = 56 bytes.
+            if offset + 56 > crc_offset {
+                return Err(crate::error::DecodeError::BufferTooShort {
+                    needed: offset + 56,
+                    available: data.len(),
+                }
+                .into());
+            }
+            let source_id = u32::from_le_bytes(data[offset..offset + 4].try_into().unwrap());
+            let count = u64::from_le_bytes(data[offset + 4..offset + 12].try_into().unwrap());
+            let last_value = f64::from_le_bytes(data[offset + 12..offset + 20].try_into().unwrap());
+            let ema = f64::from_le_bytes(data[offset + 20..offset + 28].try_into().unwrap());
+            let ema_alpha = f64::from_le_bytes(data[offset + 28..offset + 36].try_into().unwrap());
+            let sum_sq_diff =
+                f64::from_le_bytes(data[offset + 36..offset + 44].try_into().unwrap());
+            let mean = f64::from_le_bytes(data[offset + 44..offset + 52].try_into().unwrap());
+            let max_history =
+                u32::from_le_bytes(data[offset + 52..offset + 56].try_into().unwrap()) as usize;
+            offset += 56;
+
+            if offset + 4 > crc_offset {
+                return Err(crate::error::DecodeError::BufferTooShort {
+                    needed: offset + 4,
+                    available: data.len(),
+                }
+                .into());
+            }
+            let hist_len =
+                u32::from_le_bytes(data[offset..offset + 4].try_into().unwrap()) as usize;
+            offset += 4;
+
+            let hist_bytes = hist_len.saturating_mul(8);
+            if offset + hist_bytes > crc_offset {
+                return Err(crate::error::DecodeError::BufferTooShort {
+                    needed: offset + hist_bytes,
+                    available: data.len(),
+                }
+                .into());
+            }
+            let mut history: Vec<f64> = Vec::with_capacity(hist_len);
+            for i in 0..hist_len {
+                let hv = f64::from_le_bytes(
+                    data[offset + i * 8..offset + i * 8 + 8].try_into().unwrap(),
+                );
+                history.push(hv);
+            }
+            offset += hist_bytes;
+
+            source_stats.insert(
+                source_id,
+                SourceStats {
+                    last_value,
+                    ema,
+                    ema_alpha,
+                    count,
+                    sum_sq_diff,
+                    mean,
+                    history,
+                    max_history,
+                },
+            );
+        }
+
+        // === Dictionary ===
+        if offset + 4 > crc_offset {
+            return Err(crate::error::DecodeError::BufferTooShort {
+                needed: offset + 4,
+                available: data.len(),
+            }
+            .into());
+        }
+        let dict_count = u32::from_le_bytes(data[offset..offset + 4].try_into().unwrap()) as usize;
+        offset += 4;
+
+        let mut dictionary: Map<u32, Pattern> = Map::new();
+        let mut pattern_index: Map<u64, u32> = Map::new();
+        for _ in 0..dict_count {
+            // Fixed pre-data part: 4 + 2 = 6 bytes.
+            if offset + 6 > crc_offset {
+                return Err(crate::error::DecodeError::BufferTooShort {
+                    needed: offset + 6,
+                    available: data.len(),
+                }
+                .into());
+            }
+            let code = u32::from_le_bytes(data[offset..offset + 4].try_into().unwrap());
+            let data_len =
+                u16::from_le_bytes(data[offset + 4..offset + 6].try_into().unwrap()) as usize;
+            offset += 6;
+
+            // Fixed post-data part: 24 bytes (frequency 8 + last_used 8 + created_at 8).
+            if offset + data_len + 24 > crc_offset {
+                return Err(crate::error::DecodeError::BufferTooShort {
+                    needed: offset + data_len + 24,
+                    available: data.len(),
+                }
+                .into());
+            }
+            let pattern_bytes = data[offset..offset + data_len].to_vec();
+            offset += data_len;
+
+            let frequency = u64::from_le_bytes(data[offset..offset + 8].try_into().unwrap());
+            let last_used = u64::from_le_bytes(data[offset + 8..offset + 16].try_into().unwrap());
+            let created_at =
+                u64::from_le_bytes(data[offset + 16..offset + 24].try_into().unwrap());
+            offset += 24;
+
+            let hash = xxh64(&pattern_bytes, 0);
+            pattern_index.insert(hash, code);
+            dictionary.insert(
+                code,
+                Pattern {
+                    data: pattern_bytes,
+                    value: None,
+                    frequency,
+                    last_used,
+                    created_at,
+                },
+            );
+        }
+
+        // If `offset` != crc_offset here, the buffer has trailing bytes
+        // between the end of the declared content and the CRC. That
+        // shouldn't happen in a file we produced, so flag it.
+        if offset != crc_offset {
+            return Err(crate::error::DecodeError::MalformedMessage {
+                offset,
+                reason: {
+                    #[cfg(feature = "std")]
+                    {
+                        format!(
+                            "trailing {} byte(s) between content and CRC",
+                            crc_offset - offset
+                        )
+                    }
+                    #[cfg(not(feature = "std"))]
+                    {
+                        "trailing bytes between content and CRC".to_string()
+                    }
+                },
+            }
+            .into());
+        }
+
+        Ok(Self {
+            version,
+            observation_count,
+            dictionary,
+            pattern_index,
+            next_code,
+            source_stats,
+            config: ContextConfig::default(),
+            scale_factor,
+        })
+    }
 }
+
+/// Magic bytes for the ALCS (ALec Context State) serialization format
+/// produced by `Context::to_preload_bytes`. Distinct from the older
+/// `PreloadFile` magic (`b"ALEC"`) so callers can safely auto-detect.
+pub const ALCS_MAGIC: &[u8; 4] = b"ALCS";
+
+/// Current ALCS format version. Increment on any wire-level change.
+pub const ALCS_FORMAT_VERSION: u32 = 1;
 
 impl Default for Context {
     fn default() -> Self {
@@ -973,8 +1362,7 @@ mod tests {
     /// intact, so the decoder can still decode existing Pattern
     /// references while starting fresh for Delta-encoded frames.
     #[test]
-    fn test_reset_to_baseline_wipes_predictions_preserves_patterns() {
-        let mut ctx = Context::new();
+    fn test_reset_to_baseline_wipes_predictions_preserves_patterns() {        let mut ctx = Context::new();
 
         // Build up prediction state for two "channels".
         for _ in 0..5 {
@@ -1267,5 +1655,95 @@ mod tests {
 
         // More recent should have higher score
         assert!(score_recent > score_old);
+    }
+
+    // =======================================================================
+    // Bloc D-1 — Context::to_preload_bytes / from_preload_bytes round-trip
+    // =======================================================================
+
+    /// Build a context with non-trivial state for roundtrip testing.
+    fn trained_context() -> Context {
+        let mut ctx = Context::new();
+        // Channel 1: 30 observations of a slow-drift signal.
+        for i in 0..30 {
+            ctx.observe(&RawData::with_source(1, 22.5 + (i as f64) * 0.01, 0));
+        }
+        // Channel 2: a few observations of a stable signal.
+        for _ in 0..15 {
+            ctx.observe(&RawData::with_source(2, 1013.25, 0));
+        }
+        // One pattern so the dictionary isn't empty.
+        let _ = ctx
+            .register_pattern(Pattern::new(vec![0xBE, 0xEF]))
+            .unwrap();
+        ctx
+    }
+
+    #[test]
+    fn test_to_preload_bytes_from_preload_bytes_roundtrip() {
+        let ctx = trained_context();
+        let bytes = ctx.to_preload_bytes("em500-co2").expect("serialize");
+        // Sanity: sidecar target size.
+        assert!(
+            bytes.len() < 3072,
+            "serialized context should be well under 3 KB, got {}",
+            bytes.len()
+        );
+
+        let restored = Context::from_preload_bytes(&bytes).expect("deserialize");
+        // Scalars match exactly.
+        assert_eq!(restored.version(), ctx.version());
+        assert_eq!(restored.scale_factor(), ctx.scale_factor());
+        assert_eq!(restored.observation_count(), ctx.observation_count());
+        assert_eq!(restored.source_count(), ctx.source_count());
+        assert_eq!(restored.pattern_count(), ctx.pattern_count());
+
+        // Per-source state is bit-exact (f64 equality).
+        for sid in [1u32, 2] {
+            let a = ctx.source_stats.get(&sid).unwrap();
+            let b = restored.source_stats.get(&sid).unwrap();
+            assert_eq!(a.count, b.count, "sid {} count", sid);
+            assert!(a.last_value.to_bits() == b.last_value.to_bits());
+            assert!(a.ema.to_bits() == b.ema.to_bits());
+            assert!(a.ema_alpha.to_bits() == b.ema_alpha.to_bits());
+            assert!(a.sum_sq_diff.to_bits() == b.sum_sq_diff.to_bits());
+            assert!(a.mean.to_bits() == b.mean.to_bits());
+            assert_eq!(a.max_history, b.max_history);
+            assert_eq!(a.history.len(), b.history.len());
+            for (x, y) in a.history.iter().zip(b.history.iter()) {
+                assert_eq!(x.to_bits(), y.to_bits(), "sid {} history", sid);
+            }
+        }
+    }
+
+    #[test]
+    fn test_from_preload_bytes_rejects_bad_magic() {
+        let mut bytes = trained_context().to_preload_bytes("x").unwrap();
+        bytes[0] = b'X';
+        let r = Context::from_preload_bytes(&bytes);
+        assert!(r.is_err());
+    }
+
+    #[test]
+    fn test_from_preload_bytes_rejects_bad_crc() {
+        let mut bytes = trained_context().to_preload_bytes("x").unwrap();
+        // Flip a byte in the MIDDLE of the buffer so the CRC changes.
+        let mid = bytes.len() / 2;
+        bytes[mid] ^= 0xFF;
+        let r = Context::from_preload_bytes(&bytes);
+        match r {
+            Err(crate::error::AlecError::Decode(crate::error::DecodeError::InvalidChecksum {
+                ..
+            })) => {}
+            other => panic!("expected InvalidChecksum, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn test_to_preload_bytes_rejects_oversize_sensor_type() {
+        let ctx = Context::new();
+        let long: String = "a".repeat(300);
+        let r = ctx.to_preload_bytes(&long);
+        assert!(r.is_err());
     }
 }

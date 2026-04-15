@@ -156,3 +156,44 @@ Deliver progressively in 3 milestones:
 - Logging: `log::warn!` at the FFI layer on every gap
   or ctx-mismatch event; no-op if no subscriber is
   installed (zero-cost on embedded)
+
+## Context persistence (Bloc D)
+- `Context::to_preload_bytes(sensor_type) -> Vec<u8>`
+  `Context::from_preload_bytes(data) -> Context`
+- No std::fs — pure in-memory, no_std+alloc compatible
+- New wire format "ALCS" (ALec Context State):
+  magic `b"ALCS"` + format_version + full u32 ctx_ver
+  + scale_factor + observation_count + next_code
+  + sensor_type (≤255B) + SourceStats (per channel)
+  + dictionary (patterns) + CRC32 (ISO-HDLC, LE)
+- Distinct from the older `PreloadFile` (magic `b"ALEC"`)
+  which was designed for training preloads (single
+  aggregated PreloadStatistics) and cannot round-trip
+  the per-source EMA / last_value state that a running
+  decoder needs. ALCS preserves every field of
+  SourceStats bit-exactly (f64 `to_bits()` equality).
+- Measured serialized size on a 5-channel EM500-CO2
+  decoder (history_size=20, 1 pattern): **1 550 B**.
+  Target range: 1-3 KB per DevEUI. ✓
+- Session state NOT serialized:
+  `last_header_sequence`, `last_gap_size`
+  (these are transient frame-level trackers that reset
+   naturally on sidecar restart)
+- FFI entry points:
+  * `alec_decoder_export_state_size(dec, sensor, *size)`
+    — compute exact required buffer size up front
+  * `alec_decoder_export_state(dec, sensor, buf, cap, *len)`
+    — serialize; on BUFFER_TOO_SMALL writes nothing and
+      reports the required size in *len
+  * `alec_decoder_import_state(dec, data, len)`
+    — restore; on CORRUPT_DATA the decoder is NOT
+      modified (neither context nor session state)
+- Sidecar persistence pattern:
+    every N decodes → alec_decoder_export_state → store
+    in Redis under key `alec:ctx:{dev_eui}` with a 7-day
+    TTL refreshed on each access
+- On sidecar restart:
+    GET alec:ctx:{dev_eui} → alec_decoder_import_state
+    If Redis miss OR import returns CORRUPT_DATA:
+      wait for next keyframe (marker 0xA2) to resync
+      naturally — drift bounded by keyframe_interval

@@ -80,6 +80,10 @@ typedef enum {
     ALEC_ERROR_FILE_IO = 7,
     /** Context version mismatch */
     ALEC_ERROR_VERSION_MISMATCH = 8,
+    /** Corrupt or malformed context-state data (bad magic, bad CRC,
+     *  truncated buffer, unknown format version). Produced by
+     *  alec_decoder_import_state. */
+    ALEC_ERROR_CORRUPT_DATA = 9,
 } AlecResult;
 
 /**
@@ -534,6 +538,89 @@ AlecResult alec_decode_multi_fixed(
  *         performed yet, or if decoder is NULL.
  */
 bool alec_decoder_gap_detected(const AlecDecoder* decoder, uint8_t* out_gap_size);
+
+/* ============================================================================
+ * Context persistence (Bloc D)
+ *
+ * Serialize / restore a decoder's Context to a self-contained byte
+ * buffer. Intended use: the ChirpStack sidecar periodically exports
+ * each DevEUI's decoder context (Redis persistence) and restores it
+ * on startup. Typical serialized size is 1-2 KB per DevEUI for a
+ * 5-channel EM500-CO2 decoder with history_size = 20.
+ *
+ * Session state (last_header_sequence, last_gap_size) is NOT
+ * serialized — those are transient frame-level trackers that reset
+ * naturally on sidecar restart.
+ * ============================================================================ */
+
+/**
+ * Compute the exact number of bytes alec_decoder_export_state would
+ * write. Lets the caller allocate the right-sized buffer up front.
+ *
+ * @param decoder     Decoder handle.
+ * @param sensor_type Null-terminated sensor-type identifier
+ *                    (≤ 255 bytes, e.g. "em500-co2").
+ * @param out_size    Pointer receiving the required size in bytes.
+ *
+ * @return ALEC_OK on success; ALEC_ERROR_NULL_POINTER for a NULL
+ *         pointer; ALEC_ERROR_INVALID_UTF8 if sensor_type is not
+ *         valid UTF-8; ALEC_ERROR_INVALID_INPUT if sensor_type
+ *         exceeds 255 bytes.
+ */
+AlecResult alec_decoder_export_state_size(
+    const AlecDecoder* decoder,
+    const char* sensor_type,
+    size_t* out_size
+);
+
+/**
+ * Serialize the decoder's context to a caller-provided buffer.
+ *
+ * @param decoder      Decoder handle.
+ * @param sensor_type  Null-terminated sensor-type identifier (≤ 255 bytes).
+ * @param out_buf      Destination buffer.
+ * @param out_capacity Size of out_buf in bytes.
+ * @param out_len      Pointer receiving bytes written (on success)
+ *                     or the required size (on ALEC_ERROR_BUFFER_TOO_SMALL).
+ *
+ * @return ALEC_OK on success; ALEC_ERROR_BUFFER_TOO_SMALL if
+ *         out_capacity is too small — *out_len reports the required
+ *         size and out_buf is NOT written (no partial write);
+ *         ALEC_ERROR_NULL_POINTER / ALEC_ERROR_INVALID_UTF8 /
+ *         ALEC_ERROR_INVALID_INPUT otherwise.
+ */
+AlecResult alec_decoder_export_state(
+    const AlecDecoder* decoder,
+    const char* sensor_type,
+    uint8_t* out_buf,
+    size_t out_capacity,
+    size_t* out_len
+);
+
+/**
+ * Restore a decoder's context from bytes produced by
+ * alec_decoder_export_state.
+ *
+ * On success, decoder.context is replaced by the deserialized
+ * context. The decoder's session state (last_header_sequence,
+ * last_gap_size) is PRESERVED.
+ *
+ * If the input buffer is corrupted, the decoder is NOT modified in
+ * any way — neither the context nor the session state.
+ *
+ * @param decoder  Decoder handle.
+ * @param data     Input bytes produced by alec_decoder_export_state.
+ * @param data_len Length of data in bytes.
+ *
+ * @return ALEC_OK on success; ALEC_ERROR_NULL_POINTER for a NULL
+ *         pointer; ALEC_ERROR_CORRUPT_DATA if data cannot be parsed
+ *         (bad magic, CRC mismatch, truncation, unknown format version).
+ */
+AlecResult alec_decoder_import_state(
+    AlecDecoder* decoder,
+    const uint8_t* data,
+    size_t data_len
+);
 
 /* ============================================================================
  * Bare-metal / RTOS heap initialization

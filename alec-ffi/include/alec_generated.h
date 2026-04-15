@@ -71,6 +71,11 @@ typedef enum AlecResult {
    * Context version mismatch
    */
   ErrorVersionMismatch = 8,
+  /**
+   * Corrupt or malformed context-state data (bad magic, bad CRC,
+   * truncated buffer, etc.). Produced by `alec_decoder_import_state`.
+   */
+  ErrorCorruptData = 9,
 } AlecResult;
 
 /**
@@ -578,6 +583,99 @@ enum AlecResult alec_decode_multi_fixed(struct AlecDecoder *decoder,
                                         uintptr_t channel_count,
                                         double *output,
                                         uintptr_t output_capacity);
+
+/**
+ * Compute the exact number of bytes `alec_decoder_export_state` would
+ * write for this decoder + sensor_type. Lets the caller allocate the
+ * right-sized buffer up front without any reallocation.
+ *
+ * # Arguments
+ *
+ * * `decoder`     - Decoder handle.
+ * * `sensor_type` - Null-terminated sensor-type identifier.
+ * * `out_size`    - Pointer receiving the required size in bytes.
+ *
+ * # Returns
+ *
+ * `ALEC_OK` on success; `ALEC_ERROR_NULL_POINTER` for a NULL pointer;
+ * `ALEC_ERROR_INVALID_UTF8` if `sensor_type` is not valid UTF-8;
+ * `ALEC_ERROR_INVALID_INPUT` if `sensor_type` exceeds 255 bytes.
+ */
+enum AlecResult alec_decoder_export_state_size(const struct AlecDecoder *decoder,
+                                               const char *sensor_type,
+                                               uintptr_t *out_size);
+
+/**
+ * Serialize the decoder's context to a caller-provided buffer.
+ *
+ * The output is a self-contained byte buffer (magic `ALCS`, CRC32
+ * protected) that can be persisted to Redis, a file, etc. Typical
+ * size is 1-2 KB for a 5-channel EM500-CO2 decoder with
+ * `history_size = 20`.
+ *
+ * Session state (last_header_sequence, last_gap_size) is **NOT**
+ * serialized — those are transient tracking counters that reset
+ * naturally on sidecar restart.
+ *
+ * # Arguments
+ *
+ * * `decoder`      - Decoder handle.
+ * * `sensor_type`  - Null-terminated sensor-type identifier (≤ 255 bytes).
+ * * `out_buf`      - Destination buffer.
+ * * `out_capacity` - Size of `out_buf` in bytes.
+ * * `out_len`      - Pointer receiving the number of bytes written
+ *                    (on success) or the required size (on
+ *                    `ALEC_ERROR_BUFFER_TOO_SMALL`).
+ *
+ * # Returns
+ *
+ * * `ALEC_OK`                       on success.
+ * * `ALEC_ERROR_BUFFER_TOO_SMALL`   if `out_capacity` is less than the
+ *                                   required size. In that case
+ *                                   `*out_len` is set to the required
+ *                                   size and `out_buf` is NOT written
+ *                                   (no partial write).
+ * * `ALEC_ERROR_NULL_POINTER`       for a NULL required pointer.
+ * * `ALEC_ERROR_INVALID_UTF8`       if `sensor_type` is not valid UTF-8.
+ * * `ALEC_ERROR_INVALID_INPUT`      if `sensor_type` exceeds 255 bytes.
+ */
+enum AlecResult alec_decoder_export_state(const struct AlecDecoder *decoder,
+                                          const char *sensor_type,
+                                          uint8_t *out_buf,
+                                          uintptr_t out_capacity,
+                                          uintptr_t *out_len);
+
+/**
+ * Restore a decoder's context from bytes produced by
+ * `alec_decoder_export_state`.
+ *
+ * On success, `decoder.context` is replaced by the deserialized
+ * context. The decoder's session state — `last_header_sequence` and
+ * `last_gap_size` — is **preserved** (those are transient
+ * frame-level trackers, not context state).
+ *
+ * If the input buffer is corrupted (bad magic, CRC mismatch,
+ * truncation, etc.), the decoder is NOT modified in any way —
+ * neither the context nor the session state. The caller can safely
+ * retry after repairing the input.
+ *
+ * # Arguments
+ *
+ * * `decoder`  - Decoder handle.
+ * * `data`     - Input bytes produced by `alec_decoder_export_state`.
+ * * `data_len` - Length of `data` in bytes.
+ *
+ * # Returns
+ *
+ * * `ALEC_OK`                   on success.
+ * * `ALEC_ERROR_NULL_POINTER`   for a NULL pointer.
+ * * `ALEC_ERROR_CORRUPT_DATA`   if `data` cannot be parsed
+ *                               (bad magic, CRC mismatch, truncation,
+ *                               unknown format version).
+ */
+enum AlecResult alec_decoder_import_state(struct AlecDecoder *decoder,
+                                          const uint8_t *data,
+                                          uintptr_t data_len);
 
 extern uint8_t *k_aligned_alloc(uintptr_t align, uintptr_t size);
 

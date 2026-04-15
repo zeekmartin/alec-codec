@@ -1,10 +1,16 @@
 # ALEC Milesight Integration — Todo
 
-Last updated: 2026-04-15 (Session 3 — Bloc C complete)
+Last updated: 2026-04-15 (Session 4 — Bloc D complete → Phase 1 DONE)
 
 ---
 
-## Phase 1 — alec-codec (repo public)
+## Phase 1 — alec-codec (repo public) ✅ COMPLETE
+
+All four blocks (A, B, C, D) are done. The library now
+ships everything the Milesight firmware + sidecar need:
+config FFI + compact 4B header + packet-loss recovery
++ in-memory context persistence. Next: Phase 2 (Python
+decoder + FreeRTOS C example + ChirpStack sidecar).
 
 ### Bloc A: Config FFI
 - [x] A1. alec_encoder_new_with_config() FFI
@@ -232,12 +238,70 @@ Encoding distribution across 495 channels (99 × 5):
         next keyframe recovers within sensor LSB
 
 ### Bloc D: Context persistence FFI
-- [ ] D1. Context::to_preload_bytes()
-- [ ] D1. Context::from_preload_bytes()
-- [ ] D2. alec_decoder_export_state() FFI
-- [ ] D2. alec_decoder_import_state() FFI
-- [ ] D3. Update alec.h
-- [ ] D3. Round-trip binary tests
+- [x] D1. Context::to_preload_bytes() / from_preload_bytes()
+        — new "ALCS" (ALec Context State) wire format,
+        no_std+alloc compatible, CRC32-protected.
+        Distinct from the older PreloadFile (b"ALEC")
+        format because ALCS preserves per-source
+        SourceStats bit-exactly — critical for the
+        sidecar use case.
+  - [x] Magic bytes "ALCS", format version 1
+  - [x] Header: ctx_ver (full u32) + scale_factor +
+        observation_count + next_code + sensor_type
+  - [x] Per-source SourceStats section (count, EMA,
+        last_value, sum_sq_diff, mean, history vector)
+        preserved bit-exactly via f64 `to_bits()`
+  - [x] Dictionary section (patterns with data,
+        frequency, last_used, created_at)
+  - [x] CRC32 ISO-HDLC checksum (LE)
+  - [x] Unit tests: roundtrip bit-exact, bad magic,
+        bad CRC, oversize sensor_type rejected
+
+- [x] D2. alec_decoder_export_state / import_state FFI
+  - [x] alec_decoder_export_state_size() — size query
+        for precise buffer allocation
+  - [x] alec_decoder_export_state() — serialize with
+        BUFFER_TOO_SMALL that reports required size
+        and does NOT partially write
+  - [x] alec_decoder_import_state() — restore context,
+        preserve session state (last_header_sequence,
+        last_gap_size); on CORRUPT_DATA, decoder is
+        completely untouched
+  - [x] New result code: ALEC_ERROR_CORRUPT_DATA = 9
+
+- [x] D3. Update alec.h
+  - [x] Hand-written include/alec.h — 3 new functions
+        + ALEC_ERROR_CORRUPT_DATA
+  - [x] cbindgen-regenerated include/alec_generated.h
+  - [x] Full doc comments on every new function
+
+- [x] D4. Tests — 6 required + 1 NULL-safety bonus
+  - [x] context_roundtrip_in_memory — train, export,
+        import, drive 10 more frames; bit-exact
+        identical output on original vs restored decoder
+  - [x] export_state_size_matches_export
+  - [x] export_buffer_too_small — 10-byte buffer →
+        BUFFER_TOO_SMALL, *out_len=required size, buffer
+        NOT touched (sentinel bytes preserved)
+  - [x] import_corrupt_data — garbage + CRC-tampered
+        buffer both rejected; decoder state byte-for-byte
+        unchanged (verified by re-export and compare)
+  - [x] session_state_preserved_on_import —
+        last_header_sequence=42, last_gap_size=2 survive
+        an export/import roundtrip
+  - [x] export_after_reset_to_baseline — post-reset
+        export is valid, restored decoder has empty
+        source_stats, patterns preserved
+  - [x] (bonus) persistence_ffi_null_safety
+
+#### Bloc D — Measured serialized size
+
+| Scenario | Size |
+|---|---:|
+| 5-channel EM500-CO2 decoder, history=20, 1 pattern | **1 550 B** |
+
+Squarely in the 1-3 KB target for the ChirpStack sidecar
+Redis-persistence pattern (1 key per DevEUI).
 
 ---
 
@@ -437,3 +501,42 @@ Encoding distribution across 495 channels (99 × 5):
     sidecar doesn't need predictions to persist across
     restarts) but Bloc D tests should cover it anyway
     for documentation value.
+
+### Notes left open by Bloc D for Phase 2 (Bloc E+)
+
+- **ALCS format choice.** The existing `PreloadFile`
+  (b"ALEC" magic) cannot represent per-source
+  SourceStats, so Bloc D introduces a NEW format
+  (b"ALCS" magic). `PreloadFile` is NOT deprecated —
+  it remains the right choice for training preloads
+  where a single aggregated statistic is enough.
+  `Context::save_to_file` / `load_from_file` still use
+  the old format. Two formats coexist cleanly because
+  their magic bytes differ.
+- **sensor_type is metadata.** The sensor_type string
+  is stored in the serialized buffer but ignored by
+  `from_preload_bytes` (the Context itself has no
+  sensor_type field). The FFI sidecar can still read
+  it back from the raw bytes at byte offset 28 if
+  operators want to surface it.
+- **Format versioning.** ALCS_FORMAT_VERSION = 1. Any
+  future wire-breaking change must bump this and
+  optionally maintain a v1→v2 migrator.
+- **Phase 2 / Bloc E next steps:**
+  * Python reference decoder must implement the Bloc B
+    wire format (2-bits-per-channel bitmap, dual
+    markers 0xA1/0xA2) — no ALCS needed on the Python
+    side since Python decoders re-seed from keyframes
+    rather than persist.
+  * The ChirpStack sidecar (Bloc G) will be the
+    primary ALCS consumer: on every N decodes, call
+    `alec_decoder_export_state` and push to Redis;
+    on startup, `GET` from Redis and call
+    `alec_decoder_import_state`.
+  * Session-state preservation contract (Bloc D-5)
+    means the sidecar can safely re-import after a
+    crash without losing in-flight sequence tracking.
+  * If the sidecar uses serde-based (JSON) storage
+    instead of raw bytes, it can base64-encode the
+    ALCS buffer — size ~2 KB base64 is still well
+    within Redis typical value budgets.

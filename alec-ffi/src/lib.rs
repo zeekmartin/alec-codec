@@ -270,6 +270,9 @@ pub enum AlecResult {
     ErrorFileIo = 7,
     /// Context version mismatch
     ErrorVersionMismatch = 8,
+    /// Corrupt or malformed context-state data (bad magic, bad CRC,
+    /// truncated buffer, etc.). Produced by `alec_decoder_import_state`.
+    ErrorCorruptData = 9,
 }
 
 /// Opaque encoder handle
@@ -356,6 +359,7 @@ pub extern "C" fn alec_result_to_string(result: AlecResult) -> *const c_char {
         AlecResult::ErrorInvalidUtf8 => b"Invalid UTF-8 string\0",
         AlecResult::ErrorFileIo => b"File I/O error\0",
         AlecResult::ErrorVersionMismatch => b"Context version mismatch\0",
+        AlecResult::ErrorCorruptData => b"Corrupt or malformed context state\0",
     };
     msg.as_ptr() as *const c_char
 }
@@ -1316,6 +1320,164 @@ pub extern "C" fn alec_decode_multi_fixed(
             ..
         })) if reason.contains("not a fixed-channel ALEC frame") => AlecResult::ErrorInvalidInput,
         Err(_) => AlecResult::ErrorDecodingFailed,
+    }
+}
+
+// ============================================================================
+// Bloc D — Context persistence FFI
+//
+// These functions expose Context::to_preload_bytes / from_preload_bytes to
+// C callers. Intended use: the ChirpStack sidecar periodically exports each
+// DevEUI's decoder context (Redis persistence) and restores it on startup.
+// ============================================================================
+
+/// Compute the exact number of bytes `alec_decoder_export_state` would
+/// write for this decoder + sensor_type. Lets the caller allocate the
+/// right-sized buffer up front without any reallocation.
+///
+/// # Arguments
+///
+/// * `decoder`     - Decoder handle.
+/// * `sensor_type` - Null-terminated sensor-type identifier.
+/// * `out_size`    - Pointer receiving the required size in bytes.
+///
+/// # Returns
+///
+/// `ALEC_OK` on success; `ALEC_ERROR_NULL_POINTER` for a NULL pointer;
+/// `ALEC_ERROR_INVALID_UTF8` if `sensor_type` is not valid UTF-8;
+/// `ALEC_ERROR_INVALID_INPUT` if `sensor_type` exceeds 255 bytes.
+#[no_mangle]
+pub extern "C" fn alec_decoder_export_state_size(
+    decoder: *const AlecDecoder,
+    sensor_type: *const c_char,
+    out_size: *mut usize,
+) -> AlecResult {
+    if decoder.is_null() || sensor_type.is_null() || out_size.is_null() {
+        return AlecResult::ErrorNullPointer;
+    }
+    let dec = unsafe { &*decoder };
+    let sens_str = match unsafe { CStr::from_ptr(sensor_type) }.to_str() {
+        Ok(s) => s,
+        Err(_) => return AlecResult::ErrorInvalidUtf8,
+    };
+    match dec.context.to_preload_bytes(sens_str) {
+        Ok(bytes) => {
+            unsafe { *out_size = bytes.len() };
+            AlecResult::Ok
+        }
+        Err(_) => AlecResult::ErrorInvalidInput,
+    }
+}
+
+/// Serialize the decoder's context to a caller-provided buffer.
+///
+/// The output is a self-contained byte buffer (magic `ALCS`, CRC32
+/// protected) that can be persisted to Redis, a file, etc. Typical
+/// size is 1-2 KB for a 5-channel EM500-CO2 decoder with
+/// `history_size = 20`.
+///
+/// Session state (last_header_sequence, last_gap_size) is **NOT**
+/// serialized — those are transient tracking counters that reset
+/// naturally on sidecar restart.
+///
+/// # Arguments
+///
+/// * `decoder`      - Decoder handle.
+/// * `sensor_type`  - Null-terminated sensor-type identifier (≤ 255 bytes).
+/// * `out_buf`      - Destination buffer.
+/// * `out_capacity` - Size of `out_buf` in bytes.
+/// * `out_len`      - Pointer receiving the number of bytes written
+///                    (on success) or the required size (on
+///                    `ALEC_ERROR_BUFFER_TOO_SMALL`).
+///
+/// # Returns
+///
+/// * `ALEC_OK`                       on success.
+/// * `ALEC_ERROR_BUFFER_TOO_SMALL`   if `out_capacity` is less than the
+///                                   required size. In that case
+///                                   `*out_len` is set to the required
+///                                   size and `out_buf` is NOT written
+///                                   (no partial write).
+/// * `ALEC_ERROR_NULL_POINTER`       for a NULL required pointer.
+/// * `ALEC_ERROR_INVALID_UTF8`       if `sensor_type` is not valid UTF-8.
+/// * `ALEC_ERROR_INVALID_INPUT`      if `sensor_type` exceeds 255 bytes.
+#[no_mangle]
+pub extern "C" fn alec_decoder_export_state(
+    decoder: *const AlecDecoder,
+    sensor_type: *const c_char,
+    out_buf: *mut u8,
+    out_capacity: usize,
+    out_len: *mut usize,
+) -> AlecResult {
+    if decoder.is_null() || sensor_type.is_null() || out_buf.is_null() || out_len.is_null() {
+        return AlecResult::ErrorNullPointer;
+    }
+    let dec = unsafe { &*decoder };
+    let sens_str = match unsafe { CStr::from_ptr(sensor_type) }.to_str() {
+        Ok(s) => s,
+        Err(_) => return AlecResult::ErrorInvalidUtf8,
+    };
+    let bytes = match dec.context.to_preload_bytes(sens_str) {
+        Ok(b) => b,
+        Err(_) => return AlecResult::ErrorInvalidInput,
+    };
+    if bytes.len() > out_capacity {
+        // Buffer too small — report the required size but do not
+        // partially write the output (contract: out_buf unchanged).
+        unsafe { *out_len = bytes.len() };
+        return AlecResult::ErrorBufferTooSmall;
+    }
+    let out_slice = unsafe { slice::from_raw_parts_mut(out_buf, out_capacity) };
+    out_slice[..bytes.len()].copy_from_slice(&bytes);
+    unsafe { *out_len = bytes.len() };
+    AlecResult::Ok
+}
+
+/// Restore a decoder's context from bytes produced by
+/// `alec_decoder_export_state`.
+///
+/// On success, `decoder.context` is replaced by the deserialized
+/// context. The decoder's session state — `last_header_sequence` and
+/// `last_gap_size` — is **preserved** (those are transient
+/// frame-level trackers, not context state).
+///
+/// If the input buffer is corrupted (bad magic, CRC mismatch,
+/// truncation, etc.), the decoder is NOT modified in any way —
+/// neither the context nor the session state. The caller can safely
+/// retry after repairing the input.
+///
+/// # Arguments
+///
+/// * `decoder`  - Decoder handle.
+/// * `data`     - Input bytes produced by `alec_decoder_export_state`.
+/// * `data_len` - Length of `data` in bytes.
+///
+/// # Returns
+///
+/// * `ALEC_OK`                   on success.
+/// * `ALEC_ERROR_NULL_POINTER`   for a NULL pointer.
+/// * `ALEC_ERROR_CORRUPT_DATA`   if `data` cannot be parsed
+///                               (bad magic, CRC mismatch, truncation,
+///                               unknown format version).
+#[no_mangle]
+pub extern "C" fn alec_decoder_import_state(
+    decoder: *mut AlecDecoder,
+    data: *const u8,
+    data_len: usize,
+) -> AlecResult {
+    if decoder.is_null() || data.is_null() {
+        return AlecResult::ErrorNullPointer;
+    }
+    let data_slice = unsafe { slice::from_raw_parts(data, data_len) };
+    match Context::from_preload_bytes(data_slice) {
+        Ok(ctx) => {
+            let dec = unsafe { &mut *decoder };
+            // Replace context only — session state (last_header_sequence,
+            // last_gap_size) is intentionally preserved.
+            dec.context = ctx;
+            AlecResult::Ok
+        }
+        Err(_) => AlecResult::ErrorCorruptData,
     }
 }
 
@@ -2772,6 +2934,423 @@ mod tests {
         }
 
         alec_encoder_free(enc);
+        alec_decoder_free(dec);
+    }
+
+    // ========================================================================
+    // Bloc D4 — Context persistence FFI tests
+    // ========================================================================
+
+    /// Helper: CString-safe sensor type.
+    const SENSOR_TYPE: &[u8] = b"em500-co2\0";
+
+    /// Run `frames` rows through the encoder + decoder. Returns the
+    /// wire frames for later replay.
+    fn drive_pair(
+        enc: *mut AlecEncoder,
+        dec: *mut AlecDecoder,
+        rows: &[[f64; 5]],
+    ) -> Vec<Vec<u8>> {
+        let mut out = [0u8; 64];
+        let mut out_len: usize = 0;
+        let mut values = [0f64; 5];
+        let mut frames = Vec::with_capacity(rows.len());
+        for row in rows {
+            let r = alec_encode_multi_fixed(
+                enc,
+                row.as_ptr(),
+                row.len(),
+                out.as_mut_ptr(),
+                out.len(),
+                &mut out_len,
+            );
+            assert_eq!(r, AlecResult::Ok);
+            let frame = out[..out_len].to_vec();
+            let r2 = alec_decode_multi_fixed(
+                dec,
+                frame.as_ptr(),
+                frame.len(),
+                5,
+                values.as_mut_ptr(),
+                values.len(),
+            );
+            assert_eq!(r2, AlecResult::Ok);
+            frames.push(frame);
+        }
+        frames
+    }
+
+    /// D4-1. End-to-end in-memory roundtrip: train a decoder's
+    /// context, export → import into a fresh decoder, then verify
+    /// that both decoders produce identical output for the same
+    /// subsequent encoded frames.
+    #[test]
+    fn test_context_roundtrip_in_memory() {
+        // Slow-drift signal so frames stay compact.
+        let rows: Vec<[f64; 5]> = (0..30)
+            .map(|i| [3.60, 22.50, 45.0, 420.0 + (i / 3) as f64, 1013.25])
+            .collect();
+
+        let cfg = AlecEncoderConfig {
+            history_size: 0,
+            max_patterns: 0,
+            max_memory_bytes: 0,
+            keyframe_interval: 10_000, // avoid periodic keyframes
+            smart_resync: false,
+        };
+        let enc = alec_encoder_new_with_config(&cfg);
+        let dec_orig = alec_decoder_new();
+
+        // Train.
+        let _ = drive_pair(enc, dec_orig, &rows);
+
+        // Export the trained decoder.
+        let mut size: usize = 0;
+        let r = alec_decoder_export_state_size(dec_orig, SENSOR_TYPE.as_ptr() as *const c_char, &mut size);
+        assert_eq!(r, AlecResult::Ok);
+        assert!(size > 0 && size < 3072, "export size {} out of range", size);
+        let mut buf = vec![0u8; size];
+        let mut written: usize = 0;
+        let r = alec_decoder_export_state(
+            dec_orig,
+            SENSOR_TYPE.as_ptr() as *const c_char,
+            buf.as_mut_ptr(),
+            buf.len(),
+            &mut written,
+        );
+        assert_eq!(r, AlecResult::Ok);
+        assert_eq!(written, size);
+
+        // Fresh decoder, import the state.
+        let dec_new = alec_decoder_new();
+        let r = alec_decoder_import_state(dec_new, buf.as_ptr(), buf.len());
+        assert_eq!(r, AlecResult::Ok);
+
+        // Drive 10 more frames on the encoder and decode each
+        // through BOTH decoders. Identical output confirms the
+        // restored context is operationally equivalent.
+        let more: Vec<[f64; 5]> = (30..40)
+            .map(|i| [3.60, 22.50, 45.0, 420.0 + (i / 3) as f64, 1013.25])
+            .collect();
+        let mut out = [0u8; 64];
+        let mut out_len: usize = 0;
+        for row in &more {
+            let r = alec_encode_multi_fixed(
+                enc,
+                row.as_ptr(),
+                row.len(),
+                out.as_mut_ptr(),
+                out.len(),
+                &mut out_len,
+            );
+            assert_eq!(r, AlecResult::Ok);
+            let frame = &out[..out_len];
+
+            let mut v_orig = [0f64; 5];
+            let mut v_new = [0f64; 5];
+            assert_eq!(
+                alec_decode_multi_fixed(
+                    dec_orig,
+                    frame.as_ptr(),
+                    frame.len(),
+                    5,
+                    v_orig.as_mut_ptr(),
+                    v_orig.len(),
+                ),
+                AlecResult::Ok
+            );
+            assert_eq!(
+                alec_decode_multi_fixed(
+                    dec_new,
+                    frame.as_ptr(),
+                    frame.len(),
+                    5,
+                    v_new.as_mut_ptr(),
+                    v_new.len(),
+                ),
+                AlecResult::Ok
+            );
+            // Bit-exact equality — both decoders ran the same
+            // reconstruction logic on the same wire bytes with
+            // identically-seeded contexts.
+            for ch in 0..5 {
+                assert_eq!(
+                    v_orig[ch].to_bits(),
+                    v_new[ch].to_bits(),
+                    "ch {} diverged between original and restored decoder",
+                    ch
+                );
+            }
+        }
+
+        alec_encoder_free(enc);
+        alec_decoder_free(dec_orig);
+        alec_decoder_free(dec_new);
+    }
+
+    /// D4-2. `export_state_size` matches the length reported by a
+    /// real export call.
+    #[test]
+    fn test_export_state_size_matches_export() {
+        let enc = alec_encoder_new();
+        let dec = alec_decoder_new();
+        let rows: Vec<[f64; 5]> = (0..12).map(|_| [3.60, 22.50, 45.0, 420.0, 1013.25]).collect();
+        let _ = drive_pair(enc, dec, &rows);
+
+        let mut size: usize = 0;
+        let r = alec_decoder_export_state_size(
+            dec,
+            SENSOR_TYPE.as_ptr() as *const c_char,
+            &mut size,
+        );
+        assert_eq!(r, AlecResult::Ok);
+
+        let mut buf = vec![0u8; size];
+        let mut written: usize = 0;
+        let r = alec_decoder_export_state(
+            dec,
+            SENSOR_TYPE.as_ptr() as *const c_char,
+            buf.as_mut_ptr(),
+            buf.len(),
+            &mut written,
+        );
+        assert_eq!(r, AlecResult::Ok);
+        assert_eq!(written, size);
+
+        alec_encoder_free(enc);
+        alec_decoder_free(dec);
+    }
+
+    /// D4-3. Too-small buffer → `ALEC_ERROR_BUFFER_TOO_SMALL`. The
+    /// buffer is NOT written to (no partial write); `*out_len`
+    /// reports the required size.
+    #[test]
+    fn test_export_buffer_too_small() {
+        let enc = alec_encoder_new();
+        let dec = alec_decoder_new();
+        let rows: Vec<[f64; 5]> = (0..8).map(|_| [3.60, 22.50, 45.0, 420.0, 1013.25]).collect();
+        let _ = drive_pair(enc, dec, &rows);
+
+        // Tiny buffer pre-filled with a sentinel. After the failed
+        // export every byte must still be the sentinel.
+        let mut buf = [0xAAu8; 10];
+        let mut written: usize = 0;
+        let r = alec_decoder_export_state(
+            dec,
+            SENSOR_TYPE.as_ptr() as *const c_char,
+            buf.as_mut_ptr(),
+            buf.len(),
+            &mut written,
+        );
+        assert_eq!(r, AlecResult::ErrorBufferTooSmall);
+        assert!(
+            written > buf.len(),
+            "expected *out_len to report required size, got {}",
+            written
+        );
+        for (i, &b) in buf.iter().enumerate() {
+            assert_eq!(b, 0xAA, "buf[{}] was written despite error", i);
+        }
+
+        alec_encoder_free(enc);
+        alec_decoder_free(dec);
+    }
+
+    /// D4-4. Corrupt input → `ALEC_ERROR_CORRUPT_DATA`. The
+    /// decoder's context is NOT modified.
+    #[test]
+    fn test_import_corrupt_data() {
+        let enc = alec_encoder_new();
+        let dec = alec_decoder_new();
+        let rows: Vec<[f64; 5]> = (0..8).map(|_| [3.60, 22.50, 45.0, 420.0, 1013.25]).collect();
+        let _ = drive_pair(enc, dec, &rows);
+
+        // Capture a snapshot we can compare against.
+        let mut snap = vec![0u8; 4096];
+        let mut snap_len: usize = 0;
+        assert_eq!(
+            alec_decoder_export_state(
+                dec,
+                SENSOR_TYPE.as_ptr() as *const c_char,
+                snap.as_mut_ptr(),
+                snap.len(),
+                &mut snap_len,
+            ),
+            AlecResult::Ok
+        );
+        let snap_pre = snap[..snap_len].to_vec();
+
+        // Random garbage → CORRUPT_DATA.
+        let garbage = [0x00u8, 0x11, 0x22, 0x33, 0x44, 0x55];
+        let r = alec_decoder_import_state(dec, garbage.as_ptr(), garbage.len());
+        assert_eq!(r, AlecResult::ErrorCorruptData);
+
+        // Bytes with the right magic but bad CRC → also CORRUPT_DATA.
+        let mut tampered = snap_pre.clone();
+        let mid = tampered.len() / 2;
+        tampered[mid] ^= 0xFF;
+        let r = alec_decoder_import_state(dec, tampered.as_ptr(), tampered.len());
+        assert_eq!(r, AlecResult::ErrorCorruptData);
+
+        // Snapshot the decoder again — must match pre-import bytes
+        // exactly, confirming the failed imports left the context
+        // untouched.
+        let mut snap2 = vec![0u8; 4096];
+        let mut snap2_len: usize = 0;
+        assert_eq!(
+            alec_decoder_export_state(
+                dec,
+                SENSOR_TYPE.as_ptr() as *const c_char,
+                snap2.as_mut_ptr(),
+                snap2.len(),
+                &mut snap2_len,
+            ),
+            AlecResult::Ok
+        );
+        assert_eq!(snap2_len, snap_len);
+        assert_eq!(&snap2[..snap2_len], &snap_pre[..]);
+
+        alec_encoder_free(enc);
+        alec_decoder_free(dec);
+    }
+
+    /// D4-5. Session state (last_header_sequence, last_gap_size) is
+    /// preserved across an import.
+    #[test]
+    fn test_session_state_preserved_on_import() {
+        let enc = alec_encoder_new();
+        let dec = alec_decoder_new();
+        let rows: Vec<[f64; 5]> = (0..5).map(|_| [3.60, 22.50, 45.0, 420.0, 1013.25]).collect();
+        let _ = drive_pair(enc, dec, &rows);
+
+        // Overwrite the session-state fields with a known tuple.
+        unsafe {
+            (*dec).last_header_sequence = Some(42);
+            (*dec).last_gap_size = 2;
+        }
+
+        // Export and re-import — session state should survive.
+        let mut buf = vec![0u8; 4096];
+        let mut n: usize = 0;
+        assert_eq!(
+            alec_decoder_export_state(
+                dec,
+                SENSOR_TYPE.as_ptr() as *const c_char,
+                buf.as_mut_ptr(),
+                buf.len(),
+                &mut n,
+            ),
+            AlecResult::Ok
+        );
+        assert_eq!(
+            alec_decoder_import_state(dec, buf.as_ptr(), n),
+            AlecResult::Ok
+        );
+
+        let dec_ref = unsafe { &*dec };
+        assert_eq!(dec_ref.last_header_sequence, Some(42));
+        assert_eq!(dec_ref.last_gap_size, 2);
+
+        alec_encoder_free(enc);
+        alec_decoder_free(dec);
+    }
+
+    /// D4-6. Exporting a context just after `reset_to_baseline()`
+    /// produces a valid serialized buffer whose `source_stats`
+    /// section is empty. Patterns registered before the reset are
+    /// preserved (Bloc C contract — see `reset_to_baseline`).
+    #[test]
+    fn test_export_after_reset_to_baseline() {
+        let enc = alec_encoder_new();
+        let dec = alec_decoder_new();
+        let rows: Vec<[f64; 5]> = (0..30).map(|_| [3.60, 22.50, 45.0, 420.0, 1013.25]).collect();
+        let _ = drive_pair(enc, dec, &rows);
+
+        // Register one pattern directly on the context so we can
+        // check it survives the reset.
+        use alec::context::Pattern;
+        let code = unsafe { &mut *dec }
+            .context
+            .register_pattern(Pattern::new(vec![0x11, 0x22, 0x33]))
+            .unwrap();
+
+        // Reset → export → import → verify.
+        unsafe { &mut *dec }.context.reset_to_baseline();
+        let mut buf = vec![0u8; 4096];
+        let mut n: usize = 0;
+        assert_eq!(
+            alec_decoder_export_state(
+                dec,
+                SENSOR_TYPE.as_ptr() as *const c_char,
+                buf.as_mut_ptr(),
+                buf.len(),
+                &mut n,
+            ),
+            AlecResult::Ok
+        );
+
+        let dec_fresh = alec_decoder_new();
+        assert_eq!(
+            alec_decoder_import_state(dec_fresh, buf.as_ptr(), n),
+            AlecResult::Ok
+        );
+
+        // source_stats is empty (predict returns None for any sid).
+        let d = unsafe { &*dec_fresh };
+        assert!(d.context.predict(1).is_none());
+        assert!(d.context.predict(5).is_none());
+        // Pattern registered pre-reset must still be in the dictionary.
+        assert!(d.context.get_pattern(code).is_some());
+
+        alec_encoder_free(enc);
+        alec_decoder_free(dec);
+        alec_decoder_free(dec_fresh);
+    }
+
+    /// NULL-safety on the three new FFI entry points.
+    #[test]
+    fn test_persistence_ffi_null_safety() {
+        use std::ptr;
+        let dec = alec_decoder_new();
+        let mut n: usize = 0;
+        let mut buf = [0u8; 4];
+
+        // export_state_size
+        assert_eq!(
+            alec_decoder_export_state_size(ptr::null(), SENSOR_TYPE.as_ptr() as *const c_char, &mut n),
+            AlecResult::ErrorNullPointer
+        );
+        assert_eq!(
+            alec_decoder_export_state_size(dec, ptr::null(), &mut n),
+            AlecResult::ErrorNullPointer
+        );
+        assert_eq!(
+            alec_decoder_export_state_size(dec, SENSOR_TYPE.as_ptr() as *const c_char, ptr::null_mut()),
+            AlecResult::ErrorNullPointer
+        );
+
+        // export_state
+        assert_eq!(
+            alec_decoder_export_state(
+                ptr::null(),
+                SENSOR_TYPE.as_ptr() as *const c_char,
+                buf.as_mut_ptr(),
+                buf.len(),
+                &mut n,
+            ),
+            AlecResult::ErrorNullPointer
+        );
+
+        // import_state
+        assert_eq!(
+            alec_decoder_import_state(ptr::null_mut(), buf.as_ptr(), buf.len()),
+            AlecResult::ErrorNullPointer
+        );
+        assert_eq!(
+            alec_decoder_import_state(dec, ptr::null(), buf.len()),
+            AlecResult::ErrorNullPointer
+        );
+
         alec_decoder_free(dec);
     }
 }
