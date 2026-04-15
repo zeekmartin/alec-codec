@@ -7,6 +7,59 @@ et ce projet adhère au [Semantic Versioning](https://semver.org/lang/fr/).
 
 ---
 
+## [1.3.5] - 2026-04-15
+
+### Added
+- Compact fixed-channel wire format (4B header,
+  2-bit-per-channel bitmap, `0xA1`/`0xA2` markers)
+- `alec_encoder_new_with_config()` FFI with
+  `AlecEncoderConfig` (history_size, max_patterns,
+  max_memory_bytes, keyframe_interval, smart_resync)
+- `alec_heap_init_with_buffer()` for caller-managed
+  heap on bare-metal targets
+- `alec_encode_multi_fixed()` / `alec_decode_multi_fixed()`
+  for fixed-channel positional encoding
+- `alec_force_keyframe()` — force immediate Raw32 frame
+- `alec_downlink_handler()` — LoRaWAN downlink handler,
+  `0xFF` command triggers immediate keyframe
+- `alec_decoder_gap_detected()` — surface sequence gaps
+  to application layer
+- `alec_decoder_export_state()` / `import_state()` —
+  in-memory context persistence (ALCS format, ~1.5 KB)
+- `alec_decoder_export_state_size()` — pre-flight size
+  query before export
+- `Context::reset_to_baseline()` — wipes `source_stats`,
+  preserves patterns/dictionary
+- `Context::to_preload_bytes()` / `from_preload_bytes()` —
+  `no_std + alloc` in-memory serialization
+- New wire format: ALCS (ALec Context State) v1
+  with CRC32 ISO-HDLC checksum
+- `ALEC_ERROR_CORRUPT_DATA = 9` result code
+- Packet-loss recovery: periodic keyframe + sequence
+  gap reset + LoRaWAN downlink smart resync
+- Multi-arch bare-metal: M3 / M4 / M4F / M0+
+- `log` facade (zero-cost on bare-metal, no subscriber)
+
+### Fixed
+- Sequence gap detection previously a no-op
+  ("For now, just continue") — now triggers
+  context reset and logs warning
+- `context_version` `check_version()` was never called
+  in decode path — now wired into `decode_multi_fixed`
+
+### Notes
+- Compact mode steady-state: ~8 B avg for 5 channels
+  vs 6.1 B in preliminary benchmarks — the 2 B bitmap
+  overhead was not accounted for in initial estimates
+- Worst-case packet-loss drift:
+  `keyframe_interval × reporting_interval`
+  (default 50 × 10 min ≈ 8h).
+  With smart-resync downlink: `1 × reporting_interval`
+- ALCS format coexists with `PreloadFile` (`ALEC` magic)
+  via distinct magic bytes — no backward-compat break
+
+---
+
 ## [1.3.1] - 2026-03-10
 
 ### Fixed

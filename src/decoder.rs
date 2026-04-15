@@ -13,8 +13,37 @@
 use alloc::{string::ToString, vec::Vec};
 
 use crate::context::Context;
+use crate::encoder::{fixed_bitmap_bytes, FixedEncoding};
 use crate::error::{DecodeError, Result};
-use crate::protocol::{DecodedData, EncodedMessage, EncodingType};
+use crate::protocol::{
+    classify_compact_marker, ctx_version_compatible, CompactHeader, DecodedData, EncodedMessage,
+    EncodingType,
+};
+
+/// Maximum forward jump of the u16 context_version tolerated by the
+/// fixed-channel decoder before flagging a version mismatch. The
+/// encoder increments the version once per channel observation, so
+/// 256 leaves comfortable slack for 50-ish channels × several frames
+/// while still catching large skips.
+const FIXED_CTX_MAX_JUMP: u16 = 256;
+
+/// Outcome of a successful `decode_multi_fixed` call.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct FixedFrameInfo {
+    /// True if the frame was a keyframe (marker 0xA2).
+    pub keyframe: bool,
+    /// Sequence number from the compact header.
+    pub sequence: u16,
+    /// Low-u16 context version from the compact header.
+    pub context_version: u16,
+    /// Number of frames missing between the previous decode and this
+    /// one, clipped to 255 (0 means contiguous / first decode).
+    pub gap_size: u8,
+    /// True if the header's context_version looks incompatible with
+    /// the locally tracked one (likely desync). Bloc C will act on
+    /// this by calling `context.reset_to_baseline()`.
+    pub context_mismatch: bool,
+}
 
 /// Decoder for ALEC messages
 #[derive(Debug, Clone)]
@@ -23,6 +52,10 @@ pub struct Decoder {
     verify_checksum: bool,
     /// Last decoded sequence number (for gap detection)
     last_sequence: Option<u16>,
+    /// Sequence observed on the most recent fixed-channel frame.
+    last_fixed_sequence: Option<u16>,
+    /// Context version observed on the most recent fixed-channel frame.
+    last_fixed_ctx_version: Option<u16>,
 }
 
 impl Decoder {
@@ -31,6 +64,8 @@ impl Decoder {
         Self {
             verify_checksum: false,
             last_sequence: None,
+            last_fixed_sequence: None,
+            last_fixed_ctx_version: None,
         }
     }
 
@@ -39,6 +74,8 @@ impl Decoder {
         Self {
             verify_checksum: true,
             last_sequence: None,
+            last_fixed_sequence: None,
+            last_fixed_ctx_version: None,
         }
     }
 
@@ -466,11 +503,234 @@ impl Decoder {
     /// Reset decoder state
     pub fn reset(&mut self) {
         self.last_sequence = None;
+        self.last_fixed_sequence = None;
+        self.last_fixed_ctx_version = None;
     }
 
     /// Get last decoded sequence number
     pub fn last_sequence(&self) -> Option<u16> {
         self.last_sequence
+    }
+
+    /// Last sequence decoded via `decode_multi_fixed` (separate tracker
+    /// from the legacy multi-frame path so the two can coexist in the
+    /// same `Decoder`).
+    pub fn last_fixed_sequence(&self) -> Option<u16> {
+        self.last_fixed_sequence
+    }
+
+    // ========================================================================
+    // Bloc B — Compact fixed-channel decoder (Milesight EM500-CO2)
+    // ========================================================================
+    /// Decode a fixed-channel frame produced by `Encoder::encode_multi_fixed`.
+    ///
+    /// # Arguments
+    ///
+    /// * `input` - Wire bytes, starting at the marker byte.
+    /// * `channel_count` - Number of channels in the frame. Must match
+    ///   the value used when encoding (the wire format does NOT
+    ///   self-describe the channel count).
+    /// * `context` - Shared context (for delta predictions). Not
+    ///   mutated — the caller is responsible for `observe()`-ing each
+    ///   decoded value.
+    /// * `output` - Destination slice; must have length >= `channel_count`.
+    ///
+    /// # Returns
+    ///
+    /// A [`FixedFrameInfo`] describing whether the frame was a keyframe,
+    /// its sequence number, observed gap and version-mismatch flag.
+    /// The decoded values are written positionally to `output[..channel_count]`.
+    pub fn decode_multi_fixed(
+        &mut self,
+        input: &[u8],
+        channel_count: usize,
+        context: &Context,
+        output: &mut [f64],
+    ) -> Result<FixedFrameInfo> {
+        if channel_count == 0 {
+            return Err(DecodeError::MalformedMessage {
+                offset: 0,
+                reason: "channel_count must be > 0".to_string(),
+            }
+            .into());
+        }
+        if output.len() < channel_count {
+            return Err(DecodeError::BufferTooShort {
+                needed: channel_count,
+                available: output.len(),
+            }
+            .into());
+        }
+
+        // 1 marker + 4 header + bitmap + data
+        let bitmap_bytes = fixed_bitmap_bytes(channel_count);
+        let min_size = 1 + CompactHeader::SIZE + bitmap_bytes;
+        if input.len() < min_size {
+            return Err(DecodeError::BufferTooShort {
+                needed: min_size,
+                available: input.len(),
+            }
+            .into());
+        }
+
+        // Marker dispatch.
+        let marker = input[0];
+        let keyframe = match classify_compact_marker(marker) {
+            Some(kf) => kf,
+            None => {
+                return Err(DecodeError::MalformedMessage {
+                    offset: 0,
+                    reason: "not a fixed-channel ALEC frame".to_string(),
+                }
+                .into());
+            }
+        };
+
+        // Compact header.
+        let header = CompactHeader::read(&input[1..1 + CompactHeader::SIZE])?;
+
+        // Gap detection (clamped to u8).
+        let gap_size = match self.last_fixed_sequence {
+            Some(prev) => {
+                let diff = header.sequence.wrapping_sub(prev);
+                if diff == 0 {
+                    0
+                } else {
+                    diff.saturating_sub(1).min(u8::MAX as u16) as u8
+                }
+            }
+            None => 0,
+        };
+
+        // Context-version mismatch detection (wraparound-aware).
+        // Keyframes are self-sufficient: the decoder must accept them
+        // even if the version looks wildly off — that is the whole
+        // point of a keyframe. So we never flag mismatch on a keyframe.
+        let context_mismatch = if keyframe {
+            false
+        } else {
+            match self.last_fixed_ctx_version {
+                Some(last) => {
+                    !ctx_version_compatible(header.context_version, last, FIXED_CTX_MAX_JUMP)
+                }
+                None => false,
+            }
+        };
+
+        // Bitmap spans bitmap_bytes; after that comes the per-channel data.
+        let bitmap_start = 1 + CompactHeader::SIZE;
+        let data_start = bitmap_start + bitmap_bytes;
+
+        // Parse each channel's encoding from the bitmap, 2 bits LSB-first per byte.
+        // Use a stack-allocated scratch array (bounded at 64 channels
+        // to mirror the encoder's upper limit).
+        if channel_count > 64 {
+            return Err(DecodeError::MalformedMessage {
+                offset: 0,
+                reason: "channel_count > 64 not supported by fixed wire format".to_string(),
+            }
+            .into());
+        }
+        let mut encodings: [FixedEncoding; 64] = [FixedEncoding::Repeated; 64];
+        for i in 0..channel_count {
+            let bits = (input[bitmap_start + i / 4] >> ((i % 4) * 2)) & 0b11;
+            encodings[i] = FixedEncoding::from_bits(bits);
+        }
+
+        // Confirm data length is exactly what we expect.
+        let data_bytes: usize = (0..channel_count).map(|i| encodings[i].byte_size()).sum();
+        let expected_total = data_start + data_bytes;
+        if input.len() < expected_total {
+            return Err(DecodeError::BufferTooShort {
+                needed: expected_total,
+                available: input.len(),
+            }
+            .into());
+        }
+
+        // Decode each channel positionally.
+        let mut cursor = data_start;
+        for i in 0..channel_count {
+            let source_id = crate::encoder::Encoder::fixed_channel_source_id(i);
+            let enc = encodings[i];
+            let value = match enc {
+                FixedEncoding::Repeated => match context.last_value(source_id) {
+                    Some(v) => v,
+                    None => {
+                        return Err(DecodeError::MalformedMessage {
+                            offset: cursor,
+                            reason: "Repeated encoding without prior value".to_string(),
+                        }
+                        .into());
+                    }
+                },
+                FixedEncoding::Delta8 => {
+                    let delta_byte = input[cursor] as i8;
+                    cursor += 1;
+                    self.apply_delta(delta_byte as f64, source_id, context)?
+                }
+                FixedEncoding::Delta16 => {
+                    let b0 = input[cursor];
+                    let b1 = input[cursor + 1];
+                    cursor += 2;
+                    let d = i16::from_be_bytes([b0, b1]);
+                    self.apply_delta(d as f64, source_id, context)?
+                }
+                FixedEncoding::Raw32 => {
+                    let bytes = [
+                        input[cursor],
+                        input[cursor + 1],
+                        input[cursor + 2],
+                        input[cursor + 3],
+                    ];
+                    cursor += 4;
+                    f32::from_be_bytes(bytes) as f64
+                }
+            };
+            output[i] = value;
+        }
+        debug_assert_eq!(cursor, expected_total);
+
+        // Update the fixed-path tracking.
+        self.last_fixed_sequence = Some(header.sequence);
+        self.last_fixed_ctx_version = Some(header.context_version);
+
+        // Recovery policy (wired by the FFI layer, not here, because
+        // this function only has `&Context` — it surfaces the flags
+        // and the caller applies them). The FFI's `alec_decode_multi_fixed`
+        // calls `context.reset_to_baseline()` when
+        //     (gap_size > 0 || context_mismatch) && !keyframe
+        // so the next keyframe (marker 0xA2, Raw32) can fully re-seed
+        // the per-channel prediction state without silent corruption.
+        // See alec-ffi/src/lib.rs::alec_decode_multi_fixed.
+
+        Ok(FixedFrameInfo {
+            keyframe,
+            sequence: header.sequence,
+            context_version: header.context_version,
+            gap_size,
+            context_mismatch,
+        })
+    }
+
+    /// Apply a scaled integer delta to the prediction for `source_id`.
+    ///
+    /// Mirrors the inverse of the encoder's `choose_encoding` /
+    /// `encode_multi_fixed` logic.
+    fn apply_delta(&self, scaled_delta: f64, source_id: u32, context: &Context) -> Result<f64> {
+        let prediction = match context.predict(source_id) {
+            Some(p) => p,
+            None => {
+                return Err(DecodeError::MalformedMessage {
+                    offset: 0,
+                    reason: "Delta encoding without prediction".to_string(),
+                }
+                .into());
+            }
+        };
+        let scale = context.scale_factor() as f64;
+        let delta = scaled_delta / scale;
+        Ok(prediction.value + delta)
     }
 }
 

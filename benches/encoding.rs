@@ -69,7 +69,7 @@ fn bench_decoding(c: &mut Criterion) {
         b.iter(|| {
             let mut decoder = Decoder::new();
             for msg in &messages {
-                let decoded = decoder.decode(msg, &context);
+                let decoded = decoder.decode(msg, &context).unwrap();
                 black_box(decoded);
             }
         })
@@ -100,7 +100,7 @@ fn bench_roundtrip(c: &mut Criterion) {
             for d in &data {
                 let classification = classifier.classify(d, &context);
                 let msg = encoder.encode(d, &classification, &context);
-                let decoded = decoder.decode(&msg, &context);
+                let decoded = decoder.decode(&msg, &context).unwrap();
                 black_box(decoded);
             }
         })

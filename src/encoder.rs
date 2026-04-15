@@ -38,9 +38,11 @@ use alloc::{vec, vec::Vec};
 
 use crate::classifier::{Classification, Classifier};
 use crate::context::Context;
+use crate::error::{EncodeError, Result};
 use crate::metrics::CompressionMetrics;
 use crate::protocol::{
-    ChannelInput, EncodedMessage, EncodingType, MessageHeader, MessageType, Priority, RawData,
+    ChannelInput, CompactHeader, EncodedMessage, EncodingType, MessageHeader, MessageType,
+    Priority, RawData, COMPACT_MARKER_DATA, COMPACT_MARKER_KEYFRAME,
 };
 
 /// Encoder for ALEC messages.
@@ -504,6 +506,339 @@ impl Encoder {
 
         payload.push(encoding_type as u8);
         payload.extend(encoded_value);
+    }
+
+    // ========================================================================
+    // Bloc C — Keyframe lifecycle (Milesight packet-loss recovery)
+    //
+    // Keyframes are a packet-loss recovery mechanism, not a
+    // compression mechanism. Every keyframe emits Raw32 for every
+    // channel (marker 0xA2), which lets the decoder fully re-seed
+    // its prediction state regardless of the context it currently
+    // holds.
+    //
+    // The keyframe decision is made by the FFI layer
+    // (alec_encode_multi_fixed in alec-ffi/src/lib.rs), NOT by the
+    // core Encoder. `Encoder::encode_multi_fixed` takes the
+    // `keyframe: bool` as an argument and simply honours it.
+    //
+    // The FFI owns three fields on AlecEncoder that drive the
+    // decision:
+    //
+    //     force_keyframe_pending : bool   (set by alec_force_keyframe)
+    //     messages_since_keyframe: u32    (incremented per encode)
+    //     keyframe_interval      : u32    (from AlecEncoderConfig)
+    //     smart_resync           : bool   (from AlecEncoderConfig)
+    //
+    // Full lifecycle (cold start → steady state → resync):
+    //
+    //  1. alec_encoder_new_with_config() sets keyframe_interval from
+    //     AlecEncoderConfig (default 50 frames) and smart_resync
+    //     (default true). Counter starts at 0.
+    //
+    //  2. Each call to alec_encode_multi_fixed() evaluates:
+    //
+    //         periodic_due     = interval > 0 &&
+    //                            messages_since_keyframe >= interval
+    //         downlink_forced  = force_keyframe_pending && smart_resync
+    //         keyframe         = periodic_due || downlink_forced
+    //
+    //  3. On a keyframe: encode_multi_fixed writes marker 0xA2 and
+    //     Raw32 for every channel. Counter resets to 1 (not 0) so
+    //     keyframes land on a fixed modular offset — interval=10
+    //     gives keyframes at frames 10, 20, 30 … and downlink-forced
+    //     keyframes also "count" as frame 1 of the next cycle.
+    //     The force flag is cleared.
+    //
+    //  4. On a regular data frame: counter += 1, force flag left
+    //     untouched, marker 0xA1.
+    //
+    //  5. alec_force_keyframe() sets force_keyframe_pending. It is
+    //     a no-op when smart_resync=false (step 2 ignores the flag
+    //     in that case).
+    //
+    //  6. alec_downlink_handler() parses a raw downlink payload and
+    //     calls alec_force_keyframe() if byte 0 == 0xFF. Any other
+    //     byte returns ALEC_ERROR_INVALID_INPUT with no state change.
+    //
+    // Worst-case drift after a packet loss:
+    //   - No smart resync          → keyframe_interval × uplink_period
+    //                                (e.g. 50 × 10 min = ~8h on EM500-CO2)
+    //   - With smart resync active → 1 × uplink_period   (one uplink)
+    //
+    // The decoder side (alec_decode_multi_fixed in alec-ffi) reacts
+    // by calling Context::reset_to_baseline() on a non-keyframe with
+    // gap_size > 0 or context_mismatch. See the detailed notes there.
+    // ========================================================================
+
+    // ========================================================================
+    // Bloc B — Compact fixed-channel encoder (Milesight EM500-CO2)
+    //
+    // Wire layout:
+    //
+    //     byte 0        : marker        (0xA1 data / 0xA2 keyframe)
+    //     byte 1..=2    : sequence      (u16 BE)
+    //     byte 3..=4    : ctx_version   (u16 BE, low 16 bits of u32)
+    //     byte 5..=5+B-1: encoding bitmap (2 bits per channel,
+    //                     B = ceil(channel_count / 4) bytes)
+    //     byte 5+B..    : per-channel encoded data
+    //
+    // Encoding bitmap codes:
+    //
+    //     00 Repeated    (0 bytes of data)
+    //     01 Delta8      (1 byte)
+    //     10 Delta16     (2 bytes)
+    //     11 Raw32       (4 bytes)
+    //
+    // Keyframes (marker 0xA2) emit Raw32 for EVERY channel so the
+    // decoder can resync unconditionally, regardless of the context
+    // state it currently holds. For 5 channels a keyframe is always
+    // 5 + 2 + 20 = 27 bytes (exceeds the 11B LoRaWAN ceiling — the
+    // caller must either accept a split or fall back to TLV for that
+    // specific frame).
+    //
+    // Steady-state frames on the EM500-CO2 slow-drift profile
+    // (58 % Repeated, 42 % Delta8) fit in ~9 bytes total, well under
+    // the 11B ceiling.
+    // ========================================================================
+    /// Context key used by the fixed-channel encoder/decoder for a
+    /// channel at the given (fixed) index. Keeping the mapping in one
+    /// place guarantees the encoder and decoder agree on how to look
+    /// up per-channel predictions in the context.
+    ///
+    /// The `+1` is important: the context uses `source_id == 0` as
+    /// "unspecified"; giving channel 0 the id 1 keeps every channel's
+    /// prediction cache distinct.
+    #[inline]
+    pub(crate) fn fixed_channel_source_id(channel_index: usize) -> u32 {
+        (channel_index as u32) + 1
+    }
+}
+
+/// Encoding tag for a single channel in a fixed-channel frame.
+/// Packed 2 bits per channel into the encoding bitmap.
+#[repr(u8)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum FixedEncoding {
+    Repeated = 0b00,
+    Delta8 = 0b01,
+    Delta16 = 0b10,
+    Raw32 = 0b11,
+}
+
+impl FixedEncoding {
+    /// Number of bytes this encoding contributes to the payload body.
+    #[inline]
+    pub(crate) const fn byte_size(self) -> usize {
+        match self {
+            FixedEncoding::Repeated => 0,
+            FixedEncoding::Delta8 => 1,
+            FixedEncoding::Delta16 => 2,
+            FixedEncoding::Raw32 => 4,
+        }
+    }
+
+    #[inline]
+    pub(crate) fn from_bits(bits: u8) -> Self {
+        match bits & 0b11 {
+            0b00 => FixedEncoding::Repeated,
+            0b01 => FixedEncoding::Delta8,
+            0b10 => FixedEncoding::Delta16,
+            _ => FixedEncoding::Raw32,
+        }
+    }
+}
+
+/// Number of bitmap bytes required for `channel_count` channels
+/// (2 bits per channel, rounded up).
+#[inline]
+pub(crate) const fn fixed_bitmap_bytes(channel_count: usize) -> usize {
+    // `usize::div_ceil` is stable for const fns from Rust 1.73 —
+    // the crate's MSRV is 1.70, so compute `(a + 7) / 8` by hand.
+    (channel_count * 2 + 7) / 8
+}
+
+impl Encoder {
+    /// Encode a fixed-channel frame (compact wire format).
+    ///
+    /// # Arguments
+    ///
+    /// * `values` - Channel values, positional. `values[i]` is stored at
+    ///   channel index `i` and decoded with the same positional key
+    ///   (`i + 1` as a context source_id).
+    /// * `context` - Shared context used for prediction-based encoding.
+    ///   Not mutated — the caller is responsible for `observe()`-ing
+    ///   every channel AFTER the call succeeds (so predictions reflect
+    ///   the pre-encode state).
+    /// * `keyframe` - If true, every channel is forced to Raw32 and the
+    ///   frame gets marker byte 0xA2. Otherwise the encoder picks the
+    ///   smallest encoding per channel (Repeated / Delta8 / Delta16 /
+    ///   Raw32) and the frame gets marker byte 0xA1.
+    /// * `output` - Destination buffer for the wire bytes.
+    ///
+    /// # Returns
+    ///
+    /// The number of bytes written to `output`.
+    ///
+    /// # Errors
+    ///
+    /// * `EncodeError::PayloadTooLarge` if `values` is empty or larger
+    ///   than 64 channels (the 2-bits-per-channel bitmap is bounded).
+    /// * `EncodeError::BufferTooSmall` if `output` is too small to
+    ///   hold the encoded frame.
+    ///
+    /// # Side effects
+    ///
+    /// The encoder's sequence counter is incremented by 1 on success.
+    /// The context is not modified (the caller observes values after).
+    pub fn encode_multi_fixed(
+        &mut self,
+        values: &[f64],
+        context: &Context,
+        keyframe: bool,
+        output: &mut [u8],
+    ) -> Result<usize> {
+        if values.is_empty() {
+            return Err(EncodeError::PayloadTooLarge { size: 0, max: 64 }.into());
+        }
+        // 2 bits per channel packs 4 channels per byte; we cap the
+        // frame at 64 channels so the bitmap stays <= 16 bytes and
+        // the entire frame comfortably fits a LoRaWAN 255B payload.
+        if values.len() > 64 {
+            return Err(EncodeError::PayloadTooLarge {
+                size: values.len(),
+                max: 64,
+            }
+            .into());
+        }
+
+        // 1) Decide, per channel, the encoding we'll emit. For
+        //    keyframes we short-circuit to Raw32 for every channel.
+        let count = values.len();
+        let bitmap_bytes = fixed_bitmap_bytes(count);
+        let mut encodings: [FixedEncoding; 64] = [FixedEncoding::Raw32; 64];
+        let mut data_bytes: usize = 0;
+
+        // Small scratch buffer used when picking the best encoding.
+        // Up to 4 bytes per channel (Raw32).
+        let mut per_channel_bytes: [[u8; 4]; 64] = [[0u8; 4]; 64];
+        let mut per_channel_len: [u8; 64] = [0u8; 64];
+
+        for (i, &value) in values.iter().enumerate() {
+            if value.is_nan() || value.is_infinite() {
+                // Cannot compress invalid values — emit Raw32.
+                let f = value as f32;
+                let bytes = f.to_be_bytes();
+                encodings[i] = FixedEncoding::Raw32;
+                per_channel_bytes[i][..4].copy_from_slice(&bytes);
+                per_channel_len[i] = 4;
+                data_bytes += 4;
+                continue;
+            }
+
+            if keyframe {
+                let bytes = (value as f32).to_be_bytes();
+                encodings[i] = FixedEncoding::Raw32;
+                per_channel_bytes[i][..4].copy_from_slice(&bytes);
+                per_channel_len[i] = 4;
+                data_bytes += 4;
+                continue;
+            }
+
+            let source_id = Self::fixed_channel_source_id(i);
+
+            // Exact repeat: Repeated (0 bytes).
+            if let Some(last) = context.last_value(source_id) {
+                if (value - last).abs() < f64::EPSILON {
+                    encodings[i] = FixedEncoding::Repeated;
+                    per_channel_len[i] = 0;
+                    continue;
+                }
+            }
+
+            // Prediction-based delta encoding.
+            if let Some(prediction) = context.predict(source_id) {
+                let scale = context.scale_factor() as f64;
+                let raw = (value - prediction.value) * scale;
+                let rounded = if raw >= 0.0 { raw + 0.5 } else { raw - 0.5 };
+                let scaled = rounded as i64 as f64;
+
+                if scaled >= i8::MIN as f64 && scaled <= i8::MAX as f64 {
+                    let d = scaled as i8;
+                    encodings[i] = FixedEncoding::Delta8;
+                    per_channel_bytes[i][0] = d as u8;
+                    per_channel_len[i] = 1;
+                    data_bytes += 1;
+                    continue;
+                }
+
+                if scaled >= i16::MIN as f64 && scaled <= i16::MAX as f64 {
+                    let d = scaled as i16;
+                    let b = d.to_be_bytes();
+                    encodings[i] = FixedEncoding::Delta16;
+                    per_channel_bytes[i][..2].copy_from_slice(&b);
+                    per_channel_len[i] = 2;
+                    data_bytes += 2;
+                    continue;
+                }
+                // Delta32 is deliberately NOT supported in the fixed
+                // wire format — the 2-bit tag only encodes four
+                // options. Fall through to Raw32.
+            }
+
+            // No usable prediction → Raw32.
+            let b = (value as f32).to_be_bytes();
+            encodings[i] = FixedEncoding::Raw32;
+            per_channel_bytes[i][..4].copy_from_slice(&b);
+            per_channel_len[i] = 4;
+            data_bytes += 4;
+        }
+
+        let total = 1 /* marker */ + CompactHeader::SIZE + bitmap_bytes + data_bytes;
+        if output.len() < total {
+            return Err(EncodeError::BufferTooSmall {
+                needed: total,
+                available: output.len(),
+            }
+            .into());
+        }
+
+        // 2) Write marker byte.
+        output[0] = if keyframe {
+            COMPACT_MARKER_KEYFRAME
+        } else {
+            COMPACT_MARKER_DATA
+        };
+
+        // 3) Write the 4-byte compact header. `context_version` is
+        //    truncated from u32 to u16 — the decoder reconstructs
+        //    the high bits from its own tracking + wraparound logic.
+        let header = CompactHeader::new(self.next_sequence(), (context.version() & 0xFFFF) as u16);
+        header.write(&mut output[1..1 + CompactHeader::SIZE])?;
+
+        // 4) Write the encoding bitmap, 2 bits per channel LSB-first
+        //    within each byte (channel 0 → bits 0..=1 of byte 0).
+        let bitmap_start = 1 + CompactHeader::SIZE;
+        for b in &mut output[bitmap_start..bitmap_start + bitmap_bytes] {
+            *b = 0;
+        }
+        for (i, enc) in encodings.iter().take(count).enumerate() {
+            let byte_idx = bitmap_start + i / 4;
+            let bit_shift = (i % 4) * 2;
+            output[byte_idx] |= (*enc as u8) << bit_shift;
+        }
+
+        // 5) Write per-channel encoded data, in channel order.
+        let mut cursor = bitmap_start + bitmap_bytes;
+        for i in 0..count {
+            let len = per_channel_len[i] as usize;
+            if len > 0 {
+                output[cursor..cursor + len].copy_from_slice(&per_channel_bytes[i][..len]);
+                cursor += len;
+            }
+        }
+        debug_assert_eq!(cursor, total);
+        Ok(total)
     }
 }
 
