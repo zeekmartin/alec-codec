@@ -302,7 +302,7 @@ pub fn ctx_version_compatible(incoming: u16, last: u16, max_forward_jump: u16) -
     // u16 wrapping subtraction gives the forward distance (0..=65535).
     // Any value <= max_forward_jump is treated as a forward step.
     let forward = incoming.wrapping_sub(last);
-    forward <= max_forward_jump as u16
+    forward <= max_forward_jump
 }
 
 /// Encoding types for data compression

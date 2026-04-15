@@ -249,7 +249,7 @@ impl Pattern {
         let freq_score = {
             // Approximate ln using integer bit counting: ln(x) ≈ log2(x) * ln(2)
             let bits = (63 - (x as u64).leading_zeros()) as f64;
-            bits * 0.693147 // ln(2)
+            bits * core::f64::consts::LN_2
         };
         freq_score * recency
     }
@@ -1239,8 +1239,7 @@ impl Context {
 
             let frequency = u64::from_le_bytes(data[offset..offset + 8].try_into().unwrap());
             let last_used = u64::from_le_bytes(data[offset + 8..offset + 16].try_into().unwrap());
-            let created_at =
-                u64::from_le_bytes(data[offset + 16..offset + 24].try_into().unwrap());
+            let created_at = u64::from_le_bytes(data[offset + 16..offset + 24].try_into().unwrap());
             offset += 24;
 
             let hash = xxh64(&pattern_bytes, 0);
@@ -1362,7 +1361,8 @@ mod tests {
     /// intact, so the decoder can still decode existing Pattern
     /// references while starting fresh for Delta-encoded frames.
     #[test]
-    fn test_reset_to_baseline_wipes_predictions_preserves_patterns() {        let mut ctx = Context::new();
+    fn test_reset_to_baseline_wipes_predictions_preserves_patterns() {
+        let mut ctx = Context::new();
 
         // Build up prediction state for two "channels".
         for _ in 0..5 {
@@ -1505,13 +1505,15 @@ mod tests {
 
     #[test]
     fn test_pattern_pruning() {
-        let mut config = ContextConfig::default();
-        config.evolution = EvolutionConfig {
-            min_frequency: 3,
-            max_age: 50,
-            evolution_interval: 10,
-            promotion_threshold: 5,
-            enabled: false, // Manual control
+        let config = ContextConfig {
+            evolution: EvolutionConfig {
+                min_frequency: 3,
+                max_age: 50,
+                evolution_interval: 10,
+                promotion_threshold: 5,
+                enabled: false, // Manual control
+            },
+            ..ContextConfig::default()
         };
 
         let mut ctx = Context::with_config(config);
@@ -1534,13 +1536,15 @@ mod tests {
 
     #[test]
     fn test_pattern_kept_if_frequent() {
-        let mut config = ContextConfig::default();
-        config.evolution = EvolutionConfig {
-            min_frequency: 2,
-            max_age: 1000,
-            evolution_interval: 10,
-            promotion_threshold: 5,
-            enabled: false,
+        let config = ContextConfig {
+            evolution: EvolutionConfig {
+                min_frequency: 2,
+                max_age: 1000,
+                evolution_interval: 10,
+                promotion_threshold: 5,
+                enabled: false,
+            },
+            ..ContextConfig::default()
         };
 
         let mut ctx = Context::with_config(config);
@@ -1615,13 +1619,15 @@ mod tests {
 
     #[test]
     fn test_evolution_triggered_automatically() {
-        let mut config = ContextConfig::default();
-        config.evolution = EvolutionConfig {
-            min_frequency: 1,
-            max_age: 10000,
-            evolution_interval: 5, // Evolve every 5 observations
-            promotion_threshold: 5,
-            enabled: true,
+        let config = ContextConfig {
+            evolution: EvolutionConfig {
+                min_frequency: 1,
+                max_age: 10000,
+                evolution_interval: 5, // Evolve every 5 observations
+                promotion_threshold: 5,
+                enabled: true,
+            },
+            ..ContextConfig::default()
         };
 
         let mut ctx = Context::with_config(config);

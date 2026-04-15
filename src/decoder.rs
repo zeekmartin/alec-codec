@@ -526,14 +526,14 @@ impl Decoder {
     ///
     /// # Arguments
     ///
-    /// * `input`         - Wire bytes, starting at the marker byte.
+    /// * `input` - Wire bytes, starting at the marker byte.
     /// * `channel_count` - Number of channels in the frame. Must match
-    ///                     the value used when encoding (the wire format
-    ///                     does NOT self-describe the channel count).
-    /// * `context`       - Shared context (for delta predictions).
-    ///                     Not mutated — the caller is responsible for
-    ///                     `observe()`-ing each decoded value.
-    /// * `output`        - Destination slice; must have length >= `channel_count`.
+    ///   the value used when encoding (the wire format does NOT
+    ///   self-describe the channel count).
+    /// * `context` - Shared context (for delta predictions). Not
+    ///   mutated — the caller is responsible for `observe()`-ing each
+    ///   decoded value.
+    /// * `output` - Destination slice; must have length >= `channel_count`.
     ///
     /// # Returns
     ///
@@ -638,9 +638,7 @@ impl Decoder {
         }
 
         // Confirm data length is exactly what we expect.
-        let data_bytes: usize = (0..channel_count)
-            .map(|i| encodings[i].byte_size())
-            .sum();
+        let data_bytes: usize = (0..channel_count).map(|i| encodings[i].byte_size()).sum();
         let expected_total = data_start + data_bytes;
         if input.len() < expected_total {
             return Err(DecodeError::BufferTooShort {

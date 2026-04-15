@@ -653,29 +653,28 @@ impl FixedEncoding {
 /// (2 bits per channel, rounded up).
 #[inline]
 pub(crate) const fn fixed_bitmap_bytes(channel_count: usize) -> usize {
-    (channel_count * 2).div_ceil(8)
+    // `usize::div_ceil` is stable for const fns from Rust 1.73 —
+    // the crate's MSRV is 1.70, so compute `(a + 7) / 8` by hand.
+    (channel_count * 2 + 7) / 8
 }
 
 impl Encoder {
-    /// Encode a fixed-channel frame (Milesight wire format).
+    /// Encode a fixed-channel frame (compact wire format).
     ///
     /// # Arguments
     ///
-    /// * `values`       - Channel values, positional. `values[i]` is
-    ///                    stored at channel index `i` and decoded with
-    ///                    the same positional key (`i + 1` as a
-    ///                    context source_id).
-    /// * `context`      - Shared context used for prediction-based
-    ///                    encoding. Not mutated — the caller is
-    ///                    responsible for `observe()`-ing every channel
-    ///                    AFTER the call succeeds (so predictions
-    ///                    reflect the pre-encode state).
-    /// * `keyframe`     - If true, every channel is forced to Raw32
-    ///                    and the frame gets marker byte 0xA2. Otherwise
-    ///                    the encoder picks the smallest encoding per
-    ///                    channel (Repeated / Delta8 / Delta16 / Raw32)
-    ///                    and the frame gets marker byte 0xA1.
-    /// * `output`       - Destination buffer for the wire bytes.
+    /// * `values` - Channel values, positional. `values[i]` is stored at
+    ///   channel index `i` and decoded with the same positional key
+    ///   (`i + 1` as a context source_id).
+    /// * `context` - Shared context used for prediction-based encoding.
+    ///   Not mutated — the caller is responsible for `observe()`-ing
+    ///   every channel AFTER the call succeeds (so predictions reflect
+    ///   the pre-encode state).
+    /// * `keyframe` - If true, every channel is forced to Raw32 and the
+    ///   frame gets marker byte 0xA2. Otherwise the encoder picks the
+    ///   smallest encoding per channel (Repeated / Delta8 / Delta16 /
+    ///   Raw32) and the frame gets marker byte 0xA1.
+    /// * `output` - Destination buffer for the wire bytes.
     ///
     /// # Returns
     ///
@@ -814,10 +813,7 @@ impl Encoder {
         // 3) Write the 4-byte compact header. `context_version` is
         //    truncated from u32 to u16 — the decoder reconstructs
         //    the high bits from its own tracking + wraparound logic.
-        let header = CompactHeader::new(
-            self.next_sequence(),
-            (context.version() & 0xFFFF) as u16,
-        );
+        let header = CompactHeader::new(self.next_sequence(), (context.version() & 0xFFFF) as u16);
         header.write(&mut output[1..1 + CompactHeader::SIZE])?;
 
         // 4) Write the encoding bitmap, 2 bits per channel LSB-first

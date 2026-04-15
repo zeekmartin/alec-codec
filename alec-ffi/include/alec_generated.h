@@ -203,9 +203,8 @@ struct AlecEncoder *alec_encoder_new_with_checksum(void);
  * # Arguments
  *
  * * `config` - Pointer to an `AlecEncoderConfig`. If NULL, all defaults
- *              are used. Numeric fields set to 0 are replaced by their
- *              default (except `keyframe_interval`, where 0 disables
- *              periodic keyframes).
+ *   are used. Numeric fields set to 0 are replaced by their default
+ *   (except `keyframe_interval`, where 0 disables periodic keyframes).
  *
  * # Returns
  *
@@ -238,38 +237,38 @@ void alec_force_keyframe(struct AlecEncoder *encoder);
  * Parse a raw LoRaWAN downlink payload and apply the right action
  * to the encoder.
  *
- * This is a convenience wrapper over `alec_force_keyframe`. The
- * Milesight integration defines a single command byte today:
+ * This is a convenience wrapper over `alec_force_keyframe`. A single
+ * command byte is defined today:
  *
- *     0xFF = "request immediate keyframe" — the encoder's next
- *            `alec_encode_multi_fixed` call will emit marker 0xA2
- *            and Raw32 for every channel.
+ * - `0xFF` — "request immediate keyframe": the encoder's next
+ *   `alec_encode_multi_fixed` call will emit marker `0xA2` and
+ *   Raw32 for every channel.
  *
  * Any other first byte is treated as an invalid command and the
  * encoder state is left untouched. Additional bytes after byte 0
  * are reserved for future commands and are currently ignored.
  *
  * Worst-case drift after a packet loss:
- *   - No smart resync (downlink disabled):
- *         drift ≤ keyframe_interval × uplink_period
- *         (e.g. 50 × 10 min ≈ 8h on EM500-CO2)
- *   - With smart resync + downlink 0xFF:
- *         drift ≤ 1 × uplink_period (next uplink is a keyframe)
+ *
+ * - No smart resync (downlink disabled):
+ *   `drift ≤ keyframe_interval × uplink_period`
+ *   (e.g. 50 × 10 min ≈ 8 h at a 10-minute cadence).
+ * - With smart resync + downlink `0xFF`:
+ *   `drift ≤ 1 × uplink_period` (next uplink is a keyframe).
  *
  * # Arguments
  *
  * * `encoder` - Encoder handle.
- * * `data`    - Downlink payload bytes (the raw LoRaWAN FRMPayload).
- * * `len`     - Length of `data` in bytes.
+ * * `data` - Downlink payload bytes (the raw LoRaWAN FRMPayload).
+ * * `len` - Length of `data` in bytes.
  *
  * # Returns
  *
- * * `ALEC_OK`                   if the downlink was a recognized
- *                               command and was applied.
- * * `ALEC_ERROR_NULL_POINTER`   if `encoder` or `data` is NULL.
- * * `ALEC_ERROR_INVALID_INPUT`  for an empty payload or unknown
- *                               command byte — encoder state
- *                               is NOT modified.
+ * * `ALEC_OK` if the downlink was a recognized command and was
+ *   applied.
+ * * `ALEC_ERROR_NULL_POINTER` if `encoder` or `data` is NULL.
+ * * `ALEC_ERROR_INVALID_INPUT` for an empty payload or unknown
+ *   command byte — encoder state is NOT modified.
  */
 enum AlecResult alec_downlink_handler(struct AlecEncoder *encoder,
                                       const uint8_t *data,
@@ -531,12 +530,12 @@ uint32_t alec_decoder_context_version(const struct AlecDecoder *decoder);
  * # Arguments
  *
  * * `encoder`         - Encoder handle (must not be NULL).
- * * `values`          - Per-channel f64 values, positional.
- * * `channel_count`   - Number of channels in `values`.
- * * `output`          - Destination buffer for the wire bytes.
+ * * `values` - Per-channel f64 values, positional.
+ * * `channel_count` - Number of channels in `values`.
+ * * `output` - Destination buffer for the wire bytes.
  * * `output_capacity` - Size of `output` in bytes.
- * * `out_len`         - Pointer receiving the number of bytes
- *                       written to `output`.
+ * * `out_len` - Pointer receiving the number of bytes written to
+ *   `output`.
  *
  * # Returns
  *
@@ -569,13 +568,12 @@ enum AlecResult alec_encode_multi_fixed(struct AlecEncoder *encoder,
  *
  * # Returns
  *
- * * `ALEC_OK`                         on success.
- * * `ALEC_ERROR_INVALID_INPUT`        for zero channels or a non-ALEC marker byte.
- * * `ALEC_ERROR_BUFFER_TOO_SMALL`     if `output_capacity < channel_count`
- *                                     or the input is shorter than the
- *                                     header + bitmap + data bytes.
- * * `ALEC_ERROR_DECODING_FAILED`      for any other decode error.
- * * `ALEC_ERROR_NULL_POINTER`         for a NULL required pointer.
+ * * `ALEC_OK` on success.
+ * * `ALEC_ERROR_INVALID_INPUT` for zero channels or a non-ALEC marker byte.
+ * * `ALEC_ERROR_BUFFER_TOO_SMALL` if `output_capacity < channel_count`
+ *   or the input is shorter than the header + bitmap + data bytes.
+ * * `ALEC_ERROR_DECODING_FAILED` for any other decode error.
+ * * `ALEC_ERROR_NULL_POINTER` for a NULL required pointer.
  */
 enum AlecResult alec_decode_multi_fixed(struct AlecDecoder *decoder,
                                         const uint8_t *input,
@@ -619,25 +617,22 @@ enum AlecResult alec_decoder_export_state_size(const struct AlecDecoder *decoder
  *
  * # Arguments
  *
- * * `decoder`      - Decoder handle.
- * * `sensor_type`  - Null-terminated sensor-type identifier (≤ 255 bytes).
- * * `out_buf`      - Destination buffer.
+ * * `decoder` - Decoder handle.
+ * * `sensor_type` - Null-terminated sensor-type identifier (≤ 255 bytes).
+ * * `out_buf` - Destination buffer.
  * * `out_capacity` - Size of `out_buf` in bytes.
- * * `out_len`      - Pointer receiving the number of bytes written
- *                    (on success) or the required size (on
- *                    `ALEC_ERROR_BUFFER_TOO_SMALL`).
+ * * `out_len` - Pointer receiving the number of bytes written (on
+ *   success) or the required size (on `ALEC_ERROR_BUFFER_TOO_SMALL`).
  *
  * # Returns
  *
- * * `ALEC_OK`                       on success.
- * * `ALEC_ERROR_BUFFER_TOO_SMALL`   if `out_capacity` is less than the
- *                                   required size. In that case
- *                                   `*out_len` is set to the required
- *                                   size and `out_buf` is NOT written
- *                                   (no partial write).
- * * `ALEC_ERROR_NULL_POINTER`       for a NULL required pointer.
- * * `ALEC_ERROR_INVALID_UTF8`       if `sensor_type` is not valid UTF-8.
- * * `ALEC_ERROR_INVALID_INPUT`      if `sensor_type` exceeds 255 bytes.
+ * * `ALEC_OK` on success.
+ * * `ALEC_ERROR_BUFFER_TOO_SMALL` if `out_capacity` is less than the
+ *   required size. In that case `*out_len` is set to the required
+ *   size and `out_buf` is NOT written (no partial write).
+ * * `ALEC_ERROR_NULL_POINTER` for a NULL required pointer.
+ * * `ALEC_ERROR_INVALID_UTF8` if `sensor_type` is not valid UTF-8.
+ * * `ALEC_ERROR_INVALID_INPUT` if `sensor_type` exceeds 255 bytes.
  */
 enum AlecResult alec_decoder_export_state(const struct AlecDecoder *decoder,
                                           const char *sensor_type,
@@ -667,11 +662,10 @@ enum AlecResult alec_decoder_export_state(const struct AlecDecoder *decoder,
  *
  * # Returns
  *
- * * `ALEC_OK`                   on success.
- * * `ALEC_ERROR_NULL_POINTER`   for a NULL pointer.
- * * `ALEC_ERROR_CORRUPT_DATA`   if `data` cannot be parsed
- *                               (bad magic, CRC mismatch, truncation,
- *                               unknown format version).
+ * * `ALEC_OK` on success.
+ * * `ALEC_ERROR_NULL_POINTER` for a NULL pointer.
+ * * `ALEC_ERROR_CORRUPT_DATA` if `data` cannot be parsed (bad magic,
+ *   CRC mismatch, truncation, unknown format version).
  */
 enum AlecResult alec_decoder_import_state(struct AlecDecoder *decoder,
                                           const uint8_t *data,
@@ -707,7 +701,7 @@ void alec_heap_init(void);
  * # Arguments
  *
  * * `buf` - Pointer to the start of the heap region. Must remain
- *           valid for the lifetime of the program. Must be non-NULL.
+ *   valid for the lifetime of the program. Must be non-NULL.
  * * `len` - Size of the heap region in bytes. Must be > 0.
  *
  * # Safety

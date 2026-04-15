@@ -20,6 +20,21 @@ partner details.
 - [x] ROADMAP.md created (v1.3.5 / v1.4.0 / v1.5.0 /
       Beyond, plus Platform notes and v1.3.x historical
       notes preserved as appendix)
+- [x] CI lint fix (`cargo fmt --all -- --check` +
+      `cargo clippy --workspace -- -D warnings` +
+      `cargo clippy --all-targets --all-features --
+       -D warnings`) — 23 fmt regions reformatted,
+      22 clippy errors cleared
+      (20 `doc_overindented_list_items`,
+      2 `field_reassign_with_default`,
+      1 `needless_range_loop`,
+      plus 1 `approx_constant` on the no_std branch
+      of `context::mod::Pattern::score` and 1 const-MSRV
+      `div_ceil` on `fixed_bitmap_bytes`). Public
+      rustdoc of `alec_downlink_handler` also scrubbed
+      of two internal customer/model names.
+      All 19 test suites still green
+      (alec: 158, alec-ffi: 44 + 1 ignored diagnostic).
 
 Tag `v1.3.5` will be created **after** hardware
 validation on an embedded target — not in this session.

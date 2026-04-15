@@ -98,7 +98,7 @@ mod bare_metal_support {
     /// # Arguments
     ///
     /// * `buf` - Pointer to the start of the heap region. Must remain
-    ///           valid for the lifetime of the program. Must be non-NULL.
+    ///   valid for the lifetime of the program. Must be non-NULL.
     /// * `len` - Size of the heap region in bytes. Must be > 0.
     ///
     /// # Safety
@@ -228,11 +228,12 @@ impl AlecEncoderConfig {
     /// Build an `alec::context::ContextConfig` from this FFI config.
     fn to_context_config(self) -> ContextConfig {
         let r = self.resolved();
-        let mut cfg = ContextConfig::default();
-        cfg.history_size = r.history_size as usize;
-        cfg.max_patterns = r.max_patterns as usize;
-        cfg.max_memory = r.max_memory_bytes as usize;
-        cfg
+        ContextConfig {
+            history_size: r.history_size as usize,
+            max_patterns: r.max_patterns as usize,
+            max_memory: r.max_memory_bytes as usize,
+            ..ContextConfig::default()
+        }
     }
 }
 
@@ -429,9 +430,8 @@ pub extern "C" fn alec_encoder_new_with_checksum() -> *mut AlecEncoder {
 /// # Arguments
 ///
 /// * `config` - Pointer to an `AlecEncoderConfig`. If NULL, all defaults
-///              are used. Numeric fields set to 0 are replaced by their
-///              default (except `keyframe_interval`, where 0 disables
-///              periodic keyframes).
+///   are used. Numeric fields set to 0 are replaced by their default
+///   (except `keyframe_interval`, where 0 disables periodic keyframes).
 ///
 /// # Returns
 ///
@@ -491,38 +491,38 @@ pub extern "C" fn alec_force_keyframe(encoder: *mut AlecEncoder) {
 /// Parse a raw LoRaWAN downlink payload and apply the right action
 /// to the encoder.
 ///
-/// This is a convenience wrapper over `alec_force_keyframe`. The
-/// Milesight integration defines a single command byte today:
+/// This is a convenience wrapper over `alec_force_keyframe`. A single
+/// command byte is defined today:
 ///
-///     0xFF = "request immediate keyframe" — the encoder's next
-///            `alec_encode_multi_fixed` call will emit marker 0xA2
-///            and Raw32 for every channel.
+/// - `0xFF` — "request immediate keyframe": the encoder's next
+///   `alec_encode_multi_fixed` call will emit marker `0xA2` and
+///   Raw32 for every channel.
 ///
 /// Any other first byte is treated as an invalid command and the
 /// encoder state is left untouched. Additional bytes after byte 0
 /// are reserved for future commands and are currently ignored.
 ///
 /// Worst-case drift after a packet loss:
-///   - No smart resync (downlink disabled):
-///         drift ≤ keyframe_interval × uplink_period
-///         (e.g. 50 × 10 min ≈ 8h on EM500-CO2)
-///   - With smart resync + downlink 0xFF:
-///         drift ≤ 1 × uplink_period (next uplink is a keyframe)
+///
+/// - No smart resync (downlink disabled):
+///   `drift ≤ keyframe_interval × uplink_period`
+///   (e.g. 50 × 10 min ≈ 8 h at a 10-minute cadence).
+/// - With smart resync + downlink `0xFF`:
+///   `drift ≤ 1 × uplink_period` (next uplink is a keyframe).
 ///
 /// # Arguments
 ///
 /// * `encoder` - Encoder handle.
-/// * `data`    - Downlink payload bytes (the raw LoRaWAN FRMPayload).
-/// * `len`     - Length of `data` in bytes.
+/// * `data` - Downlink payload bytes (the raw LoRaWAN FRMPayload).
+/// * `len` - Length of `data` in bytes.
 ///
 /// # Returns
 ///
-/// * `ALEC_OK`                   if the downlink was a recognized
-///                               command and was applied.
-/// * `ALEC_ERROR_NULL_POINTER`   if `encoder` or `data` is NULL.
-/// * `ALEC_ERROR_INVALID_INPUT`  for an empty payload or unknown
-///                               command byte — encoder state
-///                               is NOT modified.
+/// * `ALEC_OK` if the downlink was a recognized command and was
+///   applied.
+/// * `ALEC_ERROR_NULL_POINTER` if `encoder` or `data` is NULL.
+/// * `ALEC_ERROR_INVALID_INPUT` for an empty payload or unknown
+///   command byte — encoder state is NOT modified.
 #[no_mangle]
 pub extern "C" fn alec_downlink_handler(
     encoder: *mut AlecEncoder,
@@ -1118,12 +1118,12 @@ pub extern "C" fn alec_decoder_context_version(decoder: *const AlecDecoder) -> u
 /// # Arguments
 ///
 /// * `encoder`         - Encoder handle (must not be NULL).
-/// * `values`          - Per-channel f64 values, positional.
-/// * `channel_count`   - Number of channels in `values`.
-/// * `output`          - Destination buffer for the wire bytes.
+/// * `values` - Per-channel f64 values, positional.
+/// * `channel_count` - Number of channels in `values`.
+/// * `output` - Destination buffer for the wire bytes.
 /// * `output_capacity` - Size of `output` in bytes.
-/// * `out_len`         - Pointer receiving the number of bytes
-///                       written to `output`.
+/// * `out_len` - Pointer receiving the number of bytes written to
+///   `output`.
 ///
 /// # Returns
 ///
@@ -1156,8 +1156,8 @@ pub extern "C" fn alec_encode_multi_fixed(
     let output_slice = unsafe { slice::from_raw_parts_mut(output, output_capacity) };
 
     // Decide whether this frame should be a keyframe.
-    let periodic_due = enc.keyframe_interval > 0
-        && enc.messages_since_keyframe >= enc.keyframe_interval;
+    let periodic_due =
+        enc.keyframe_interval > 0 && enc.messages_since_keyframe >= enc.keyframe_interval;
     let downlink_forced = enc.force_keyframe_pending && enc.smart_resync;
     let keyframe = periodic_due || downlink_forced;
 
@@ -1204,12 +1204,12 @@ pub extern "C" fn alec_encode_multi_fixed(
 
             AlecResult::Ok
         }
-        Err(alec::error::AlecError::Encode(
-            alec::error::EncodeError::BufferTooSmall { .. },
-        )) => AlecResult::ErrorBufferTooSmall,
-        Err(alec::error::AlecError::Encode(
-            alec::error::EncodeError::PayloadTooLarge { .. },
-        )) => AlecResult::ErrorInvalidInput,
+        Err(alec::error::AlecError::Encode(alec::error::EncodeError::BufferTooSmall {
+            ..
+        })) => AlecResult::ErrorBufferTooSmall,
+        Err(alec::error::AlecError::Encode(alec::error::EncodeError::PayloadTooLarge {
+            ..
+        })) => AlecResult::ErrorInvalidInput,
         Err(_) => AlecResult::ErrorEncodingFailed,
     }
 }
@@ -1226,13 +1226,12 @@ pub extern "C" fn alec_encode_multi_fixed(
 ///
 /// # Returns
 ///
-/// * `ALEC_OK`                         on success.
-/// * `ALEC_ERROR_INVALID_INPUT`        for zero channels or a non-ALEC marker byte.
-/// * `ALEC_ERROR_BUFFER_TOO_SMALL`     if `output_capacity < channel_count`
-///                                     or the input is shorter than the
-///                                     header + bitmap + data bytes.
-/// * `ALEC_ERROR_DECODING_FAILED`      for any other decode error.
-/// * `ALEC_ERROR_NULL_POINTER`         for a NULL required pointer.
+/// * `ALEC_OK` on success.
+/// * `ALEC_ERROR_INVALID_INPUT` for zero channels or a non-ALEC marker byte.
+/// * `ALEC_ERROR_BUFFER_TOO_SMALL` if `output_capacity < channel_count`
+///   or the input is shorter than the header + bitmap + data bytes.
+/// * `ALEC_ERROR_DECODING_FAILED` for any other decode error.
+/// * `ALEC_ERROR_NULL_POINTER` for a NULL required pointer.
 #[no_mangle]
 pub extern "C" fn alec_decode_multi_fixed(
     decoder: *mut AlecDecoder,
@@ -1306,15 +1305,15 @@ pub extern "C" fn alec_decode_multi_fixed(
             // AFTER any reset_to_baseline(): on a keyframe these
             // observations reconstruct the prediction state from
             // the Raw32 values, which is exactly what we want.
-            for i in 0..channel_count {
-                let rd = RawData::with_source(fixed_channel_source_id(i), output_slice[i], 0);
+            for (i, &value) in output_slice.iter().take(channel_count).enumerate() {
+                let rd = RawData::with_source(fixed_channel_source_id(i), value, 0);
                 dec.context.observe(&rd);
             }
             AlecResult::Ok
         }
-        Err(alec::error::AlecError::Decode(
-            alec::error::DecodeError::BufferTooShort { .. },
-        )) => AlecResult::ErrorBufferTooSmall,
+        Err(alec::error::AlecError::Decode(alec::error::DecodeError::BufferTooShort {
+            ..
+        })) => AlecResult::ErrorBufferTooSmall,
         Err(alec::error::AlecError::Decode(alec::error::DecodeError::MalformedMessage {
             reason,
             ..
@@ -1382,25 +1381,22 @@ pub extern "C" fn alec_decoder_export_state_size(
 ///
 /// # Arguments
 ///
-/// * `decoder`      - Decoder handle.
-/// * `sensor_type`  - Null-terminated sensor-type identifier (≤ 255 bytes).
-/// * `out_buf`      - Destination buffer.
+/// * `decoder` - Decoder handle.
+/// * `sensor_type` - Null-terminated sensor-type identifier (≤ 255 bytes).
+/// * `out_buf` - Destination buffer.
 /// * `out_capacity` - Size of `out_buf` in bytes.
-/// * `out_len`      - Pointer receiving the number of bytes written
-///                    (on success) or the required size (on
-///                    `ALEC_ERROR_BUFFER_TOO_SMALL`).
+/// * `out_len` - Pointer receiving the number of bytes written (on
+///   success) or the required size (on `ALEC_ERROR_BUFFER_TOO_SMALL`).
 ///
 /// # Returns
 ///
-/// * `ALEC_OK`                       on success.
-/// * `ALEC_ERROR_BUFFER_TOO_SMALL`   if `out_capacity` is less than the
-///                                   required size. In that case
-///                                   `*out_len` is set to the required
-///                                   size and `out_buf` is NOT written
-///                                   (no partial write).
-/// * `ALEC_ERROR_NULL_POINTER`       for a NULL required pointer.
-/// * `ALEC_ERROR_INVALID_UTF8`       if `sensor_type` is not valid UTF-8.
-/// * `ALEC_ERROR_INVALID_INPUT`      if `sensor_type` exceeds 255 bytes.
+/// * `ALEC_OK` on success.
+/// * `ALEC_ERROR_BUFFER_TOO_SMALL` if `out_capacity` is less than the
+///   required size. In that case `*out_len` is set to the required
+///   size and `out_buf` is NOT written (no partial write).
+/// * `ALEC_ERROR_NULL_POINTER` for a NULL required pointer.
+/// * `ALEC_ERROR_INVALID_UTF8` if `sensor_type` is not valid UTF-8.
+/// * `ALEC_ERROR_INVALID_INPUT` if `sensor_type` exceeds 255 bytes.
 #[no_mangle]
 pub extern "C" fn alec_decoder_export_state(
     decoder: *const AlecDecoder,
@@ -1454,11 +1450,10 @@ pub extern "C" fn alec_decoder_export_state(
 ///
 /// # Returns
 ///
-/// * `ALEC_OK`                   on success.
-/// * `ALEC_ERROR_NULL_POINTER`   for a NULL pointer.
-/// * `ALEC_ERROR_CORRUPT_DATA`   if `data` cannot be parsed
-///                               (bad magic, CRC mismatch, truncation,
-///                               unknown format version).
+/// * `ALEC_OK` on success.
+/// * `ALEC_ERROR_NULL_POINTER` for a NULL pointer.
+/// * `ALEC_ERROR_CORRUPT_DATA` if `data` cannot be parsed (bad magic,
+///   CRC mismatch, truncation, unknown format version).
 #[no_mangle]
 pub extern "C" fn alec_decoder_import_state(
     decoder: *mut AlecDecoder,
@@ -1959,8 +1954,7 @@ mod tests {
         let _new: extern "C" fn(*const AlecEncoderConfig) -> *mut AlecEncoder =
             alec_encoder_new_with_config;
         let _force: extern "C" fn(*mut AlecEncoder) = alec_force_keyframe;
-        let _gap: extern "C" fn(*const AlecDecoder, *mut u8) -> bool =
-            alec_decoder_gap_detected;
+        let _gap: extern "C" fn(*const AlecDecoder, *mut u8) -> bool = alec_decoder_gap_detected;
         let _enc_fixed: extern "C" fn(
             *mut AlecEncoder,
             *const f64,
@@ -2064,7 +2058,12 @@ mod tests {
                 values.as_mut_ptr(),
                 values.len(),
             );
-            assert_eq!(r2, AlecResult::Ok, "decode failed at frame {}", frames.len());
+            assert_eq!(
+                r2,
+                AlecResult::Ok,
+                "decode failed at frame {}",
+                frames.len()
+            );
 
             frames.push(frame);
             decoded.push(values);
@@ -2350,12 +2349,7 @@ mod tests {
                 if i == 0 {
                     assert_eq!(*len, 27);
                 } else {
-                    assert!(
-                        *len <= 11,
-                        "data frame at #{} is {} bytes > 11B",
-                        i,
-                        *len
-                    );
+                    assert!(*len <= 11, "data frame at #{} is {} bytes > 11B", i, *len);
                 }
             }
         }
@@ -2386,11 +2380,7 @@ mod tests {
             let b0 = frame[5];
             let b1 = frame[6];
             for i in 0..5 {
-                let bits = if i < 4 {
-                    (b0 >> (i * 2)) & 3
-                } else {
-                    b1 & 3
-                };
+                let bits = if i < 4 { (b0 >> (i * 2)) & 3 } else { b1 & 3 };
                 counts[bits as usize] += 1;
             }
         }
@@ -2467,7 +2457,11 @@ mod tests {
         // After warm-up the frame is compact (data marker).
         assert_eq!(out[0], 0xA1);
         let warm_len = out_len;
-        assert!(warm_len <= 11, "warm frame should be <=11B, got {}", warm_len);
+        assert!(
+            warm_len <= 11,
+            "warm frame should be <=11B, got {}",
+            warm_len
+        );
 
         // Downlink-style force: next encode must be a keyframe.
         alec_force_keyframe(enc);
@@ -2481,7 +2475,10 @@ mod tests {
         );
         assert_eq!(r, AlecResult::Ok);
         assert_eq!(out[0], 0xA2, "forced frame must carry the keyframe marker");
-        assert_eq!(out_len, 27, "forced keyframe must be Raw32 for all channels");
+        assert_eq!(
+            out_len, 27,
+            "forced keyframe must be Raw32 for all channels"
+        );
 
         // The frame after the keyframe must be compact again.
         let r = alec_encode_multi_fixed(
@@ -2946,11 +2943,7 @@ mod tests {
 
     /// Run `frames` rows through the encoder + decoder. Returns the
     /// wire frames for later replay.
-    fn drive_pair(
-        enc: *mut AlecEncoder,
-        dec: *mut AlecDecoder,
-        rows: &[[f64; 5]],
-    ) -> Vec<Vec<u8>> {
+    fn drive_pair(enc: *mut AlecEncoder, dec: *mut AlecDecoder, rows: &[[f64; 5]]) -> Vec<Vec<u8>> {
         let mut out = [0u8; 64];
         let mut out_len: usize = 0;
         let mut values = [0f64; 5];
@@ -3006,7 +2999,11 @@ mod tests {
 
         // Export the trained decoder.
         let mut size: usize = 0;
-        let r = alec_decoder_export_state_size(dec_orig, SENSOR_TYPE.as_ptr() as *const c_char, &mut size);
+        let r = alec_decoder_export_state_size(
+            dec_orig,
+            SENSOR_TYPE.as_ptr() as *const c_char,
+            &mut size,
+        );
         assert_eq!(r, AlecResult::Ok);
         assert!(size > 0 && size < 3072, "export size {} out of range", size);
         let mut buf = vec![0u8; size];
@@ -3094,15 +3091,14 @@ mod tests {
     fn test_export_state_size_matches_export() {
         let enc = alec_encoder_new();
         let dec = alec_decoder_new();
-        let rows: Vec<[f64; 5]> = (0..12).map(|_| [3.60, 22.50, 45.0, 420.0, 1013.25]).collect();
+        let rows: Vec<[f64; 5]> = (0..12)
+            .map(|_| [3.60, 22.50, 45.0, 420.0, 1013.25])
+            .collect();
         let _ = drive_pair(enc, dec, &rows);
 
         let mut size: usize = 0;
-        let r = alec_decoder_export_state_size(
-            dec,
-            SENSOR_TYPE.as_ptr() as *const c_char,
-            &mut size,
-        );
+        let r =
+            alec_decoder_export_state_size(dec, SENSOR_TYPE.as_ptr() as *const c_char, &mut size);
         assert_eq!(r, AlecResult::Ok);
 
         let mut buf = vec![0u8; size];
@@ -3128,7 +3124,9 @@ mod tests {
     fn test_export_buffer_too_small() {
         let enc = alec_encoder_new();
         let dec = alec_decoder_new();
-        let rows: Vec<[f64; 5]> = (0..8).map(|_| [3.60, 22.50, 45.0, 420.0, 1013.25]).collect();
+        let rows: Vec<[f64; 5]> = (0..8)
+            .map(|_| [3.60, 22.50, 45.0, 420.0, 1013.25])
+            .collect();
         let _ = drive_pair(enc, dec, &rows);
 
         // Tiny buffer pre-filled with a sentinel. After the failed
@@ -3162,7 +3160,9 @@ mod tests {
     fn test_import_corrupt_data() {
         let enc = alec_encoder_new();
         let dec = alec_decoder_new();
-        let rows: Vec<[f64; 5]> = (0..8).map(|_| [3.60, 22.50, 45.0, 420.0, 1013.25]).collect();
+        let rows: Vec<[f64; 5]> = (0..8)
+            .map(|_| [3.60, 22.50, 45.0, 420.0, 1013.25])
+            .collect();
         let _ = drive_pair(enc, dec, &rows);
 
         // Capture a snapshot we can compare against.
@@ -3220,7 +3220,9 @@ mod tests {
     fn test_session_state_preserved_on_import() {
         let enc = alec_encoder_new();
         let dec = alec_decoder_new();
-        let rows: Vec<[f64; 5]> = (0..5).map(|_| [3.60, 22.50, 45.0, 420.0, 1013.25]).collect();
+        let rows: Vec<[f64; 5]> = (0..5)
+            .map(|_| [3.60, 22.50, 45.0, 420.0, 1013.25])
+            .collect();
         let _ = drive_pair(enc, dec, &rows);
 
         // Overwrite the session-state fields with a known tuple.
@@ -3263,7 +3265,9 @@ mod tests {
     fn test_export_after_reset_to_baseline() {
         let enc = alec_encoder_new();
         let dec = alec_decoder_new();
-        let rows: Vec<[f64; 5]> = (0..30).map(|_| [3.60, 22.50, 45.0, 420.0, 1013.25]).collect();
+        let rows: Vec<[f64; 5]> = (0..30)
+            .map(|_| [3.60, 22.50, 45.0, 420.0, 1013.25])
+            .collect();
         let _ = drive_pair(enc, dec, &rows);
 
         // Register one pattern directly on the context so we can
@@ -3317,7 +3321,11 @@ mod tests {
 
         // export_state_size
         assert_eq!(
-            alec_decoder_export_state_size(ptr::null(), SENSOR_TYPE.as_ptr() as *const c_char, &mut n),
+            alec_decoder_export_state_size(
+                ptr::null(),
+                SENSOR_TYPE.as_ptr() as *const c_char,
+                &mut n
+            ),
             AlecResult::ErrorNullPointer
         );
         assert_eq!(
@@ -3325,7 +3333,11 @@ mod tests {
             AlecResult::ErrorNullPointer
         );
         assert_eq!(
-            alec_decoder_export_state_size(dec, SENSOR_TYPE.as_ptr() as *const c_char, ptr::null_mut()),
+            alec_decoder_export_state_size(
+                dec,
+                SENSOR_TYPE.as_ptr() as *const c_char,
+                ptr::null_mut()
+            ),
             AlecResult::ErrorNullPointer
         );
 
