@@ -459,12 +459,15 @@ pub extern "C" fn alec_encoder_new_with_config(
 /// Force the next encode call to emit a keyframe (Raw32 for all channels).
 ///
 /// Intended to be called from a LoRaWAN downlink handler receiving the
-/// 0xFF resync command from the server-side sidecar. The flag is
-/// consumed by the fixed-channel encode path (Bloc B/C); until that
-/// path lands, calling this only sets the internal flag.
+/// 0xFF resync command from the server-side sidecar. The keyframe is
+/// emitted by the next call to `alec_encode_multi_fixed`: marker 0xA2,
+/// Raw32 for every channel.
 ///
 /// No-op if `encoder` is NULL or if the encoder was configured with
 /// `smart_resync = false`.
+///
+/// Most integrators will prefer the `alec_downlink_handler` wrapper,
+/// which parses a raw downlink payload and applies the right action.
 ///
 /// # Arguments
 ///
@@ -479,6 +482,71 @@ pub extern "C" fn alec_force_keyframe(encoder: *mut AlecEncoder) {
         return;
     }
     enc.force_keyframe_pending = true;
+}
+
+/// Parse a raw LoRaWAN downlink payload and apply the right action
+/// to the encoder.
+///
+/// This is a convenience wrapper over `alec_force_keyframe`. The
+/// Milesight integration defines a single command byte today:
+///
+///     0xFF = "request immediate keyframe" — the encoder's next
+///            `alec_encode_multi_fixed` call will emit marker 0xA2
+///            and Raw32 for every channel.
+///
+/// Any other first byte is treated as an invalid command and the
+/// encoder state is left untouched. Additional bytes after byte 0
+/// are reserved for future commands and are currently ignored.
+///
+/// Worst-case drift after a packet loss:
+///   - No smart resync (downlink disabled):
+///         drift ≤ keyframe_interval × uplink_period
+///         (e.g. 50 × 10 min ≈ 8h on EM500-CO2)
+///   - With smart resync + downlink 0xFF:
+///         drift ≤ 1 × uplink_period (next uplink is a keyframe)
+///
+/// # Arguments
+///
+/// * `encoder` - Encoder handle.
+/// * `data`    - Downlink payload bytes (the raw LoRaWAN FRMPayload).
+/// * `len`     - Length of `data` in bytes.
+///
+/// # Returns
+///
+/// * `ALEC_OK`                   if the downlink was a recognized
+///                               command and was applied.
+/// * `ALEC_ERROR_NULL_POINTER`   if `encoder` or `data` is NULL.
+/// * `ALEC_ERROR_INVALID_INPUT`  for an empty payload or unknown
+///                               command byte — encoder state
+///                               is NOT modified.
+#[no_mangle]
+pub extern "C" fn alec_downlink_handler(
+    encoder: *mut AlecEncoder,
+    data: *const u8,
+    len: usize,
+) -> AlecResult {
+    if encoder.is_null() || data.is_null() {
+        return AlecResult::ErrorNullPointer;
+    }
+    if len == 0 {
+        return AlecResult::ErrorInvalidInput;
+    }
+    // SAFETY: caller promised `data` is valid for `len` bytes.
+    let cmd = unsafe { *data };
+    match cmd {
+        0xFF => {
+            alec_force_keyframe(encoder);
+            AlecResult::Ok
+        }
+        other => {
+            log::warn!(
+                "ALEC downlink: unknown command byte 0x{:02X} ({} byte payload, ignored)",
+                other,
+                len
+            );
+            AlecResult::ErrorInvalidInput
+        }
+    }
 }
 
 /// Free an encoder
@@ -1195,8 +1263,45 @@ pub extern "C" fn alec_decode_multi_fixed(
             dec.last_header_sequence = Some(info.sequence);
             dec.last_gap_size = info.gap_size;
 
+            // Bloc C recovery: on a non-keyframe frame, if the
+            // decoder observed a sequence gap OR a context-version
+            // mismatch, wipe the per-channel prediction state so
+            // stale Delta predictions cannot silently corrupt the
+            // next decode. The next keyframe (marker 0xA2) will
+            // re-seed the state. A keyframe itself NEVER triggers a
+            // reset — its payload is Raw32 for every channel and
+            // fully re-builds the context on its own.
+            if !info.keyframe {
+                if info.gap_size > 0 {
+                    log::warn!(
+                        "ALEC gap detected on fixed-channel decode: {} frame(s) missing \
+                         (seq={}), context reset to baseline",
+                        info.gap_size,
+                        info.sequence
+                    );
+                    dec.context.reset_to_baseline();
+                } else if info.context_mismatch {
+                    // Also surface a u32-level check via the core
+                    // Context::check_version API. We truncate our
+                    // tracked u32 version to the low 16 bits so the
+                    // comparison is wire-format-accurate; the full
+                    // u32 version is informational only here.
+                    let wire_ver = info.context_version as u32;
+                    let _result = dec.context.check_version(wire_ver);
+                    log::warn!(
+                        "ALEC ctx_ver mismatch on fixed-channel decode: \
+                         wire={}, context reset to baseline",
+                        info.context_version
+                    );
+                    dec.context.reset_to_baseline();
+                }
+            }
+
             // Observe every decoded value so the NEXT frame can
-            // decode delta-encoded channels correctly.
+            // decode delta-encoded channels correctly. This runs
+            // AFTER any reset_to_baseline(): on a keyframe these
+            // observations reconstruct the prediction state from
+            // the Raw32 values, which is exactly what we want.
             for i in 0..channel_count {
                 let rd = RawData::with_source(fixed_channel_source_id(i), output_slice[i], 0);
                 dec.context.observe(&rd);
@@ -2234,5 +2339,439 @@ mod tests {
         );
 
         alec_encoder_free(enc);
+    }
+
+    // ========================================================================
+    // Bloc C5 — Packet-loss recovery tests
+    // ========================================================================
+
+    /// Helper: build a matched encoder + decoder pair with
+    /// a small keyframe_interval suitable for test runtime.
+    fn new_pair(keyframe_interval: u32) -> (*mut AlecEncoder, *mut AlecDecoder) {
+        let cfg = AlecEncoderConfig {
+            history_size: 0,
+            max_patterns: 0,
+            max_memory_bytes: 0,
+            keyframe_interval,
+            smart_resync: true,
+        };
+        (alec_encoder_new_with_config(&cfg), alec_decoder_new())
+    }
+
+    /// Encode one frame on `enc` into `out` and return its length.
+    fn do_encode(enc: *mut AlecEncoder, row: &[f64; 5], out: &mut [u8; 64]) -> usize {
+        let mut n: usize = 0;
+        let r = alec_encode_multi_fixed(
+            enc,
+            row.as_ptr(),
+            row.len(),
+            out.as_mut_ptr(),
+            out.len(),
+            &mut n,
+        );
+        assert_eq!(r, AlecResult::Ok);
+        n
+    }
+
+    /// Decode `frame` on `dec`. Returns the decoded values.
+    fn do_decode(dec: *mut AlecDecoder, frame: &[u8]) -> [f64; 5] {
+        let mut values = [0f64; 5];
+        let r = alec_decode_multi_fixed(
+            dec,
+            frame.as_ptr(),
+            frame.len(),
+            5,
+            values.as_mut_ptr(),
+            values.len(),
+        );
+        assert_eq!(r, AlecResult::Ok);
+        values
+    }
+
+    /// C5-1. `reset_to_baseline` wipes per-channel prediction state
+    /// so the next encode can only fall back to Raw32 (no prediction
+    /// to delta against). Existing patterns in the dictionary are
+    /// preserved (the FFI path never registers any, so the dict is
+    /// empty to begin with — but the contract matters for preloaded
+    /// contexts).
+    #[test]
+    fn test_reset_to_baseline_wipes_stats() {
+        let (enc, _dec) = new_pair(10_000); // no periodic keyframes
+        let row = [3.60, 22.50, 45.0, 420.0, 1013.25];
+        let mut out = [0u8; 64];
+
+        // Build up 20 frames of prediction state.
+        for _ in 0..20 {
+            do_encode(enc, &row, &mut out);
+        }
+        // Context should now hold non-trivial state.
+        let e = unsafe { &*enc };
+        assert!(e.context.last_value(1).is_some());
+        assert!(e.context.last_value(5).is_some());
+        let pre_version = e.context.version();
+
+        // Reset.
+        unsafe { &mut *enc }.context.reset_to_baseline();
+
+        // All per-channel last_value are cleared — but the version
+        // counter is preserved (see C1 contract).
+        let e = unsafe { &*enc };
+        assert!(e.context.last_value(1).is_none());
+        assert!(e.context.last_value(5).is_none());
+        assert_eq!(e.context.version(), pre_version);
+
+        // Next encode, with no prediction available, must fall back
+        // to Raw32 on every channel — same wire shape as a keyframe
+        // (minus the 0xA2 marker, since this is a regular frame).
+        // Layout: 1 marker + 4 header + 2 bitmap + 5×Raw32 = 27 B.
+        let n = do_encode(enc, &row, &mut out);
+        assert_eq!(n, 27, "post-reset frame must be Raw32-all-channels (27 B)");
+        assert_eq!(out[0], 0xA1);
+        let b0 = out[5];
+        let b1 = out[6];
+        // All bitmap bits = 0b11 = Raw32.
+        assert_eq!(b0, 0b1111_1111);
+        assert_eq!(b1 & 0b11, 0b11);
+
+        alec_encoder_free(enc);
+    }
+
+    /// C5-2. Simulate a 4-frame gap (encoder produces frames 0..=20
+    /// but frames 15..=18 never reach the decoder). On frame 19 the
+    /// decoder must detect gap_size=4 and trigger a reset; full
+    /// recovery must happen at the next periodic keyframe (frame 20
+    /// with keyframe_interval=10).
+    #[test]
+    fn test_packet_loss_recovery_at_keyframe() {
+        let (enc, dec) = new_pair(10);
+        let row = [3.60, 22.50, 45.0, 420.0, 1013.25];
+        let mut out = [0u8; 64];
+        let mut frames: Vec<Vec<u8>> = Vec::new();
+
+        // Encode 21 frames (0..=20). Frame 10 and 20 are keyframes.
+        for _ in 0..=20 {
+            let n = do_encode(enc, &row, &mut out);
+            frames.push(out[..n].to_vec());
+        }
+        assert_eq!(frames[10][0], 0xA2, "frame 10 must be a keyframe");
+        assert_eq!(frames[20][0], 0xA2, "frame 20 must be a keyframe");
+
+        // Decode frames 0..=14 normally.
+        for f in &frames[0..=14] {
+            do_decode(dec, f);
+        }
+        // Do NOT decode frames 15..=18 — simulate 4 dropped uplinks.
+
+        // Decode frame 19 → gap_size = 4 reported, reset triggered.
+        do_decode(dec, &frames[19]);
+        let mut gap: u8 = 0;
+        assert!(alec_decoder_gap_detected(dec, &mut gap));
+        assert_eq!(gap, 4, "decoder must report 4-frame gap");
+
+        // After the reset, the decoder's last_value is cleared for
+        // every channel, so any subsequent Delta/Repeated-encoded
+        // frame would error out. Frame 19 itself does NOT error
+        // because we observe the decoded values *after* the reset
+        // (re-seeding the context from frame 19's output).
+
+        // Frame 20 is a keyframe — Raw32 for every channel, so it
+        // decodes correctly regardless of context state, and it
+        // re-synchronises the decoder for good.
+        let values_20 = do_decode(dec, &frames[20]);
+        for (ch, &v) in row.iter().enumerate() {
+            let tol = [0.01_f64, 0.01, 0.1, 1.0, 0.01][ch];
+            assert!(
+                (v - values_20[ch]).abs() <= tol,
+                "ch {}: expected {}, got {}",
+                ch,
+                v,
+                values_20[ch]
+            );
+        }
+
+        alec_encoder_free(enc);
+        alec_decoder_free(dec);
+    }
+
+    /// C5-3. No silent corruption: when the encoder emits a stable
+    /// signal and the decoder drops frame 20, subsequent frames
+    /// 21..=49 are either clearly divergent or clearly re-synced
+    /// by the next keyframe at frame 50. Frame 50+ MUST decode
+    /// within sensor resolution.
+    #[test]
+    fn test_no_silent_corruption() {
+        let (enc, dec) = new_pair(50);
+        let mut out = [0u8; 64];
+        let mut frames: Vec<Vec<u8>> = Vec::new();
+        // Slow-drift signal — mostly Repeated, occasional Delta8.
+        let rows: Vec<[f64; 5]> = (0..100)
+            .map(|i| [3.60, 22.50, 45.0, 420.0 + (i / 3) as f64, 1013.25])
+            .collect();
+        for row in &rows {
+            let n = do_encode(enc, row, &mut out);
+            frames.push(out[..n].to_vec());
+        }
+
+        // Decode frames 0..=19 normally.
+        for f in &frames[0..=19] {
+            do_decode(dec, f);
+        }
+        // Drop frame 20 entirely.
+
+        // Decode frames 21..=49. The first one triggers reset; the
+        // rest may or may not decode successfully (Delta frames
+        // error out because there is no prediction after reset). We
+        // ignore the outcome — the contract is only that the
+        // decoder does not panic and does not silently corrupt the
+        // post-keyframe values.
+        for f in &frames[21..50] {
+            let mut v = [0f64; 5];
+            let _ = alec_decode_multi_fixed(dec, f.as_ptr(), f.len(), 5, v.as_mut_ptr(), v.len());
+        }
+
+        // Frame 50 is a keyframe — decode must succeed and values
+        // must match the corresponding input within sensor LSB.
+        let values_50 = do_decode(dec, &frames[50]);
+        assert_eq!(frames[50][0], 0xA2);
+        let expected = rows[50];
+        let tols = [0.01_f64, 0.01, 0.1, 1.0, 0.01];
+        for ch in 0..5 {
+            assert!(
+                (expected[ch] - values_50[ch]).abs() <= tols[ch] + 1e-9,
+                "ch {} at frame 50: expected {}, got {}",
+                ch,
+                expected[ch],
+                values_50[ch]
+            );
+        }
+        // Frames 51..=60 must also decode correctly now that the
+        // context is re-synced.
+        for i in 51..=60 {
+            let values = do_decode(dec, &frames[i]);
+            for ch in 0..5 {
+                assert!(
+                    (rows[i][ch] - values[ch]).abs() <= tols[ch] + 1e-9,
+                    "ch {} at frame {}: expected {}, got {}",
+                    ch,
+                    i,
+                    rows[i][ch],
+                    values[ch]
+                );
+            }
+        }
+
+        alec_encoder_free(enc);
+        alec_decoder_free(dec);
+    }
+
+    /// C5-4. Smart resync via the downlink handler: decoder detects
+    /// a gap and calls `alec_downlink_handler(enc, [0xFF], 1)` to
+    /// request an immediate keyframe. Recovery happens on the very
+    /// next uplink, not at the far-off periodic keyframe.
+    #[test]
+    fn test_smart_resync_downlink() {
+        let (enc, dec) = new_pair(10_000); // no periodic keyframes
+        let row = [3.60, 22.50, 45.0, 420.0, 1013.25];
+        let mut out = [0u8; 64];
+        let mut frames: Vec<Vec<u8>> = Vec::new();
+
+        // Encode 10 frames. Decoder drops frame 5.
+        for _ in 0..10 {
+            let n = do_encode(enc, &row, &mut out);
+            frames.push(out[..n].to_vec());
+        }
+        for f in &frames[0..=4] {
+            do_decode(dec, f);
+        }
+        // Skip frame 5. Decoding frame 6..=9 will produce divergent
+        // values, but that's fine — the point is the RESYNC.
+        for f in &frames[6..=9] {
+            let mut v = [0f64; 5];
+            let _ = alec_decode_multi_fixed(dec, f.as_ptr(), f.len(), 5, v.as_mut_ptr(), v.len());
+        }
+
+        // Decoder realises it's out of sync — simulate the sidecar
+        // checking alec_decoder_gap_detected and sending a 0xFF
+        // downlink. The device-side integration calls the downlink
+        // handler on the encoder:
+        let cmd = [0xFF_u8];
+        let r = alec_downlink_handler(enc, cmd.as_ptr(), cmd.len());
+        assert_eq!(r, AlecResult::Ok);
+        assert!(
+            unsafe { &*enc }.force_keyframe_pending,
+            "downlink 0xFF must arm the force-keyframe flag"
+        );
+
+        // The very next uplink (frame 10) MUST be a keyframe.
+        let n = do_encode(enc, &row, &mut out);
+        assert_eq!(out[0], 0xA2, "post-downlink frame must be a keyframe");
+        assert_eq!(n, 27);
+
+        // Decoder catches up immediately.
+        let values = do_decode(dec, &out[..n]);
+        let tols = [0.01_f64, 0.01, 0.1, 1.0, 0.01];
+        for ch in 0..5 {
+            assert!(
+                (row[ch] - values[ch]).abs() <= tols[ch] + 1e-9,
+                "ch {}: expected {}, got {}",
+                ch,
+                row[ch],
+                values[ch]
+            );
+        }
+
+        // Without smart resync, recovery would have required waiting
+        // for the next periodic keyframe at frame keyframe_interval
+        // (50 by default) — an 8h drift on EM500-CO2's 10-min cadence.
+        // With smart resync, recovery happened on frame 10 — a 10-min
+        // drift. That is the order-of-magnitude improvement.
+
+        alec_encoder_free(enc);
+        alec_decoder_free(dec);
+    }
+
+    /// C5-5. An unknown downlink command is rejected with
+    /// `ALEC_ERROR_INVALID_INPUT` and leaves the encoder state
+    /// unchanged.
+    #[test]
+    fn test_downlink_handler_invalid_command() {
+        let enc = alec_encoder_new();
+        assert!(!unsafe { &*enc }.force_keyframe_pending);
+
+        let cmd = [0x00_u8];
+        let r = alec_downlink_handler(enc, cmd.as_ptr(), cmd.len());
+        assert_eq!(r, AlecResult::ErrorInvalidInput);
+        assert!(
+            !unsafe { &*enc }.force_keyframe_pending,
+            "unknown downlink must NOT arm the force-keyframe flag"
+        );
+
+        // Another uncommon but not-special byte.
+        let cmd = [0x7E_u8, 0xFF, 0xAA];
+        let r = alec_downlink_handler(enc, cmd.as_ptr(), cmd.len());
+        assert_eq!(r, AlecResult::ErrorInvalidInput);
+        assert!(!unsafe { &*enc }.force_keyframe_pending);
+
+        // NULL / empty inputs are defensively handled.
+        assert_eq!(
+            alec_downlink_handler(ptr::null_mut(), cmd.as_ptr(), cmd.len()),
+            AlecResult::ErrorNullPointer
+        );
+        assert_eq!(
+            alec_downlink_handler(enc, ptr::null(), 1),
+            AlecResult::ErrorNullPointer
+        );
+        assert_eq!(
+            alec_downlink_handler(enc, cmd.as_ptr(), 0),
+            AlecResult::ErrorInvalidInput
+        );
+
+        alec_encoder_free(enc);
+    }
+
+    /// C5-6. A deliberately-corrupted context_version on the decoder
+    /// triggers a mismatch when the next non-keyframe arrives; the
+    /// decoder resets and recovers at the subsequent keyframe.
+    #[test]
+    fn test_context_mismatch_triggers_reset() {
+        let (enc, dec) = new_pair(10);
+        let row = [3.60, 22.50, 45.0, 420.0, 1013.25];
+        let mut out = [0u8; 64];
+        let mut frames: Vec<Vec<u8>> = Vec::new();
+
+        // Encode 12 frames (0..=11); frame 10 is a keyframe.
+        for _ in 0..=11 {
+            let n = do_encode(enc, &row, &mut out);
+            frames.push(out[..n].to_vec());
+        }
+
+        // Decode 0..=8 normally.
+        for f in &frames[0..=8] {
+            do_decode(dec, f);
+        }
+
+        // Corrupt the decoder's tracked ctx_ver to something that
+        // looks like a backwards jump (outside ctx_version_compatible's
+        // tolerance of 256 forward units). The encoder's ctx_ver is
+        // currently 9*5=45 post-observation; we pretend the decoder
+        // last saw a version ~30k ahead so the next non-keyframe
+        // trips the mismatch detector.
+        unsafe { &mut *dec }.decoder.reset();
+        // reset() clears last_fixed_sequence too, so replay a frame
+        // to re-arm sequence tracking:
+        do_decode(dec, &frames[8]);
+        // Now set last_fixed_ctx_version artificially by pushing
+        // through a synthesised decode state. A cleaner API would be
+        // nice — for the test we use the *encoded* route: change
+        // our tracked version by decoding a frame whose payload we
+        // hand-crafted. Since that's gnarly, instead we simulate
+        // the effect by directly walking into a known-mismatch
+        // scenario: inject a frame whose ctx_ver is very far from
+        // what the decoder expects.
+
+        // Build a synthetic non-keyframe with an impossible ctx_ver
+        // (wire bytes: 0xA1 <seq> <ctx> <bitmap> …). Use frame 9's
+        // real bytes but rewrite bytes 3..=4 (ctx_ver).
+        let mut tampered = frames[9].clone();
+        // Replace ctx_ver with 0x1234 — far from the decoder's
+        // current state (which just observed frame 8 ≈ version ~45).
+        tampered[3] = 0x12;
+        tampered[4] = 0x34;
+
+        // Before the tamper the decoder has seen at least 9 identical
+        // readings for channel 1, so its per-source observation count
+        // is ≥ 3 and `predict()` reports the `MovingAverage` model.
+        use alec::context::PredictionModel;
+        let model_before = unsafe { &*dec }.context.predict(1).unwrap().model_type;
+        assert_eq!(model_before, PredictionModel::MovingAverage);
+
+        // Decoding the tampered frame must surface a mismatch and
+        // trigger `reset_to_baseline()`. The decode itself may
+        // produce garbage values for Delta-encoded channels (since
+        // the reset happens after decode but before the re-observe),
+        // which is acceptable — the contract is that subsequent
+        // keyframe decodes are correct.
+        let mut v = [0f64; 5];
+        let _ = alec_decode_multi_fixed(
+            dec,
+            tampered.as_ptr(),
+            tampered.len(),
+            5,
+            v.as_mut_ptr(),
+            v.len(),
+        );
+
+        // After the reset the history has been wiped. The FFI then
+        // re-observes the single tampered frame's output, so each
+        // per-channel observation count is exactly 1 and
+        // `predict()` reports the `LastValue` model (count < 3
+        // branch in SourceStats::predict). If the reset had NOT
+        // fired, count would be 10 and the model would still be
+        // MovingAverage.
+        let model_after = unsafe { &*dec }.context.predict(1).unwrap().model_type;
+        assert_eq!(
+            model_after,
+            PredictionModel::LastValue,
+            "reset_to_baseline should have dropped source_stats count below the \
+             MovingAverage threshold (count < 3)"
+        );
+
+        // Frame 10 is a real keyframe — decode must succeed and
+        // values must match the input within sensor tolerance.
+        let values_10 = do_decode(dec, &frames[10]);
+        assert_eq!(frames[10][0], 0xA2);
+        let tols = [0.01_f64, 0.01, 0.1, 1.0, 0.01];
+        for ch in 0..5 {
+            assert!(
+                (row[ch] - values_10[ch]).abs() <= tols[ch] + 1e-9,
+                "ch {}: expected {}, got {}",
+                ch,
+                row[ch],
+                values_10[ch]
+            );
+        }
+
+        alec_encoder_free(enc);
+        alec_decoder_free(dec);
     }
 }

@@ -509,6 +509,69 @@ impl Encoder {
     }
 
     // ========================================================================
+    // Bloc C — Keyframe lifecycle (Milesight packet-loss recovery)
+    //
+    // Keyframes are a packet-loss recovery mechanism, not a
+    // compression mechanism. Every keyframe emits Raw32 for every
+    // channel (marker 0xA2), which lets the decoder fully re-seed
+    // its prediction state regardless of the context it currently
+    // holds.
+    //
+    // The keyframe decision is made by the FFI layer
+    // (alec_encode_multi_fixed in alec-ffi/src/lib.rs), NOT by the
+    // core Encoder. `Encoder::encode_multi_fixed` takes the
+    // `keyframe: bool` as an argument and simply honours it.
+    //
+    // The FFI owns three fields on AlecEncoder that drive the
+    // decision:
+    //
+    //     force_keyframe_pending : bool   (set by alec_force_keyframe)
+    //     messages_since_keyframe: u32    (incremented per encode)
+    //     keyframe_interval      : u32    (from AlecEncoderConfig)
+    //     smart_resync           : bool   (from AlecEncoderConfig)
+    //
+    // Full lifecycle (cold start → steady state → resync):
+    //
+    //  1. alec_encoder_new_with_config() sets keyframe_interval from
+    //     AlecEncoderConfig (default 50 frames) and smart_resync
+    //     (default true). Counter starts at 0.
+    //
+    //  2. Each call to alec_encode_multi_fixed() evaluates:
+    //
+    //         periodic_due     = interval > 0 &&
+    //                            messages_since_keyframe >= interval
+    //         downlink_forced  = force_keyframe_pending && smart_resync
+    //         keyframe         = periodic_due || downlink_forced
+    //
+    //  3. On a keyframe: encode_multi_fixed writes marker 0xA2 and
+    //     Raw32 for every channel. Counter resets to 1 (not 0) so
+    //     keyframes land on a fixed modular offset — interval=10
+    //     gives keyframes at frames 10, 20, 30 … and downlink-forced
+    //     keyframes also "count" as frame 1 of the next cycle.
+    //     The force flag is cleared.
+    //
+    //  4. On a regular data frame: counter += 1, force flag left
+    //     untouched, marker 0xA1.
+    //
+    //  5. alec_force_keyframe() sets force_keyframe_pending. It is
+    //     a no-op when smart_resync=false (step 2 ignores the flag
+    //     in that case).
+    //
+    //  6. alec_downlink_handler() parses a raw downlink payload and
+    //     calls alec_force_keyframe() if byte 0 == 0xFF. Any other
+    //     byte returns ALEC_ERROR_INVALID_INPUT with no state change.
+    //
+    // Worst-case drift after a packet loss:
+    //   - No smart resync          → keyframe_interval × uplink_period
+    //                                (e.g. 50 × 10 min = ~8h on EM500-CO2)
+    //   - With smart resync active → 1 × uplink_period   (one uplink)
+    //
+    // The decoder side (alec_decode_multi_fixed in alec-ffi) reacts
+    // by calling Context::reset_to_baseline() on a non-keyframe with
+    // gap_size > 0 or context_mismatch. See the detailed notes there.
+    // ========================================================================
+
+    // ========================================================================
     // Bloc B — Compact fixed-channel encoder (Milesight EM500-CO2)
     //
     // Wire layout:

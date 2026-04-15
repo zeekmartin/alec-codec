@@ -747,6 +747,46 @@ impl Context {
         self.observation_count = 0;
     }
 
+    /// Reset only the runtime-learned prediction state, preserving any
+    /// patterns loaded from a preload file.
+    ///
+    /// Used by the packet-loss recovery path of the Milesight fixed-
+    /// channel codec (Bloc C): when the decoder detects a sequence
+    /// gap or a context-version mismatch on a non-keyframe frame, it
+    /// calls this so that the stale per-channel EMA / last-value
+    /// state is cleared. The next frame the decoder (and encoder, on
+    /// `alec_force_keyframe`) sees must be a keyframe — Raw32 for
+    /// every channel — which will re-seed the prediction state for
+    /// all channels.
+    ///
+    /// What this clears:
+    /// - `source_stats`: the per-channel EMA, last_value, history
+    ///   and variance state. This is the core of the recovery — the
+    ///   decoder must not apply stale predictions to new Delta8 /
+    ///   Delta16 bytes after a gap.
+    ///
+    /// What this preserves:
+    /// - `dictionary` and `pattern_index`: any preloaded patterns
+    ///   survive the reset. We do NOT distinguish preloaded from
+    ///   learned patterns (no tagging infrastructure exists), so in
+    ///   practice we keep all patterns. For the Milesight fixed-
+    ///   channel wire format this is moot because that path never
+    ///   uses Pattern encoding (only Repeated / Delta8 / Delta16 /
+    ///   Raw32), so the dictionary stays untouched in normal use.
+    /// - `version`: keeping the counter lets the decoder continue to
+    ///   detect future context-version mismatches against peers.
+    /// - `observation_count`: preserved for metrics continuity.
+    /// - `scale_factor`, `config`, `next_code`: preserved.
+    ///
+    /// # Invariant
+    ///
+    /// `dictionary` and `pattern_index` stay in sync after the call
+    /// (neither is touched). This is important so that a subsequent
+    /// `register_pattern()` does not create a duplicate entry.
+    pub fn reset_to_baseline(&mut self) {
+        self.source_stats.clear();
+    }
+
     /// Verify hash matches
     pub fn verify(&self, expected_hash: u64) -> bool {
         self.hash() == expected_hash
@@ -926,6 +966,55 @@ mod tests {
         let ctx = Context::new();
         assert_eq!(ctx.version(), 0);
         assert_eq!(ctx.pattern_count(), 0);
+    }
+
+    /// Bloc C-1: `reset_to_baseline` must wipe prediction state but
+    /// leave preloaded patterns (and the dictionary in general)
+    /// intact, so the decoder can still decode existing Pattern
+    /// references while starting fresh for Delta-encoded frames.
+    #[test]
+    fn test_reset_to_baseline_wipes_predictions_preserves_patterns() {
+        let mut ctx = Context::new();
+
+        // Build up prediction state for two "channels".
+        for _ in 0..5 {
+            ctx.observe(&RawData::with_source(1, 22.5, 0));
+            ctx.observe(&RawData::with_source(2, 1013.25, 0));
+        }
+        assert!(ctx.predict(1).is_some());
+        assert!(ctx.predict(2).is_some());
+        assert_eq!(ctx.last_value(1), Some(22.5));
+        assert_eq!(ctx.last_value(2), Some(1013.25));
+
+        // Simulate a preloaded pattern.
+        let code = ctx
+            .register_pattern(Pattern::new(vec![0xDE, 0xAD, 0xBE, 0xEF]))
+            .unwrap();
+        let pre_pattern_count = ctx.pattern_count();
+        let pre_version = ctx.version();
+        assert!(pre_pattern_count >= 1);
+
+        // Reset.
+        ctx.reset_to_baseline();
+
+        // Prediction state is wiped for all channels.
+        assert!(ctx.predict(1).is_none());
+        assert!(ctx.predict(2).is_none());
+        assert_eq!(ctx.last_value(1), None);
+        assert_eq!(ctx.last_value(2), None);
+
+        // Dictionary and pattern_index are preserved — patterns
+        // (preloaded or learned) survive the reset.
+        assert_eq!(ctx.pattern_count(), pre_pattern_count);
+        assert!(ctx.get_pattern(code).is_some());
+        // Version is preserved so the decoder keeps detecting future
+        // mismatches against its peer.
+        assert_eq!(ctx.version(), pre_version);
+
+        // After reset, a fresh observation must re-build prediction
+        // state cleanly (no stale history).
+        ctx.observe(&RawData::with_source(1, 99.0, 0));
+        assert_eq!(ctx.last_value(1), Some(99.0));
     }
 
     #[test]

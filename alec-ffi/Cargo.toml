@@ -20,6 +20,10 @@ alec = { path = "..", version = "1.3.1", default-features = false }
 xxhash-rust = { version = "0.8", default-features = false, features = ["xxh64"] }
 embedded-alloc = { version = "0.6", optional = true, default-features = false, features = ["llff"] }
 cortex-m = { version = "0.7", optional = true, features = ["critical-section-single-core"] }
+# Recovery / gap-detection diagnostics. `log` is a zero-cost facade
+# when no subscriber is installed (the default on embedded) and is
+# no_std compatible, so we always compile it in.
+log = { version = "0.4", default-features = false }
 
 [build-dependencies]
 cbindgen = "0.26"

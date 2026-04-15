@@ -697,11 +697,14 @@ impl Decoder {
         self.last_fixed_sequence = Some(header.sequence);
         self.last_fixed_ctx_version = Some(header.context_version);
 
-        // TODO(Bloc C): when (gap_size > 0 || context_mismatch) and this
-        // is a non-keyframe, invoke `context.reset_to_baseline()` so the
-        // next keyframe can resync without silent corruption. For now
-        // we surface the flags via `FixedFrameInfo` so the caller can
-        // decide; `reset_to_baseline()` does not exist yet.
+        // Recovery policy (wired by the FFI layer, not here, because
+        // this function only has `&Context` — it surfaces the flags
+        // and the caller applies them). The FFI's `alec_decode_multi_fixed`
+        // calls `context.reset_to_baseline()` when
+        //     (gap_size > 0 || context_mismatch) && !keyframe
+        // so the next keyframe (marker 0xA2, Raw32) can fully re-seed
+        // the per-channel prediction state without silent corruption.
+        // See alec-ffi/src/lib.rs::alec_decode_multi_fixed.
 
         Ok(FixedFrameInfo {
             keyframe,

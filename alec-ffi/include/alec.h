@@ -178,16 +178,54 @@ AlecEncoder* alec_encoder_new_with_config(const AlecEncoderConfig* config);
  * Force the next encode call to emit a keyframe (Raw32 for all channels).
  *
  * Intended to be called from a LoRaWAN downlink handler receiving the
- * 0xFF resync command from the server-side sidecar. The flag is consumed
- * by the fixed-channel encode path (Bloc B/C); until that path lands,
- * calling this only sets the internal flag.
+ * 0xFF resync command from the server-side sidecar. The keyframe is
+ * emitted by the next call to alec_encode_multi_fixed (marker 0xA2,
+ * Raw32 for every channel).
  *
  * No-op if encoder is NULL or if the encoder was configured with
  * smart_resync = false.
  *
+ * Most integrators will prefer alec_downlink_handler, which parses a
+ * raw LoRaWAN downlink payload and applies the right action.
+ *
  * @param encoder Encoder handle.
  */
 void alec_force_keyframe(AlecEncoder* encoder);
+
+/**
+ * Parse a raw LoRaWAN downlink payload and apply the right action
+ * to the encoder.
+ *
+ * Defined commands (first byte of @p data):
+ *
+ *     0xFF  Request immediate keyframe. The encoder's next
+ *           alec_encode_multi_fixed call emits marker 0xA2 and Raw32
+ *           for every channel.
+ *
+ * Any other byte is treated as an unknown command and leaves the
+ * encoder state unchanged (returns ALEC_ERROR_INVALID_INPUT). Bytes
+ * after byte 0 are currently reserved and ignored.
+ *
+ * Worst-case drift after a packet loss:
+ *   - Without smart resync: keyframe_interval × uplink_period
+ *     (e.g. 50 × 10 min ≈ 8h on EM500-CO2)
+ *   - With smart resync + 0xFF: 1 × uplink_period (next uplink is
+ *     a keyframe).
+ *
+ * @param encoder Encoder handle.
+ * @param data    Downlink payload bytes (the raw LoRaWAN FRMPayload).
+ * @param len     Length of data in bytes.
+ *
+ * @return ALEC_OK on a recognized command;
+ *         ALEC_ERROR_NULL_POINTER if encoder or data is NULL;
+ *         ALEC_ERROR_INVALID_INPUT for an empty payload or unknown
+ *         command byte.
+ */
+AlecResult alec_downlink_handler(
+    AlecEncoder* encoder,
+    const uint8_t* data,
+    size_t len
+);
 
 /**
  * Free an encoder.

@@ -213,18 +213,62 @@ struct AlecEncoder *alec_encoder_new_with_config(const struct AlecEncoderConfig 
  * Force the next encode call to emit a keyframe (Raw32 for all channels).
  *
  * Intended to be called from a LoRaWAN downlink handler receiving the
- * 0xFF resync command from the server-side sidecar. The flag is
- * consumed by the fixed-channel encode path (Bloc B/C); until that
- * path lands, calling this only sets the internal flag.
+ * 0xFF resync command from the server-side sidecar. The keyframe is
+ * emitted by the next call to `alec_encode_multi_fixed`: marker 0xA2,
+ * Raw32 for every channel.
  *
  * No-op if `encoder` is NULL or if the encoder was configured with
  * `smart_resync = false`.
+ *
+ * Most integrators will prefer the `alec_downlink_handler` wrapper,
+ * which parses a raw downlink payload and applies the right action.
  *
  * # Arguments
  *
  * * `encoder` - Encoder handle.
  */
 void alec_force_keyframe(struct AlecEncoder *encoder);
+
+/**
+ * Parse a raw LoRaWAN downlink payload and apply the right action
+ * to the encoder.
+ *
+ * This is a convenience wrapper over `alec_force_keyframe`. The
+ * Milesight integration defines a single command byte today:
+ *
+ *     0xFF = "request immediate keyframe" — the encoder's next
+ *            `alec_encode_multi_fixed` call will emit marker 0xA2
+ *            and Raw32 for every channel.
+ *
+ * Any other first byte is treated as an invalid command and the
+ * encoder state is left untouched. Additional bytes after byte 0
+ * are reserved for future commands and are currently ignored.
+ *
+ * Worst-case drift after a packet loss:
+ *   - No smart resync (downlink disabled):
+ *         drift ≤ keyframe_interval × uplink_period
+ *         (e.g. 50 × 10 min ≈ 8h on EM500-CO2)
+ *   - With smart resync + downlink 0xFF:
+ *         drift ≤ 1 × uplink_period (next uplink is a keyframe)
+ *
+ * # Arguments
+ *
+ * * `encoder` - Encoder handle.
+ * * `data`    - Downlink payload bytes (the raw LoRaWAN FRMPayload).
+ * * `len`     - Length of `data` in bytes.
+ *
+ * # Returns
+ *
+ * * `ALEC_OK`                   if the downlink was a recognized
+ *                               command and was applied.
+ * * `ALEC_ERROR_NULL_POINTER`   if `encoder` or `data` is NULL.
+ * * `ALEC_ERROR_INVALID_INPUT`  for an empty payload or unknown
+ *                               command byte — encoder state
+ *                               is NOT modified.
+ */
+enum AlecResult alec_downlink_handler(struct AlecEncoder *encoder,
+                                      const uint8_t *data,
+                                      uintptr_t len);
 
 /**
  * Free an encoder

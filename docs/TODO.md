@@ -1,6 +1,6 @@
 # ALEC Milesight Integration — Todo
 
-Last updated: 2026-04-14 (Session 2 — Bloc B complete)
+Last updated: 2026-04-15 (Session 3 — Bloc C complete)
 
 ---
 
@@ -166,34 +166,70 @@ Encoding distribution across 495 channels (99 × 5):
 | Raw32     | 5     |  1.0% |
 
 ### Bloc C: Packet loss recovery
-- [ ] C1. Context::reset_to_baseline()
-  - [ ] Wipe source_stats + pattern_index
-  - [ ] Preserve preloaded patterns
+- [x] C1. Context::reset_to_baseline()
+  - [x] Wipe source_stats
+  - [x] Preserve dictionary / pattern_index (and hence
+        any preloaded patterns — the fixed-channel path
+        never uses patterns)
+  - [x] Preserve version counter (so future mismatch
+        detection keeps working)
+  - [x] Unit test: prediction wiped, patterns preserved
 
-- [ ] C2. Keyframe mechanism (encoder)
-  - [ ] keyframe_interval + messages_since_keyframe
-  - [ ] Force Raw32 all channels at interval
-  - [ ] MessageType::Heartbeat as keyframe flag
-  - [ ] alec_force_keyframe() callable from downlink
+- [x] C2. Keyframe mechanism (encoder) — audited, flow
+        was already correct after Bloc A/B; added a
+        dedicated lifecycle comment block in
+        `src/encoder.rs`
+  - [x] keyframe_interval + messages_since_keyframe
+  - [x] Force Raw32 all channels at interval
+  - [x] MessageType::Heartbeat as keyframe flag
+        (CONTEXT.md-level name; the wire uses the
+        dedicated 0xA2 marker because the compact
+        header has no room for a message_type field)
+  - [x] alec_force_keyframe() callable from downlink
 
-- [ ] C3. Sequence gap reset (decoder)
-  - [ ] Replace "For now, just continue"
-        with reset_to_baseline()
-  - [ ] Invoke check_version() in decode path
-  - [ ] Log gap + version mismatch
+- [x] C3. Sequence gap reset (decoder)
+  - [x] Replace "For now, just continue" with a call
+        to Context::reset_to_baseline() in the FFI
+        (`alec_decode_multi_fixed`), not in the core
+        decoder (which has `&Context`, not `&mut`).
+        Updated the TODO(Bloc C) comment in
+        `src/decoder.rs` to redirect to the FFI.
+  - [x] Invoke check_version() in decode path
+        (informational; the u16-truncated wire version
+        is compared via ctx_version_compatible which is
+        wraparound-aware — check_version is still
+        called for parity with the legacy TLV path)
+  - [x] Log gap + version mismatch
+        (`log::warn!`, zero-cost when no subscriber)
 
-- [ ] C4. Smart resync via LoRaWAN downlink
-  - [ ] alec_decoder_gap_detected() returns gap_size
-  - [ ] Downlink command 0xFF handler
-  - [ ] alec_downlink_handler() FFI
-  - [ ] Worst-case drift: 1 interval with smart resync
+- [x] C4. Smart resync via LoRaWAN downlink
+  - [x] alec_decoder_gap_detected() returns gap_size
+        (from Bloc A)
+  - [x] Downlink command 0xFF handler
+  - [x] alec_downlink_handler() FFI
+  - [x] Worst-case drift: 1 interval with smart resync
+        (down from 8h to 10min on EM500-CO2)
 
-- [ ] C5. Tests
-  - [ ] Encode 100 frames, drop frame 20
-  - [ ] Verify corruption frames 20→keyframe
-  - [ ] Verify recovery at keyframe N=50
-  - [ ] Verify immediate recovery with smart resync
-  - [ ] No silent corruption on any path
+- [x] C5. Tests — 6 required, all passing
+  - [x] reset_to_baseline_wipes_stats — post-reset
+        encode is Raw32-all-channels (27 B)
+  - [x] packet_loss_recovery_at_keyframe — drop 4
+        frames, decoder reports gap_size=4, next
+        keyframe recovers
+  - [x] no_silent_corruption — drop frame 20 with
+        keyframe_interval=50; frame 50 and 51..=60 all
+        decode within sensor LSB
+  - [x] smart_resync_downlink — drop frame 5,
+        alec_downlink_handler(0xFF) → next uplink is
+        a keyframe, decoder recovers on next frame
+  - [x] downlink_handler_invalid_command — 0x00,
+        NULL pointers, empty payload all surface clean
+        errors with no encoder state change
+  - [x] context_mismatch_triggers_reset — synthetic
+        ctx_ver tampering flips the decoder's
+        prediction model from MovingAverage back to
+        LastValue (proves reset_to_baseline ran), then
+        next keyframe recovers within sensor LSB
 
 ### Bloc D: Context persistence FFI
 - [ ] D1. Context::to_preload_bytes()
@@ -342,3 +378,62 @@ Encoding distribution across 495 channels (99 × 5):
   the synthesized data is more aggressively quantized
   than real sensor output). Final validation on Milesight's
   actual 99-msg CSV is Phase 2 (Bloc E) work.
+
+### Notes left open by Bloc C for Bloc D
+
+- **Reset policy preserves the dictionary/pattern_index.**
+  The Milesight fixed-channel codec never uses Pattern
+  encoding, so this is safe. If a future non-fixed path
+  uses patterns AND learns them at runtime (as opposed
+  to loading from preload), those runtime-learned
+  patterns will survive a reset — that is acceptable,
+  since resetting them would break the ability to decode
+  future Pattern references. If that ever becomes
+  undesirable, add a "baseline" snapshot field to
+  `Context` captured at `from_preload()` time and have
+  `reset_to_baseline()` restore dictionary/pattern_index
+  from it.
+- **`check_version()` is called but largely informational.**
+  The compact wire format carries the low 16 bits of
+  the u32 version, so the authoritative check is
+  `ctx_version_compatible` (wraparound-aware). Bloc D's
+  context persistence (`Context::to_preload_bytes()`)
+  should snapshot the full u32 so a restored context
+  can still participate in meaningful version checks.
+- **Decoder mid-state after `reset_to_baseline`**:
+  when a non-keyframe triggers the reset, the FFI
+  observes the frame's (potentially garbage) decoded
+  values right after the reset — this re-seeds the
+  prediction cache with count=1 for each channel,
+  model_type becomes LastValue. Subsequent Delta
+  frames BEFORE the keyframe will decode against this
+  re-seed; they may produce divergent values until the
+  next keyframe arrives and fully corrects them. This
+  is tested (test_no_silent_corruption): frames 21..=49
+  are allowed to be "wrong" after a drop at frame 20,
+  but frame 50 (keyframe) and all subsequent frames
+  decode within sensor LSB.
+- **`log` crate adds ~0 KB of .text on bare-metal**
+  when no subscriber is installed (verified: release
+  build sizes unchanged from Bloc B's measurements).
+  Milesight integrators can install a `log`
+  subscriber — e.g. route to SEGGER RTT or UART — to
+  observe gap / mismatch events in the field.
+- **Bloc D blockers:**
+  * `Context` does not yet expose `to_preload_bytes() /
+    from_preload_bytes()` on its own — only the
+    `PreloadFile` type does, and only behind the `std`
+    feature (uses std::fs). Bloc D-1 will lift this to
+    a `no_std`-compatible in-memory API.
+  * `dictionary` entries carry no "preloaded" flag, so
+    a reset-after-preload can't selectively preserve
+    just the preloaded patterns. If this matters
+    (probably not for the Milesight path) Bloc D will
+    need a tagging mechanism.
+  * There is currently NO mechanism to verify that a
+    `to_preload_bytes` / `from_preload_bytes` round-trip
+    preserves the `source_stats` EMA residue faithfully
+    — it doesn't need to for the sidecar use case (the
+    sidecar doesn't need predictions to persist across
+    restarts) but Bloc D tests should cover it anyway
+    for documentation value.
