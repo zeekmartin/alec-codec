@@ -1,6 +1,6 @@
 # ALEC Milesight Integration — Todo
 
-Last updated: 2026-04-15 (Documentation session — Phase 1 docs ready for v1.3.5)
+Last updated: 2026-04-15 (v1.3.5 release-readiness audit — ready to tag)
 
 ---
 
@@ -11,7 +11,7 @@ neutral language — no customer names, no integration-
 partner details.
 
 - [x] README updated with compact mode section
-      (Compact fixed-channel mode v1.3.2+ / Packet loss
+      (Compact fixed-channel mode v1.3.5+ / Packet loss
        recovery / Context persistence / Multi-arch
        support table)
 - [x] CHANGELOG.md created (Unreleased — v1.3.5 entry
@@ -35,9 +35,24 @@ partner details.
       of two internal customer/model names.
       All 19 test suites still green
       (alec: 158, alec-ffi: 44 + 1 ignored diagnostic).
+- [x] v1.3.5 release-readiness audit
+      (`Cargo.toml`, `alec-ffi/Cargo.toml` package
+       version + dep pin, `alec_version()` return
+       string + test assertion, CHANGELOG date
+       promotion, README `v1.3.2+ → v1.3.5+` typo).
+      Tag pattern confirmed against git history:
+      codec = `v1.3.5` (legacy `v*`),
+      FFI = `ffi-1.3.5`. release.yml parser routes
+      both correctly. One gap flagged: the
+      "20×30s wait loop" for FFI dependency resolution
+      is NOT present in release.yml — operator must
+      push the codec tag first, wait 2-5 min for
+      crates.io indexing, then push the FFI tag.
 
-Tag `v1.3.5` will be created **after** hardware
-validation on an embedded target — not in this session.
+Tag `v1.3.5` is ready to create:
+  git tag v1.3.5 && git push origin v1.3.5
+  (wait for crates.io indexing, then)
+  git tag ffi-1.3.5 && git push origin ffi-1.3.5
 
 ---
 

@@ -7,7 +7,7 @@ et ce projet adhère au [Semantic Versioning](https://semver.org/lang/fr/).
 
 ---
 
-## [Unreleased — v1.3.5]
+## [1.3.5] - 2026-04-15
 
 ### Added
 - Compact fixed-channel wire format (4B header,

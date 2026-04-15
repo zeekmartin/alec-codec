@@ -341,7 +341,7 @@ See [LICENSE](LICENSE) for details.
 
 ---
 
-## Compact fixed-channel mode (v1.3.2+)
+## Compact fixed-channel mode (v1.3.5+)
 
 For constrained LoRaWAN deployments with hard payload
 ceilings (e.g. 11 bytes), ALEC now supports a compact
