@@ -1,6 +1,6 @@
 [package]
 name = "alec-ffi"
-version = "1.3.5"
+version = "1.3.6"
 edition = "2021"
 rust-version = "1.70"
 authors = ["David Martin Venti <contact@alec-codec.com>"]
@@ -13,10 +13,14 @@ categories = ["compression", "external-ffi-bindings"]
 
 [lib]
 name = "alec_ffi"
-crate-type = ["staticlib", "cdylib"]
+# `rlib` is required so integration tests under tests/ can link against
+# the FFI crate as a regular Rust library (Cargo's default for `lib` is
+# `rlib` only — explicitly listing the FFI crate-types disables that
+# unless we add it back).
+crate-type = ["staticlib", "cdylib", "rlib"]
 
 [dependencies]
-alec = { path = "..", version = "1.3.5", default-features = false }
+alec = { path = "..", version = "1.3.6", default-features = false }
 xxhash-rust = { version = "0.8", default-features = false, features = ["xxh64"] }
 embedded-alloc = { version = "0.6", optional = true, default-features = false, features = ["llff"] }
 cortex-m = { version = "0.7", optional = true, features = ["critical-section-single-core"] }
@@ -29,7 +33,12 @@ log = { version = "0.4", default-features = false }
 cbindgen = "0.26"
 
 [features]
-default = ["std"]
+# Server / hosted builds: encoder + decoder + std.
+# MCU / firmware builds: --no-default-features --features zephyr (encoder only, no_std).
+default = ["decoder"]
+# Decoder FFI (alec_decoder_*, alec_decode_*). Pulls in std because the
+# decoder code path uses HashMap, Vec, etc. Encoder remains no_std.
+decoder = ["std"]
 std = ["alec/std"]
 no_std = ["alec/no_std"]
 bare-metal = ["no_std", "embedded-alloc", "cortex-m"]
