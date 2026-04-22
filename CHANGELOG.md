@@ -7,6 +7,31 @@ et ce projet adhère au [Semantic Versioning](https://semver.org/lang/fr/).
 
 ---
 
+## [1.3.6] — 2026-04-22
+
+### Added
+- Decoder FFI: `alec_decode_multi_fixed()` for server-side frame decoding
+  (extended signature with `num_channels_out`, `sequence_out`,
+  `is_keyframe_out`)
+- Decoder lifecycle: `alec_decoder_new_with_config()`,
+  `alec_decoder_free()`, `alec_decoder_reset()`
+- Decoder context persistence: `alec_decoder_context_save()`,
+  `alec_decoder_context_load()` (sensor-type-agnostic wrappers over
+  the existing `_export_state` / `_import_state` APIs)
+- Feature flag `decoder` (default on) — decoder requires `std`,
+  encoder remains `no_std`
+- Round-trip encode→decode integration tests under
+  `alec-ffi/tests/decoder_roundtrip.rs`
+
+### Changed
+- `alec_decode_multi_fixed()` signature now accepts `values_out` /
+  `max_channels` / `num_channels_out` / `sequence_out` /
+  `is_keyframe_out` instead of the v1.3.5 `channel_count` / `output` /
+  `output_capacity` triple. The wire format is unchanged — only the
+  FFI shape evolved.
+
+---
+
 ## [1.3.5] - 2026-04-15
 
 ### Added

@@ -368,6 +368,43 @@ AlecDecoder* alec_decoder_new(void);
 AlecDecoder* alec_decoder_new_with_checksum(void);
 
 /**
+ * Create a new ALEC decoder with a custom configuration.
+ *
+ * Mirrors alec_encoder_new_with_config for the decoder side. The
+ * AlecEncoderConfig struct is reused because the decoder must run with
+ * the same history_size, max_patterns and max_memory_bytes as the
+ * matching encoder for the prediction model to stay in sync.
+ *
+ * keyframe_interval and smart_resync are encoder-only knobs and are
+ * accepted but ignored on the decoder side.
+ *
+ * @param config Pointer to an AlecEncoderConfig. If NULL, all defaults
+ *               are used. Numeric fields set to 0 are replaced by their
+ *               default.
+ *
+ * @return Pointer to a new decoder, or NULL on allocation failure.
+ *         Must be freed with alec_decoder_free().
+ */
+AlecDecoder* alec_decoder_new_with_config(const AlecEncoderConfig* config);
+
+/**
+ * Reset a decoder to its initial state.
+ *
+ * Wipes all per-channel prediction state (per-source EMA, last values,
+ * history) and clears the session-tracking counters
+ * (last_header_sequence, last_gap_size). The next frame the decoder
+ * sees should be a keyframe (marker 0xA2) which will re-seed the
+ * prediction state from Raw32 values.
+ *
+ * Use after detecting an unrecoverable desync that the in-band gap
+ * recovery can't handle (e.g. the server-side sidecar restarting
+ * without a saved context).
+ *
+ * @param dec Decoder to reset. May be NULL (no-op).
+ */
+void alec_decoder_reset(AlecDecoder* dec);
+
+/**
  * Free a decoder.
  *
  * @param decoder Decoder to free. May be NULL (no-op).
@@ -496,31 +533,55 @@ AlecResult alec_encode_multi_fixed(
 /**
  * Decode a fixed-channel frame produced by alec_encode_multi_fixed.
  *
- * The channel count is passed explicitly — it must match the value
- * used by the encoder. On success, decoded values are written in
- * channel order to `output[..channel_count]`, and the decoder's
- * gap and sequence tracking are updated (see
- * alec_decoder_gap_detected).
+ * The wire format does NOT carry the channel count — encoder and decoder
+ * must agree on it out-of-band. The decoder uses `max_channels` as both
+ * the channel count AND the capacity of `values_out`; on success
+ * `*num_channels_out` is set to that same value.
  *
- * @param decoder         Decoder handle.
- * @param input           Wire bytes (starting at the marker byte).
- * @param input_len       Length of the input in bytes.
- * @param channel_count   Number of channels in the frame.
- * @param output          Destination buffer for decoded values.
- * @param output_capacity Size of `output` in number of f64 entries.
+ * On success:
+ *   - `values_out[0..*num_channels_out]` receives the decoded values
+ *     in channel order.
+ *   - `*sequence_out` receives the wire sequence number (compact header).
+ *   - `*is_keyframe_out` is `true` iff the frame's marker was `0xA2`.
+ *   - The decoder's gap and sequence tracking are updated (see
+ *     alec_decoder_gap_detected).
  *
- * @return ALEC_OK on success; ALEC_ERROR_INVALID_INPUT for a
- *         non-ALEC marker byte or zero channel_count;
- *         ALEC_ERROR_BUFFER_TOO_SMALL if capacity/input too short;
- *         ALEC_ERROR_DECODING_FAILED for any other decode failure.
+ * `num_channels_out`, `sequence_out` and `is_keyframe_out` are all
+ * optional — pass NULL if the caller does not need them.
+ *
+ * @param dec              Decoder handle.
+ * @param frame_data       Raw ALEC wire bytes (as received from
+ *                         LoRaWAN/NB-IoT uplink), starting at the marker byte.
+ * @param frame_len        Length of the frame in bytes.
+ * @param values_out       Destination buffer for decoded channel values
+ *                         (one f64 per channel).
+ * @param max_channels     Capacity of `values_out` AND number of channels
+ *                         in the frame. Must match the encoder's count.
+ * @param num_channels_out Out: actual number of channels decoded
+ *                         (always equals `max_channels` on success).
+ *                         May be NULL.
+ * @param sequence_out     Out: sequence number from the compact header.
+ *                         May be NULL.
+ * @param is_keyframe_out  Out: `true` if the frame was a keyframe (`0xA2`).
+ *                         May be NULL.
+ *
+ * @return ALEC_OK on success; ALEC_ERROR_INVALID_INPUT for a non-ALEC
+ *         marker byte or `max_channels == 0`;
+ *         ALEC_ERROR_BUFFER_TOO_SMALL if the input is shorter than the
+ *         header + bitmap + data bytes;
+ *         ALEC_ERROR_DECODING_FAILED for any other decode failure;
+ *         ALEC_ERROR_NULL_POINTER for a NULL required pointer
+ *         (`dec`, `frame_data`, `values_out`).
  */
 AlecResult alec_decode_multi_fixed(
-    AlecDecoder* decoder,
-    const uint8_t* input,
-    size_t input_len,
-    size_t channel_count,
-    double* output,
-    size_t output_capacity
+    AlecDecoder* dec,
+    const uint8_t* frame_data,
+    size_t frame_len,
+    double* values_out,
+    size_t max_channels,
+    size_t* num_channels_out,
+    uint16_t* sequence_out,
+    bool* is_keyframe_out
 );
 
 /**
@@ -620,6 +681,63 @@ AlecResult alec_decoder_import_state(
     AlecDecoder* decoder,
     const uint8_t* data,
     size_t data_len
+);
+
+/**
+ * Save the decoder's context to a caller-provided buffer.
+ *
+ * Sensor-type-agnostic wrapper around alec_decoder_export_state.
+ * On success `*written` reports the number of bytes written; on
+ * ALEC_ERROR_BUFFER_TOO_SMALL `*written` reports the required size
+ * and `buf` is NOT modified (no partial write).
+ *
+ * The output is a self-contained byte buffer (magic `ALCS`, CRC32
+ * protected) suitable for Redis/disk persistence. Typical size is
+ * 1–2 KB for a 5-channel decoder with history_size = 20.
+ *
+ * Session state (last_header_sequence, last_gap_size) is NOT
+ * serialized — those are transient counters that reset naturally
+ * when the sidecar restarts.
+ *
+ * @param dec     Decoder handle.
+ * @param buf     Destination buffer.
+ * @param buf_cap Size of `buf` in bytes.
+ * @param written Out: bytes written (on success) or required size
+ *                (on ALEC_ERROR_BUFFER_TOO_SMALL).
+ *
+ * @return ALEC_OK on success;
+ *         ALEC_ERROR_BUFFER_TOO_SMALL if `buf_cap` is too small
+ *         (`*written` reports the required size, `buf` is unchanged);
+ *         ALEC_ERROR_NULL_POINTER for a NULL required pointer.
+ */
+AlecResult alec_decoder_context_save(
+    const AlecDecoder* dec,
+    uint8_t* buf,
+    size_t buf_cap,
+    size_t* written
+);
+
+/**
+ * Restore the decoder's context from bytes produced by
+ * alec_decoder_context_save (or alec_decoder_export_state).
+ *
+ * On success the decoder's context is replaced; session state
+ * (last_header_sequence, last_gap_size) is preserved. On
+ * ALEC_ERROR_CORRUPT_DATA the decoder is NOT modified.
+ *
+ * @param dec     Decoder handle.
+ * @param buf     Input bytes.
+ * @param buf_len Length of `buf` in bytes.
+ *
+ * @return ALEC_OK on success;
+ *         ALEC_ERROR_NULL_POINTER for a NULL required pointer;
+ *         ALEC_ERROR_CORRUPT_DATA if `buf` cannot be parsed (bad magic,
+ *         CRC mismatch, truncation, unknown format version).
+ */
+AlecResult alec_decoder_context_load(
+    AlecDecoder* dec,
+    const uint8_t* buf,
+    size_t buf_len
 );
 
 /* ============================================================================

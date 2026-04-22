@@ -135,7 +135,9 @@ use std::path::Path;
 use alec::classifier::Classifier;
 use alec::context::{Context, ContextConfig};
 use alec::protocol::{ChannelInput, RawData};
-use alec::{Decoder, Encoder};
+#[cfg(feature = "decoder")]
+use alec::Decoder;
+use alec::Encoder;
 
 /// Key used when `observe()`-ing channel `i` in a fixed-channel frame.
 /// Must match `Encoder::fixed_channel_source_id` — kept here because
@@ -304,6 +306,10 @@ pub struct AlecEncoder {
 ///
 /// Created with `alec_decoder_new()`, freed with `alec_decoder_free()`.
 /// Do not access internal fields directly.
+///
+/// Decoder FFI is only available when the `decoder` Cargo feature is
+/// enabled (default on hosted/server builds, off on `zephyr`/MCU builds).
+#[cfg(feature = "decoder")]
 pub struct AlecDecoder {
     decoder: Decoder,
     context: Context,
@@ -334,7 +340,7 @@ pub struct AlecDecoder {
 #[no_mangle]
 pub extern "C" fn alec_version() -> *const c_char {
     // Include null terminator
-    static VERSION: &[u8] = b"1.3.5\0";
+    static VERSION: &[u8] = b"1.3.6\0";
     VERSION.as_ptr() as *const c_char
 }
 
@@ -843,6 +849,11 @@ pub extern "C" fn alec_encoder_context_version(encoder: *const AlecEncoder) -> u
 
 // ============================================================================
 // Decoder Functions
+//
+// All decoder FFI is gated behind the `decoder` Cargo feature, which is on
+// by default for hosted/server builds and OFF for `--features zephyr` MCU
+// builds (encoder-only firmware target). The decoder requires `std` for
+// HashMap / Vec / String.
 // ============================================================================
 
 /// Create a new ALEC decoder
@@ -851,6 +862,7 @@ pub extern "C" fn alec_encoder_context_version(encoder: *const AlecEncoder) -> u
 ///
 /// A pointer to a new decoder, or NULL on allocation failure.
 /// The decoder must be freed with `alec_decoder_free()` when no longer needed.
+#[cfg(feature = "decoder")]
 #[no_mangle]
 pub extern "C" fn alec_decoder_new() -> *mut AlecDecoder {
     let decoder = Box::new(AlecDecoder {
@@ -867,6 +879,7 @@ pub extern "C" fn alec_decoder_new() -> *mut AlecDecoder {
 /// # Returns
 ///
 /// A pointer to a new decoder with checksum enabled, or NULL on failure.
+#[cfg(feature = "decoder")]
 #[no_mangle]
 pub extern "C" fn alec_decoder_new_with_checksum() -> *mut AlecDecoder {
     let decoder = Box::new(AlecDecoder {
@@ -876,6 +889,72 @@ pub extern "C" fn alec_decoder_new_with_checksum() -> *mut AlecDecoder {
         last_gap_size: 0,
     });
     Box::into_raw(decoder)
+}
+
+/// Create a new ALEC decoder with a custom configuration.
+///
+/// Mirrors `alec_encoder_new_with_config` for the decoder side. The
+/// `AlecEncoderConfig` struct is reused because the decoder must run
+/// with the same `history_size`, `max_patterns` and `max_memory_bytes`
+/// as the matching encoder for the prediction model to stay in sync.
+///
+/// `keyframe_interval` and `smart_resync` are encoder-only knobs and
+/// are accepted but ignored on the decoder side.
+///
+/// # Arguments
+///
+/// * `config` - Pointer to an `AlecEncoderConfig`. If NULL, all defaults
+///   are used. Numeric fields set to 0 are replaced by their default.
+///
+/// # Returns
+///
+/// A pointer to a new decoder, or NULL on allocation failure.
+/// Must be freed with `alec_decoder_free()`.
+#[cfg(feature = "decoder")]
+#[no_mangle]
+pub extern "C" fn alec_decoder_new_with_config(
+    config: *const AlecEncoderConfig,
+) -> *mut AlecDecoder {
+    let cfg = if config.is_null() {
+        AlecEncoderConfig::defaults()
+    } else {
+        unsafe { *config }.resolved()
+    };
+
+    let context = Context::with_config(cfg.to_context_config());
+    let decoder = Box::new(AlecDecoder {
+        decoder: Decoder::new(),
+        context,
+        last_header_sequence: None,
+        last_gap_size: 0,
+    });
+    Box::into_raw(decoder)
+}
+
+/// Reset a decoder to its initial state.
+///
+/// Wipes all per-channel prediction state (the per-source EMA, last
+/// values, history) and clears the session-tracking counters
+/// (`last_header_sequence`, `last_gap_size`). The next frame the
+/// decoder sees should be a keyframe (marker `0xA2`) which will
+/// re-seed the prediction state from Raw32 values.
+///
+/// Use after detecting an unrecoverable desync that the in-band gap
+/// recovery can't handle (e.g. the server-side sidecar restarting
+/// without a saved context).
+///
+/// No-op if `dec` is NULL.
+#[cfg(feature = "decoder")]
+#[no_mangle]
+pub extern "C" fn alec_decoder_reset(dec: *mut AlecDecoder) {
+    if dec.is_null() {
+        return;
+    }
+    let d = unsafe { &mut *dec };
+    d.decoder.reset();
+    d.context.reset_to_baseline();
+    d.last_header_sequence = None;
+    d.last_gap_size = 0;
 }
 
 /// Check whether the most recent decode detected a sequence gap.
@@ -895,6 +974,7 @@ pub extern "C" fn alec_decoder_new_with_checksum() -> *mut AlecDecoder {
 /// `true` if the most recent multi-frame decode observed missing
 /// frames (gap > 0). `false` if no gap, if no decode has been
 /// performed yet, or if `decoder` is NULL.
+#[cfg(feature = "decoder")]
 #[no_mangle]
 pub extern "C" fn alec_decoder_gap_detected(
     decoder: *const AlecDecoder,
@@ -918,6 +998,7 @@ pub extern "C" fn alec_decoder_gap_detected(
 /// # Arguments
 ///
 /// * `decoder` - Decoder to free. May be NULL (no-op).
+#[cfg(feature = "decoder")]
 #[no_mangle]
 pub extern "C" fn alec_decoder_free(decoder: *mut AlecDecoder) {
     if !decoder.is_null() {
@@ -940,6 +1021,7 @@ pub extern "C" fn alec_decoder_free(decoder: *mut AlecDecoder) {
 /// # Returns
 ///
 /// `ALEC_OK` on success, error code otherwise.
+#[cfg(feature = "decoder")]
 #[no_mangle]
 pub extern "C" fn alec_decode_value(
     decoder: *mut AlecDecoder,
@@ -983,6 +1065,7 @@ pub extern "C" fn alec_decode_value(
 /// # Returns
 ///
 /// `ALEC_OK` on success, error code otherwise.
+#[cfg(feature = "decoder")]
 #[no_mangle]
 pub extern "C" fn alec_decode_multi(
     decoder: *mut AlecDecoder,
@@ -1053,7 +1136,7 @@ pub extern "C" fn alec_decode_multi(
 /// # Returns
 ///
 /// `ALEC_OK` on success, error code otherwise.
-#[cfg(feature = "std")]
+#[cfg(all(feature = "decoder", feature = "std"))]
 #[no_mangle]
 pub extern "C" fn alec_decoder_load_context(
     decoder: *mut AlecDecoder,
@@ -1088,6 +1171,7 @@ pub extern "C" fn alec_decoder_load_context(
 /// # Returns
 ///
 /// The context version number, or 0 if decoder is NULL.
+#[cfg(feature = "decoder")]
 #[no_mangle]
 pub extern "C" fn alec_decoder_context_version(decoder: *const AlecDecoder) -> u32 {
     if decoder.is_null() {
@@ -1216,55 +1300,79 @@ pub extern "C" fn alec_encode_multi_fixed(
 
 /// Decode a fixed-channel frame produced by `alec_encode_multi_fixed`.
 ///
-/// The number of channels is passed explicitly — the wire format does
-/// not carry it. Must match the value used by the encoder.
+/// The wire format does NOT carry the channel count — encoder and
+/// decoder must agree on it out-of-band (the LoRaWAN device model
+/// pins a fixed channel count per DevEUI). The decoder uses
+/// `max_channels` as both the channel count and the capacity of
+/// `values_out`; `*num_channels_out` is set to that same value on
+/// success.
 ///
 /// On a successful decode:
-///   - `output[..channel_count]` receives the decoded values in channel order.
+///   - `values_out[..*num_channels_out]` receives the decoded values
+///     in channel order.
+///   - `*sequence_out` receives the wire sequence number.
+///   - `*is_keyframe_out` is `true` when the frame's marker was `0xA2`.
 ///   - The decoder's last-sequence and last-ctx-version are updated.
 ///   - The gap size (if any) is available via `alec_decoder_gap_detected`.
+///
+/// # Arguments
+///
+/// * `dec`              - Decoder handle.
+/// * `frame_data`       - Raw ALEC wire bytes (starting at the marker byte).
+/// * `frame_len`        - Length of `frame_data` in bytes.
+/// * `values_out`       - Destination buffer for decoded channel values.
+/// * `max_channels`     - Capacity of `values_out` AND number of channels
+///   in the frame. Must match the encoder's count.
+/// * `num_channels_out` - Out: number of channels written to `values_out`.
+///   May be NULL if the caller does not need it.
+/// * `sequence_out`     - Out: sequence number from the compact header.
+///   May be NULL.
+/// * `is_keyframe_out`  - Out: `true` iff the frame was a keyframe (`0xA2`).
+///   May be NULL.
 ///
 /// # Returns
 ///
 /// * `ALEC_OK` on success.
 /// * `ALEC_ERROR_INVALID_INPUT` for zero channels or a non-ALEC marker byte.
-/// * `ALEC_ERROR_BUFFER_TOO_SMALL` if `output_capacity < channel_count`
-///   or the input is shorter than the header + bitmap + data bytes.
+/// * `ALEC_ERROR_BUFFER_TOO_SMALL` if the input is shorter than the header
+///   + bitmap + data bytes.
 /// * `ALEC_ERROR_DECODING_FAILED` for any other decode error.
-/// * `ALEC_ERROR_NULL_POINTER` for a NULL required pointer.
+/// * `ALEC_ERROR_NULL_POINTER` for a NULL required pointer
+///   (`dec`, `frame_data`, `values_out`).
+#[cfg(feature = "decoder")]
 #[no_mangle]
 pub extern "C" fn alec_decode_multi_fixed(
-    decoder: *mut AlecDecoder,
-    input: *const u8,
-    input_len: usize,
-    channel_count: usize,
-    output: *mut f64,
-    output_capacity: usize,
+    dec: *mut AlecDecoder,
+    frame_data: *const u8,
+    frame_len: usize,
+    values_out: *mut f64,
+    max_channels: usize,
+    num_channels_out: *mut usize,
+    sequence_out: *mut u16,
+    is_keyframe_out: *mut bool,
 ) -> AlecResult {
-    if decoder.is_null() || input.is_null() || output.is_null() {
+    if dec.is_null() || frame_data.is_null() || values_out.is_null() {
         return AlecResult::ErrorNullPointer;
     }
-    if channel_count == 0 {
+    if max_channels == 0 {
         return AlecResult::ErrorInvalidInput;
     }
-    if output_capacity < channel_count {
-        return AlecResult::ErrorBufferTooSmall;
-    }
 
-    let dec = unsafe { &mut *decoder };
-    let input_slice = unsafe { slice::from_raw_parts(input, input_len) };
-    let output_slice = unsafe { slice::from_raw_parts_mut(output, output_capacity) };
+    let d = unsafe { &mut *dec };
+    let input_slice = unsafe { slice::from_raw_parts(frame_data, frame_len) };
+    let output_slice = unsafe { slice::from_raw_parts_mut(values_out, max_channels) };
+    let channel_count = max_channels;
 
-    match dec
+    match d
         .decoder
-        .decode_multi_fixed(input_slice, channel_count, &dec.context, output_slice)
+        .decode_multi_fixed(input_slice, channel_count, &d.context, output_slice)
     {
         Ok(info) => {
             // Mirror the gap tracking used by the legacy multi path
             // so `alec_decoder_gap_detected` returns the same view
             // regardless of which decode entry point was used.
-            dec.last_header_sequence = Some(info.sequence);
-            dec.last_gap_size = info.gap_size;
+            d.last_header_sequence = Some(info.sequence);
+            d.last_gap_size = info.gap_size;
 
             // Bloc C recovery: on a non-keyframe frame, if the
             // decoder observed a sequence gap OR a context-version
@@ -1282,7 +1390,7 @@ pub extern "C" fn alec_decode_multi_fixed(
                         info.gap_size,
                         info.sequence
                     );
-                    dec.context.reset_to_baseline();
+                    d.context.reset_to_baseline();
                 } else if info.context_mismatch {
                     // Also surface a u32-level check via the core
                     // Context::check_version API. We truncate our
@@ -1290,13 +1398,13 @@ pub extern "C" fn alec_decode_multi_fixed(
                     // comparison is wire-format-accurate; the full
                     // u32 version is informational only here.
                     let wire_ver = info.context_version as u32;
-                    let _result = dec.context.check_version(wire_ver);
+                    let _result = d.context.check_version(wire_ver);
                     log::warn!(
                         "ALEC ctx_ver mismatch on fixed-channel decode: \
                          wire={}, context reset to baseline",
                         info.context_version
                     );
-                    dec.context.reset_to_baseline();
+                    d.context.reset_to_baseline();
                 }
             }
 
@@ -1307,8 +1415,20 @@ pub extern "C" fn alec_decode_multi_fixed(
             // the Raw32 values, which is exactly what we want.
             for (i, &value) in output_slice.iter().take(channel_count).enumerate() {
                 let rd = RawData::with_source(fixed_channel_source_id(i), value, 0);
-                dec.context.observe(&rd);
+                d.context.observe(&rd);
             }
+
+            // Surface frame-level outputs (all optional).
+            if !num_channels_out.is_null() {
+                unsafe { *num_channels_out = channel_count };
+            }
+            if !sequence_out.is_null() {
+                unsafe { *sequence_out = info.sequence };
+            }
+            if !is_keyframe_out.is_null() {
+                unsafe { *is_keyframe_out = info.keyframe };
+            }
+
             AlecResult::Ok
         }
         Err(alec::error::AlecError::Decode(alec::error::DecodeError::BufferTooShort {
@@ -1345,6 +1465,7 @@ pub extern "C" fn alec_decode_multi_fixed(
 /// `ALEC_OK` on success; `ALEC_ERROR_NULL_POINTER` for a NULL pointer;
 /// `ALEC_ERROR_INVALID_UTF8` if `sensor_type` is not valid UTF-8;
 /// `ALEC_ERROR_INVALID_INPUT` if `sensor_type` exceeds 255 bytes.
+#[cfg(feature = "decoder")]
 #[no_mangle]
 pub extern "C" fn alec_decoder_export_state_size(
     decoder: *const AlecDecoder,
@@ -1397,6 +1518,7 @@ pub extern "C" fn alec_decoder_export_state_size(
 /// * `ALEC_ERROR_NULL_POINTER` for a NULL required pointer.
 /// * `ALEC_ERROR_INVALID_UTF8` if `sensor_type` is not valid UTF-8.
 /// * `ALEC_ERROR_INVALID_INPUT` if `sensor_type` exceeds 255 bytes.
+#[cfg(feature = "decoder")]
 #[no_mangle]
 pub extern "C" fn alec_decoder_export_state(
     decoder: *const AlecDecoder,
@@ -1454,6 +1576,7 @@ pub extern "C" fn alec_decoder_export_state(
 /// * `ALEC_ERROR_NULL_POINTER` for a NULL pointer.
 /// * `ALEC_ERROR_CORRUPT_DATA` if `data` cannot be parsed (bad magic,
 ///   CRC mismatch, truncation, unknown format version).
+#[cfg(feature = "decoder")]
 #[no_mangle]
 pub extern "C" fn alec_decoder_import_state(
     decoder: *mut AlecDecoder,
@@ -1477,6 +1600,119 @@ pub extern "C" fn alec_decoder_import_state(
 }
 
 // ============================================================================
+// Decoder context save / load (sensor-type-agnostic, v1.3.6+)
+//
+// Thin wrappers over alec_decoder_export_state / alec_decoder_import_state
+// that hide the `sensor_type` tag from callers that don't use it. The
+// underlying preload format requires a sensor-type label; we use a fixed
+// "ffi" tag so the produced bytes remain interoperable with the lower-level
+// `_state` APIs (an "ffi"-tagged buffer is also a valid preload buffer).
+// ============================================================================
+
+/// Sensor-type tag used by `alec_decoder_context_save`. Kept short
+/// (≤ 255 bytes) and version-stable so the produced bytes round-trip
+/// across `_save` / `_load` and across `_state` / `_state` boundaries.
+#[cfg(feature = "decoder")]
+const FFI_CONTEXT_TAG: &str = "ffi";
+
+/// Save the decoder's context to a caller-provided buffer.
+///
+/// On success `*written` reports the number of bytes written to `buf`.
+/// On `ALEC_ERROR_BUFFER_TOO_SMALL`, `*written` reports the required
+/// size and `buf` is NOT modified (no partial write).
+///
+/// The output is a self-contained byte buffer (magic `ALCS`, CRC32
+/// protected) suitable for Redis/disk persistence. Typical size is
+/// 1–2 KB for a 5-channel decoder with `history_size = 20`.
+///
+/// Use `alec_decoder_context_load` (or the lower-level
+/// `alec_decoder_import_state`) to restore.
+///
+/// Session state (`last_header_sequence`, `last_gap_size`) is NOT
+/// serialized — those are transient frame-level trackers that reset
+/// naturally when the sidecar restarts.
+///
+/// # Arguments
+///
+/// * `dec`     - Decoder handle.
+/// * `buf`     - Destination buffer.
+/// * `buf_cap` - Size of `buf` in bytes.
+/// * `written` - Out: bytes written (on success) or required size
+///   (on `ALEC_ERROR_BUFFER_TOO_SMALL`).
+///
+/// # Returns
+///
+/// * `ALEC_OK` on success.
+/// * `ALEC_ERROR_BUFFER_TOO_SMALL` if `buf_cap` is too small —
+///   `*written` reports the required size, `buf` is unchanged.
+/// * `ALEC_ERROR_NULL_POINTER` for a NULL required pointer.
+#[cfg(feature = "decoder")]
+#[no_mangle]
+pub extern "C" fn alec_decoder_context_save(
+    dec: *const AlecDecoder,
+    buf: *mut u8,
+    buf_cap: usize,
+    written: *mut usize,
+) -> AlecResult {
+    if dec.is_null() || buf.is_null() || written.is_null() {
+        return AlecResult::ErrorNullPointer;
+    }
+    let d = unsafe { &*dec };
+    let bytes = match d.context.to_preload_bytes(FFI_CONTEXT_TAG) {
+        Ok(b) => b,
+        Err(_) => return AlecResult::ErrorEncodingFailed,
+    };
+    if bytes.len() > buf_cap {
+        unsafe { *written = bytes.len() };
+        return AlecResult::ErrorBufferTooSmall;
+    }
+    let out_slice = unsafe { slice::from_raw_parts_mut(buf, buf_cap) };
+    out_slice[..bytes.len()].copy_from_slice(&bytes);
+    unsafe { *written = bytes.len() };
+    AlecResult::Ok
+}
+
+/// Restore the decoder's context from bytes produced by
+/// `alec_decoder_context_save` (or `alec_decoder_export_state`).
+///
+/// On success the decoder's `context` is replaced; session state
+/// (`last_header_sequence`, `last_gap_size`) is preserved. On
+/// `ALEC_ERROR_CORRUPT_DATA` the decoder is NOT modified.
+///
+/// # Arguments
+///
+/// * `dec`     - Decoder handle.
+/// * `buf`     - Input bytes.
+/// * `buf_len` - Length of `buf` in bytes.
+///
+/// # Returns
+///
+/// * `ALEC_OK` on success.
+/// * `ALEC_ERROR_NULL_POINTER` for a NULL required pointer.
+/// * `ALEC_ERROR_CORRUPT_DATA` if `buf` cannot be parsed (bad magic,
+///   CRC mismatch, truncation, unknown format version).
+#[cfg(feature = "decoder")]
+#[no_mangle]
+pub extern "C" fn alec_decoder_context_load(
+    dec: *mut AlecDecoder,
+    buf: *const u8,
+    buf_len: usize,
+) -> AlecResult {
+    if dec.is_null() || buf.is_null() {
+        return AlecResult::ErrorNullPointer;
+    }
+    let data_slice = unsafe { slice::from_raw_parts(buf, buf_len) };
+    match Context::from_preload_bytes(data_slice) {
+        Ok(ctx) => {
+            let d = unsafe { &mut *dec };
+            d.context = ctx;
+            AlecResult::Ok
+        }
+        Err(_) => AlecResult::ErrorCorruptData,
+    }
+}
+
+// ============================================================================
 // Tests
 // ============================================================================
 
@@ -1490,7 +1726,7 @@ mod tests {
         let version = alec_version();
         assert!(!version.is_null());
         let version_str = unsafe { CStr::from_ptr(version) }.to_str().unwrap();
-        assert_eq!(version_str, "1.3.5");
+        assert_eq!(version_str, "1.3.6");
     }
 
     #[test]
@@ -1967,10 +2203,19 @@ mod tests {
             *mut AlecDecoder,
             *const u8,
             usize,
-            usize,
             *mut f64,
             usize,
+            *mut usize,
+            *mut u16,
+            *mut bool,
         ) -> AlecResult = alec_decode_multi_fixed;
+        let _dec_new_cfg: extern "C" fn(*const AlecEncoderConfig) -> *mut AlecDecoder =
+            alec_decoder_new_with_config;
+        let _dec_reset: extern "C" fn(*mut AlecDecoder) = alec_decoder_reset;
+        let _ctx_save: extern "C" fn(*const AlecDecoder, *mut u8, usize, *mut usize) -> AlecResult =
+            alec_decoder_context_save;
+        let _ctx_load: extern "C" fn(*mut AlecDecoder, *const u8, usize) -> AlecResult =
+            alec_decoder_context_load;
     }
 
     // ========================================================================
@@ -2054,9 +2299,11 @@ mod tests {
                 dec,
                 frame.as_ptr(),
                 frame.len(),
-                5,
                 values.as_mut_ptr(),
                 values.len(),
+                ptr::null_mut(),
+                ptr::null_mut(),
+                ptr::null_mut(),
             );
             assert_eq!(
                 r2,
@@ -2224,9 +2471,11 @@ mod tests {
                 dec,
                 out.as_ptr(),
                 out_len,
-                5,
                 values.as_mut_ptr(),
                 values.len(),
+                ptr::null_mut(),
+                ptr::null_mut(),
+                ptr::null_mut(),
             );
             assert_eq!(
                 r2,
@@ -2270,9 +2519,11 @@ mod tests {
             dec,
             out.as_ptr(),
             out_len,
-            5,
             values.as_mut_ptr(),
             values.len(),
+            ptr::null_mut(),
+            ptr::null_mut(),
+            ptr::null_mut(),
         );
         assert_eq!(r_ok, AlecResult::Ok);
 
@@ -2285,9 +2536,11 @@ mod tests {
             alec_decoder_new(), // fresh decoder so prior state doesn't leak
             corrupt.as_ptr(),
             corrupt.len(),
-            5,
             values.as_mut_ptr(),
             values.len(),
+            ptr::null_mut(),
+            ptr::null_mut(),
+            ptr::null_mut(),
         );
         assert_eq!(r_err, AlecResult::ErrorInvalidInput);
 
@@ -2539,9 +2792,11 @@ mod tests {
             dec,
             frame.as_ptr(),
             frame.len(),
-            5,
             values.as_mut_ptr(),
             values.len(),
+            ptr::null_mut(),
+            ptr::null_mut(),
+            ptr::null_mut(),
         );
         assert_eq!(r, AlecResult::Ok);
         values
@@ -2685,7 +2940,16 @@ mod tests {
         // post-keyframe values.
         for f in &frames[21..50] {
             let mut v = [0f64; 5];
-            let _ = alec_decode_multi_fixed(dec, f.as_ptr(), f.len(), 5, v.as_mut_ptr(), v.len());
+            let _ = alec_decode_multi_fixed(
+                dec,
+                f.as_ptr(),
+                f.len(),
+                v.as_mut_ptr(),
+                v.len(),
+                ptr::null_mut(),
+                ptr::null_mut(),
+                ptr::null_mut(),
+            );
         }
 
         // Frame 50 is a keyframe — decode must succeed and values
@@ -2746,7 +3010,16 @@ mod tests {
         // values, but that's fine — the point is the RESYNC.
         for f in &frames[6..=9] {
             let mut v = [0f64; 5];
-            let _ = alec_decode_multi_fixed(dec, f.as_ptr(), f.len(), 5, v.as_mut_ptr(), v.len());
+            let _ = alec_decode_multi_fixed(
+                dec,
+                f.as_ptr(),
+                f.len(),
+                v.as_mut_ptr(),
+                v.len(),
+                ptr::null_mut(),
+                ptr::null_mut(),
+                ptr::null_mut(),
+            );
         }
 
         // Decoder realises it's out of sync — simulate the sidecar
@@ -2895,9 +3168,11 @@ mod tests {
             dec,
             tampered.as_ptr(),
             tampered.len(),
-            5,
             v.as_mut_ptr(),
             v.len(),
+            ptr::null_mut(),
+            ptr::null_mut(),
+            ptr::null_mut(),
         );
 
         // After the reset the history has been wiped. The FFI then
@@ -2963,9 +3238,11 @@ mod tests {
                 dec,
                 frame.as_ptr(),
                 frame.len(),
-                5,
                 values.as_mut_ptr(),
                 values.len(),
+                ptr::null_mut(),
+                ptr::null_mut(),
+                ptr::null_mut(),
             );
             assert_eq!(r2, AlecResult::Ok);
             frames.push(frame);
@@ -3050,9 +3327,11 @@ mod tests {
                     dec_orig,
                     frame.as_ptr(),
                     frame.len(),
-                    5,
                     v_orig.as_mut_ptr(),
                     v_orig.len(),
+                    ptr::null_mut(),
+                    ptr::null_mut(),
+                    ptr::null_mut(),
                 ),
                 AlecResult::Ok
             );
@@ -3061,9 +3340,11 @@ mod tests {
                     dec_new,
                     frame.as_ptr(),
                     frame.len(),
-                    5,
                     v_new.as_mut_ptr(),
                     v_new.len(),
+                    ptr::null_mut(),
+                    ptr::null_mut(),
+                    ptr::null_mut(),
                 ),
                 AlecResult::Ok
             );
