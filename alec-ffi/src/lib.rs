@@ -340,7 +340,7 @@ pub struct AlecDecoder {
 #[no_mangle]
 pub extern "C" fn alec_version() -> *const c_char {
     // Include null terminator
-    static VERSION: &[u8] = b"1.3.6\0";
+    static VERSION: &[u8] = b"1.3.7\0";
     VERSION.as_ptr() as *const c_char
 }
 
@@ -845,6 +845,210 @@ pub extern "C" fn alec_encoder_context_version(encoder: *const AlecEncoder) -> u
     }
     let enc = unsafe { &*encoder };
     enc.context.context_version()
+}
+
+// ============================================================================
+// Encoder context save / load with RAM buffers (v1.3.7)
+//
+// Buffer-based mirror of alec_decoder_context_save / _context_load, callable
+// from MCUs that have no filesystem. In addition to the Context payload
+// (predictions, patterns, dictionary — reused from the decoder's ALCS
+// serialization), the encoder blob also carries the runtime state needed
+// to roll back a discarded frame exactly: the encoder sequence counter,
+// the pending force-keyframe flag and messages-since-last-keyframe.
+//
+// Wire format (little-endian for the header, ALCS payload is already
+// little-endian):
+//
+//   Offset  Size  Field
+//   0       4     magic "ALEE" (ALec Encoder state)
+//   4       1     format version (= 1)
+//   5       1     flags (bit 0: force_keyframe_pending)
+//   6       2     sequence              (u16 big-endian)
+//   8       4     messages_since_keyframe (u32 big-endian)
+//   12      4     alcs_len              (u32 big-endian)
+//   16      8     header xxh64         (bytes [0..16), big-endian)
+//   24      N     ALCS payload (Context::to_preload_bytes, CRC32 inside)
+//
+// The header xxh64 catches corruption of any of the small fields above
+// (sequence/flags/msk) that ALCS's inner CRC wouldn't notice. The ALCS
+// inner CRC32 covers the bulk Context payload.
+// ============================================================================
+
+/// Magic bytes identifying an encoder-state buffer.
+const ENC_STATE_MAGIC: [u8; 4] = *b"ALEE";
+/// Current encoder-state wire format version.
+const ENC_STATE_VERSION: u8 = 1;
+/// Fixed header size before the embedded ALCS payload.
+const ENC_STATE_HEADER_SIZE: usize = 24;
+/// Sensor-type tag used when serializing the context portion. Kept
+/// stable so the embedded ALCS bytes remain interoperable with the
+/// decoder's `_context_load` / `_import_state` readers.
+const ENC_STATE_CTX_TAG: &str = "ffi";
+
+/// bit 0 of the flags byte: `force_keyframe_pending`.
+const ENC_FLAG_FORCE_KEYFRAME: u8 = 0b0000_0001;
+
+/// Save the encoder's runtime state to a caller-provided RAM buffer.
+///
+/// The saved blob captures:
+/// * The full `Context` — per-channel prediction model (EMA, last
+///   values, history), pattern dictionary and context version.
+/// * The encoder's sequence counter.
+/// * The pending force-keyframe flag and the messages-since-keyframe
+///   counter consumed by the periodic keyframe mechanism.
+///
+/// Intended use (firmware, v1.3.7):
+///
+/// ```text
+///     snapshot      = alec_encoder_context_save(enc, buf, cap, &len)
+///     wire          = alec_encode_multi_fixed(enc, …)
+///     if wire_len > ceiling:
+///         alec_encoder_context_load(enc, buf, len)   // roll back
+///         alec_force_keyframe(enc)                   // next frame = keyframe
+/// ```
+///
+/// On `ALEC_ERROR_BUFFER_TOO_SMALL`, `*written` reports the exact
+/// size the buffer would have needed and `buf` is NOT modified
+/// (no partial write — callers can safely retry with a larger buffer).
+///
+/// # Arguments
+///
+/// * `enc`     - Encoder handle.
+/// * `buf`     - Destination buffer.
+/// * `buf_cap` - Size of `buf` in bytes.
+/// * `written` - Out: bytes written (on success) or required size
+///   (on `ALEC_ERROR_BUFFER_TOO_SMALL`).
+///
+/// # Returns
+///
+/// * `ALEC_OK` on success.
+/// * `ALEC_ERROR_BUFFER_TOO_SMALL` if `buf_cap` is too small —
+///   `*written` reports the required size, `buf` is unchanged.
+/// * `ALEC_ERROR_NULL_POINTER` for a NULL required pointer.
+/// * `ALEC_ERROR_ENCODING_FAILED` if the underlying context
+///   serialization fails (pathological config).
+#[no_mangle]
+pub extern "C" fn alec_encoder_context_save(
+    enc: *const AlecEncoder,
+    buf: *mut u8,
+    buf_cap: usize,
+    written: *mut usize,
+) -> AlecResult {
+    if enc.is_null() || buf.is_null() || written.is_null() {
+        return AlecResult::ErrorNullPointer;
+    }
+    let e = unsafe { &*enc };
+
+    let alcs = match e.context.to_preload_bytes(ENC_STATE_CTX_TAG) {
+        Ok(b) => b,
+        Err(_) => return AlecResult::ErrorEncodingFailed,
+    };
+    let total = ENC_STATE_HEADER_SIZE + alcs.len();
+    if total > buf_cap {
+        unsafe { *written = total };
+        return AlecResult::ErrorBufferTooSmall;
+    }
+
+    let out = unsafe { slice::from_raw_parts_mut(buf, buf_cap) };
+    // Header layout — see the module comment above.
+    out[0..4].copy_from_slice(&ENC_STATE_MAGIC);
+    out[4] = ENC_STATE_VERSION;
+    out[5] = if e.force_keyframe_pending {
+        ENC_FLAG_FORCE_KEYFRAME
+    } else {
+        0
+    };
+    out[6..8].copy_from_slice(&e.encoder.sequence().to_be_bytes());
+    out[8..12].copy_from_slice(&e.messages_since_keyframe.to_be_bytes());
+    out[12..16].copy_from_slice(&(alcs.len() as u32).to_be_bytes());
+    let hdr_hash = xxhash_rust::xxh64::xxh64(&out[0..16], 0);
+    out[16..24].copy_from_slice(&hdr_hash.to_be_bytes());
+    out[24..24 + alcs.len()].copy_from_slice(&alcs);
+
+    unsafe { *written = total };
+    AlecResult::Ok
+}
+
+/// Restore encoder state from bytes produced by `alec_encoder_context_save`.
+///
+/// On success the encoder's `context`, `sequence`, `force_keyframe_pending`
+/// and `messages_since_keyframe` are all overwritten atomically. Static
+/// configuration (`keyframe_interval`, `smart_resync`, checksum flag) is
+/// preserved — those are properties of the encoder instance, not of the
+/// transient runtime state.
+///
+/// On `ALEC_ERROR_CORRUPT_DATA` the encoder is NOT modified (all-or-
+/// nothing contract — a corrupted restore leaves you free to retry).
+///
+/// # Arguments
+///
+/// * `enc`     - Encoder handle.
+/// * `buf`     - Input bytes produced by `alec_encoder_context_save`.
+/// * `buf_len` - Length of `buf` in bytes.
+///
+/// # Returns
+///
+/// * `ALEC_OK` on success.
+/// * `ALEC_ERROR_NULL_POINTER` for a NULL required pointer.
+/// * `ALEC_ERROR_CORRUPT_DATA` if `buf` cannot be parsed (bad magic,
+///   unknown format version, header xxh64 mismatch, length mismatch,
+///   or malformed ALCS payload).
+#[no_mangle]
+pub extern "C" fn alec_encoder_context_load(
+    enc: *mut AlecEncoder,
+    buf: *const u8,
+    buf_len: usize,
+) -> AlecResult {
+    if enc.is_null() || buf.is_null() {
+        return AlecResult::ErrorNullPointer;
+    }
+    if buf_len < ENC_STATE_HEADER_SIZE {
+        return AlecResult::ErrorCorruptData;
+    }
+    let data = unsafe { slice::from_raw_parts(buf, buf_len) };
+
+    // Magic + version.
+    if data[0..4] != ENC_STATE_MAGIC {
+        return AlecResult::ErrorCorruptData;
+    }
+    if data[4] != ENC_STATE_VERSION {
+        return AlecResult::ErrorCorruptData;
+    }
+
+    // Header xxh64 — catches corruption of flags/sequence/msk/alcs_len.
+    let stored_hash = u64::from_be_bytes([
+        data[16], data[17], data[18], data[19], data[20], data[21], data[22], data[23],
+    ]);
+    let computed_hash = xxhash_rust::xxh64::xxh64(&data[0..16], 0);
+    if stored_hash != computed_hash {
+        return AlecResult::ErrorCorruptData;
+    }
+
+    // ALCS payload length must account for all remaining bytes exactly.
+    let alcs_len = u32::from_be_bytes([data[12], data[13], data[14], data[15]]) as usize;
+    if alcs_len != buf_len.saturating_sub(ENC_STATE_HEADER_SIZE) {
+        return AlecResult::ErrorCorruptData;
+    }
+    let alcs = &data[ENC_STATE_HEADER_SIZE..ENC_STATE_HEADER_SIZE + alcs_len];
+
+    // Parse the context first — if it fails, don't touch the encoder.
+    let ctx = match Context::from_preload_bytes(alcs) {
+        Ok(c) => c,
+        Err(_) => return AlecResult::ErrorCorruptData,
+    };
+
+    // All-or-nothing: commit every field together.
+    let flags = data[5];
+    let sequence = u16::from_be_bytes([data[6], data[7]]);
+    let msk = u32::from_be_bytes([data[8], data[9], data[10], data[11]]);
+
+    let e = unsafe { &mut *enc };
+    e.context = ctx;
+    e.encoder.restore_sequence(sequence);
+    e.messages_since_keyframe = msk;
+    e.force_keyframe_pending = (flags & ENC_FLAG_FORCE_KEYFRAME) != 0;
+    AlecResult::Ok
 }
 
 // ============================================================================
@@ -1726,7 +1930,7 @@ mod tests {
         let version = alec_version();
         assert!(!version.is_null());
         let version_str = unsafe { CStr::from_ptr(version) }.to_str().unwrap();
-        assert_eq!(version_str, "1.3.6");
+        assert_eq!(version_str, "1.3.7");
     }
 
     #[test]

@@ -121,6 +121,17 @@ impl Encoder {
         self.sequence = 0;
     }
 
+    /// Restore the internal sequence counter to an explicit value.
+    ///
+    /// Used by the encoder-state save/restore path (v1.3.7 FFI) so
+    /// that after rolling back a discarded frame the encoder continues
+    /// numbering uplinks from where the last *transmitted* frame left
+    /// off. Do NOT use this to skip sequence numbers — the decoder's
+    /// gap-detection logic would report a false positive.
+    pub fn restore_sequence(&mut self, seq: u16) {
+        self.sequence = seq;
+    }
+
     /// Encode data and return raw bytes.
     ///
     /// This is a convenience method that combines encoding and serialization.
