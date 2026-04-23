@@ -349,6 +349,93 @@ AlecResult alec_encoder_load_context(
 uint32_t alec_encoder_context_version(const AlecEncoder* encoder);
 
 /* ============================================================================
+ * Encoder context save / load with RAM buffers (v1.3.7)
+ *
+ * Buffer-based mirror of alec_decoder_context_save / _context_load, callable
+ * from MCUs that have no filesystem. The saved blob captures:
+ *   - The full Context (per-channel prediction, patterns, version).
+ *   - The encoder sequence counter.
+ *   - The pending force-keyframe flag and messages-since-keyframe counter.
+ *
+ * Intended use (firmware fix for "oversize frame discard"):
+ *
+ *     snapshot = alec_encoder_context_save(enc, buf, cap, &len)
+ *     wire     = alec_encode_multi_fixed(enc, …)
+ *     if (wire_len > LORAWAN_CEILING) {
+ *         alec_encoder_context_load(enc, buf, len);   // roll back
+ *         alec_force_keyframe(enc);                   // next frame = keyframe
+ *     }
+ *
+ * Wire layout:
+ *
+ *     byte 0..=3    : magic "ALEE"
+ *     byte 4        : format version (= 1)
+ *     byte 5        : flags (bit 0: force_keyframe_pending)
+ *     byte 6..=7    : encoder sequence (u16 big-endian)
+ *     byte 8..=11   : messages_since_keyframe (u32 big-endian)
+ *     byte 12..=15  : ALCS payload length  (u32 big-endian)
+ *     byte 16..=23  : header xxh64         (u64 big-endian)
+ *     byte 24..     : ALCS-wrapped Context (own internal CRC32)
+ *
+ * Typical size: 24 bytes of header + 1–2 KB of Context payload.
+ * ============================================================================ */
+
+/**
+ * Save the encoder's runtime state to a caller-provided RAM buffer.
+ *
+ * On success `*written` reports the number of bytes written. On
+ * ALEC_ERROR_BUFFER_TOO_SMALL `*written` reports the required size
+ * and `buf` is NOT modified (no partial write).
+ *
+ * Static configuration (keyframe_interval, smart_resync, checksum flag)
+ * is NOT saved — those are properties of the encoder instance.
+ *
+ * @param enc     Encoder handle.
+ * @param buf     Destination buffer.
+ * @param buf_cap Size of `buf` in bytes.
+ * @param written Out: bytes written (on success) or required size
+ *                (on ALEC_ERROR_BUFFER_TOO_SMALL).
+ *
+ * @return ALEC_OK on success;
+ *         ALEC_ERROR_BUFFER_TOO_SMALL if `buf_cap` is too small
+ *         (`*written` reports the required size, `buf` is unchanged);
+ *         ALEC_ERROR_NULL_POINTER for a NULL required pointer;
+ *         ALEC_ERROR_ENCODING_FAILED for an internal serialization error.
+ */
+AlecResult alec_encoder_context_save(
+    const AlecEncoder* enc,
+    uint8_t* buf,
+    size_t buf_cap,
+    size_t* written
+);
+
+/**
+ * Restore encoder state from bytes produced by alec_encoder_context_save.
+ *
+ * On success the encoder's context, sequence counter, force-keyframe
+ * flag and messages-since-keyframe counter are overwritten atomically.
+ * Static configuration is preserved.
+ *
+ * On ALEC_ERROR_CORRUPT_DATA the encoder is NOT modified — callers can
+ * safely retry.
+ *
+ * @param enc     Encoder handle.
+ * @param buf     Input bytes.
+ * @param buf_len Length of `buf` in bytes.
+ *
+ * @return ALEC_OK on success;
+ *         ALEC_ERROR_NULL_POINTER for a NULL required pointer;
+ *         ALEC_ERROR_CORRUPT_DATA if `buf` cannot be parsed (bad magic,
+ *         unknown format version, header xxh64 mismatch, length mismatch,
+ *         or malformed ALCS payload).
+ */
+AlecResult alec_encoder_context_load(
+    AlecEncoder* enc,
+    const uint8_t* buf,
+    size_t buf_len
+);
+
+/* ============================================================================
  * Decoder Functions
  * ============================================================================ */
 

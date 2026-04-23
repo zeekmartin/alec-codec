@@ -7,6 +7,27 @@ et ce projet adhère au [Semantic Versioning](https://semver.org/lang/fr/).
 
 ---
 
+## [1.3.7] — 2026-04-23
+
+### Added
+- Encoder context save/load with RAM buffers:
+  `alec_encoder_context_save()`, `alec_encoder_context_load()`.
+  Mirrors the decoder buffer API added in v1.3.6 and enables
+  save/restore on MCUs without a filesystem.
+- Firmware use case: roll back the encoder state when an encoded frame
+  exceeds the LoRaWAN payload ceiling so the prediction model is not
+  polluted by a frame the decoder never receives.
+- `Encoder::restore_sequence()` — minimal setter used by the FFI
+  save/restore path; does not change any encode behaviour.
+
+### Wire format
+- New `ALEE` binary blob (24-byte header + ALCS-wrapped Context).
+  Header carries encoder sequence, force-keyframe flag,
+  messages-since-keyframe, ALCS length and an xxh64 integrity check.
+  The decoder-side buffer format from v1.3.6 is unchanged.
+
+---
+
 ## [1.3.6] — 2026-04-22
 
 ### Added

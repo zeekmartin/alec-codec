@@ -396,6 +396,82 @@ enum AlecResult alec_encoder_load_context(struct AlecEncoder *encoder, const cha
 uint32_t alec_encoder_context_version(const struct AlecEncoder *encoder);
 
 /**
+ * Save the encoder's runtime state to a caller-provided RAM buffer.
+ *
+ * The saved blob captures:
+ * * The full `Context` — per-channel prediction model (EMA, last
+ *   values, history), pattern dictionary and context version.
+ * * The encoder's sequence counter.
+ * * The pending force-keyframe flag and the messages-since-keyframe
+ *   counter consumed by the periodic keyframe mechanism.
+ *
+ * Intended use (firmware, v1.3.7):
+ *
+ * ```text
+ *     snapshot      = alec_encoder_context_save(enc, buf, cap, &len)
+ *     wire          = alec_encode_multi_fixed(enc, …)
+ *     if wire_len > ceiling:
+ *         alec_encoder_context_load(enc, buf, len)   // roll back
+ *         alec_force_keyframe(enc)                   // next frame = keyframe
+ * ```
+ *
+ * On `ALEC_ERROR_BUFFER_TOO_SMALL`, `*written` reports the exact
+ * size the buffer would have needed and `buf` is NOT modified
+ * (no partial write — callers can safely retry with a larger buffer).
+ *
+ * # Arguments
+ *
+ * * `enc`     - Encoder handle.
+ * * `buf`     - Destination buffer.
+ * * `buf_cap` - Size of `buf` in bytes.
+ * * `written` - Out: bytes written (on success) or required size
+ *   (on `ALEC_ERROR_BUFFER_TOO_SMALL`).
+ *
+ * # Returns
+ *
+ * * `ALEC_OK` on success.
+ * * `ALEC_ERROR_BUFFER_TOO_SMALL` if `buf_cap` is too small —
+ *   `*written` reports the required size, `buf` is unchanged.
+ * * `ALEC_ERROR_NULL_POINTER` for a NULL required pointer.
+ * * `ALEC_ERROR_ENCODING_FAILED` if the underlying context
+ *   serialization fails (pathological config).
+ */
+enum AlecResult alec_encoder_context_save(const struct AlecEncoder *enc,
+                                          uint8_t *buf,
+                                          uintptr_t buf_cap,
+                                          uintptr_t *written);
+
+/**
+ * Restore encoder state from bytes produced by `alec_encoder_context_save`.
+ *
+ * On success the encoder's `context`, `sequence`, `force_keyframe_pending`
+ * and `messages_since_keyframe` are all overwritten atomically. Static
+ * configuration (`keyframe_interval`, `smart_resync`, checksum flag) is
+ * preserved — those are properties of the encoder instance, not of the
+ * transient runtime state.
+ *
+ * On `ALEC_ERROR_CORRUPT_DATA` the encoder is NOT modified (all-or-
+ * nothing contract — a corrupted restore leaves you free to retry).
+ *
+ * # Arguments
+ *
+ * * `enc`     - Encoder handle.
+ * * `buf`     - Input bytes produced by `alec_encoder_context_save`.
+ * * `buf_len` - Length of `buf` in bytes.
+ *
+ * # Returns
+ *
+ * * `ALEC_OK` on success.
+ * * `ALEC_ERROR_NULL_POINTER` for a NULL required pointer.
+ * * `ALEC_ERROR_CORRUPT_DATA` if `buf` cannot be parsed (bad magic,
+ *   unknown format version, header xxh64 mismatch, length mismatch,
+ *   or malformed ALCS payload).
+ */
+enum AlecResult alec_encoder_context_load(struct AlecEncoder *enc,
+                                          const uint8_t *buf,
+                                          uintptr_t buf_len);
+
+/**
  * Create a new ALEC decoder
  *
  * # Returns
