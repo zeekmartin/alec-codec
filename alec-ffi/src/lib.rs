@@ -340,7 +340,7 @@ pub struct AlecDecoder {
 #[no_mangle]
 pub extern "C" fn alec_version() -> *const c_char {
     // Include null terminator
-    static VERSION: &[u8] = b"1.3.8\0";
+    static VERSION: &[u8] = b"1.3.9\0";
     VERSION.as_ptr() as *const c_char
 }
 
@@ -940,18 +940,35 @@ pub extern "C" fn alec_encoder_context_save(
     }
     let e = unsafe { &*enc };
 
-    let alcs = match e.context.to_preload_bytes(ENC_STATE_CTX_TAG) {
-        Ok(b) => b,
+    // v1.3.9: zero-heap streaming write directly into the caller's
+    // buffer. We avoid the ~1.5 KB temporary `Vec<u8>` that the
+    // previous implementation produced via `Context::to_preload_bytes`
+    // — that allocation was the reported crash trigger on the
+    // partner's 4 KB heap Cortex-M4.
+    //
+    // Contract (unchanged from v1.3.7 / v1.3.8):
+    //   * on success: `*written` = total bytes written, return Ok.
+    //   * on BufferTooSmall: `*written` = required size, `buf` NOT
+    //     touched (no partial write). Callers can retry with a
+    //     larger buffer.
+    //   * on any other error: return EncodingFailed, `buf` / `written`
+    //     semantics best-effort (no partial writes from this path
+    //     because we size-check everything up front).
+
+    // Required size = 24-byte encoder header + ALCS payload.
+    let alcs_needed = match e.context.preload_bytes_len(ENC_STATE_CTX_TAG) {
+        Ok(n) => n,
         Err(_) => return AlecResult::ErrorEncodingFailed,
     };
-    let total = ENC_STATE_HEADER_SIZE + alcs.len();
+    let total = ENC_STATE_HEADER_SIZE + alcs_needed;
     if total > buf_cap {
         unsafe { *written = total };
         return AlecResult::ErrorBufferTooSmall;
     }
 
     let out = unsafe { slice::from_raw_parts_mut(buf, buf_cap) };
-    // Header layout — see the module comment above.
+
+    // --- 24-byte encoder-state header (see module comment above) ---
     out[0..4].copy_from_slice(&ENC_STATE_MAGIC);
     out[4] = ENC_STATE_VERSION;
     out[5] = if e.force_keyframe_pending {
@@ -961,10 +978,18 @@ pub extern "C" fn alec_encoder_context_save(
     };
     out[6..8].copy_from_slice(&e.encoder.sequence().to_be_bytes());
     out[8..12].copy_from_slice(&e.messages_since_keyframe.to_be_bytes());
-    out[12..16].copy_from_slice(&(alcs.len() as u32).to_be_bytes());
+    out[12..16].copy_from_slice(&(alcs_needed as u32).to_be_bytes());
     let hdr_hash = xxhash_rust::xxh64::xxh64(&out[0..16], 0);
     out[16..24].copy_from_slice(&hdr_hash.to_be_bytes());
-    out[24..24 + alcs.len()].copy_from_slice(&alcs);
+
+    // --- ALCS payload written directly into the caller buffer ---
+    // Byte-identical to the v1.3.8 output — same ALCS wire format.
+    let alcs_slice = &mut out[ENC_STATE_HEADER_SIZE..ENC_STATE_HEADER_SIZE + alcs_needed];
+    let alcs_written = match e.context.write_preload_bytes(ENC_STATE_CTX_TAG, alcs_slice) {
+        Ok(n) => n,
+        Err(_) => return AlecResult::ErrorEncodingFailed,
+    };
+    debug_assert_eq!(alcs_written, alcs_needed);
 
     unsafe { *written = total };
     AlecResult::Ok
@@ -1930,7 +1955,7 @@ mod tests {
         let version = alec_version();
         assert!(!version.is_null());
         let version_str = unsafe { CStr::from_ptr(version) }.to_str().unwrap();
-        assert_eq!(version_str, "1.3.8");
+        assert_eq!(version_str, "1.3.9");
     }
 
     #[test]

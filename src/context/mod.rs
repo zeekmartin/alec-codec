@@ -28,28 +28,109 @@ type Map<K, V> = std::collections::HashMap<K, V>;
 #[cfg(not(feature = "std"))]
 type Map<K, V> = alloc::collections::BTreeMap<K, V>;
 
-/// Return the `u32` keys of `map` in ascending order.
+/// Walk `map` in ascending-`u32`-key order, invoking `f(key, value)`
+/// for each entry. Zero heap allocations on both the `std` and
+/// `no_std` code paths.
 ///
-/// Exists to keep `Context::to_preload_bytes` off the stdlib sort code
-/// path on MCU targets. Rust's stable sort (driftsort) allocates a
-/// ~450-byte scratch frame regardless of input size, which is a
-/// significant fraction of a 2–4 KB Cortex-M stack. On `no_std` builds
-/// the underlying `Map` is a `BTreeMap` whose `.keys()` is already
-/// sorted, so we return them as-is. On `std` builds the underlying
-/// `HashMap` has random iteration order, so we still sort — host
-/// targets have plenty of stack.
-#[cfg(feature = "std")]
-fn sorted_u32_keys<V>(map: &Map<u32, V>) -> Vec<u32> {
-    let mut keys: Vec<u32> = map.keys().copied().collect();
-    keys.sort();
-    keys
+/// * `no_std`: `Map` is a `BTreeMap`; `.iter()` is already sorted, so
+///   we forward directly.
+/// * `std`: `Map` is a `HashMap` with random iteration order. We run
+///   an O(n²) "find next-smallest key strictly greater than the last"
+///   sweep — no heap, tiny constants. For the sizes we care about
+///   (typical `≤ 32` source_stats, `≤ 256` dictionary patterns) this
+///   is orders of magnitude faster than a call into the stdlib sort
+///   machinery and, unlike `Vec<u32> + sort()`, leaves a strict
+///   tracking allocator at zero bytes.
+#[inline]
+fn for_each_sorted_u32<V, F: FnMut(u32, &V)>(map: &Map<u32, V>, mut f: F) {
+    #[cfg(not(feature = "std"))]
+    {
+        for (k, v) in map {
+            f(*k, v);
+        }
+    }
+    #[cfg(feature = "std")]
+    {
+        let n = map.len();
+        if n == 0 {
+            return;
+        }
+        let mut last: Option<u32> = None;
+        let mut emitted = 0usize;
+        while emitted < n {
+            let mut next: Option<u32> = None;
+            for &k in map.keys() {
+                if let Some(l) = last {
+                    if k <= l {
+                        continue;
+                    }
+                }
+                match next {
+                    None => next = Some(k),
+                    Some(cur) if k < cur => next = Some(k),
+                    _ => {}
+                }
+            }
+            match next {
+                Some(k) => {
+                    f(k, map.get(&k).unwrap());
+                    last = Some(k);
+                    emitted += 1;
+                }
+                None => break, // Defensive: unreachable if map.len() matches real entries.
+            }
+        }
+    }
 }
-#[cfg(not(feature = "std"))]
-fn sorted_u32_keys<V>(map: &Map<u32, V>) -> Vec<u32> {
-    // BTreeMap::keys() yields in ascending key order already; a plain
-    // `.collect()` preserves that order and avoids pulling in the
-    // stdlib sort machinery at all.
-    map.keys().copied().collect()
+
+/// Byte-streaming helper: append one SourceStats entry to `out` at
+/// cursor `w`. Zero heap, no intermediate buffers.
+///
+/// Used by `Context::write_preload_bytes` — the v1.3.9 zero-heap
+/// serialiser. Factored out to keep the parent function's stack frame
+/// small and avoid nine copy-paste expansions of the field layout.
+fn write_source_stats_into(out: &mut [u8], w: &mut usize, sid: u32, s: &SourceStats) {
+    out[*w..*w + 4].copy_from_slice(&sid.to_le_bytes());
+    *w += 4;
+    out[*w..*w + 8].copy_from_slice(&s.count.to_le_bytes());
+    *w += 8;
+    out[*w..*w + 8].copy_from_slice(&s.last_value.to_le_bytes());
+    *w += 8;
+    out[*w..*w + 8].copy_from_slice(&s.ema.to_le_bytes());
+    *w += 8;
+    out[*w..*w + 8].copy_from_slice(&s.ema_alpha.to_le_bytes());
+    *w += 8;
+    out[*w..*w + 8].copy_from_slice(&s.sum_sq_diff.to_le_bytes());
+    *w += 8;
+    out[*w..*w + 8].copy_from_slice(&s.mean.to_le_bytes());
+    *w += 8;
+    out[*w..*w + 4].copy_from_slice(&(s.max_history as u32).to_le_bytes());
+    *w += 4;
+    out[*w..*w + 4].copy_from_slice(&(s.history.len() as u32).to_le_bytes());
+    *w += 4;
+    for v in &s.history {
+        out[*w..*w + 8].copy_from_slice(&v.to_le_bytes());
+        *w += 8;
+    }
+}
+
+/// Byte-streaming helper: append one dictionary `Pattern` entry to
+/// `out` at cursor `w`. Companion to `write_source_stats_into`.
+fn write_pattern_into(out: &mut [u8], w: &mut usize, code: u32, p: &Pattern) {
+    out[*w..*w + 4].copy_from_slice(&code.to_le_bytes());
+    *w += 4;
+    // Pattern data length capped at u16 (MAX_PATTERN_SIZE = 255 anyway).
+    let data_len = p.data.len().min(u16::MAX as usize);
+    out[*w..*w + 2].copy_from_slice(&(data_len as u16).to_le_bytes());
+    *w += 2;
+    out[*w..*w + data_len].copy_from_slice(&p.data[..data_len]);
+    *w += data_len;
+    out[*w..*w + 8].copy_from_slice(&p.frequency.to_le_bytes());
+    *w += 8;
+    out[*w..*w + 8].copy_from_slice(&p.last_used.to_le_bytes());
+    *w += 8;
+    out[*w..*w + 8].copy_from_slice(&p.created_at.to_le_bytes());
+    *w += 8;
 }
 
 /// Maximum number of patterns in dictionary
@@ -1003,6 +1084,94 @@ impl Context {
     ///
     /// * `ContextError::PatternTooLarge` if `sensor_type` is longer than 255 bytes.
     pub fn to_preload_bytes(&self, sensor_type: &str) -> Result<Vec<u8>> {
+        // Backward-compat wrapper: allocate a right-sized Vec and
+        // stream directly into it. Zero-heap callers should prefer
+        // `write_preload_bytes` which writes to a caller-provided
+        // slice.
+        let needed = self.preload_bytes_len(sensor_type)?;
+        // `vec![0; needed]` compiles to a single `__rust_alloc_zeroed`
+        // call — faster than `with_capacity + resize` which triggers
+        // a loop-based zero-fill (clippy::slow_vector_initialization).
+        #[cfg(feature = "std")]
+        let mut out: Vec<u8> = vec![0u8; needed];
+        #[cfg(not(feature = "std"))]
+        let mut out: Vec<u8> = alloc::vec![0u8; needed];
+        let written = self.write_preload_bytes(sensor_type, &mut out)?;
+        debug_assert_eq!(written, needed);
+        out.truncate(written);
+        Ok(out)
+    }
+
+    /// Number of bytes `write_preload_bytes(sensor_type, …)` / `to_preload_bytes`
+    /// would produce for the current context, without allocating anything.
+    ///
+    /// Intended for callers that need to size a pre-allocated buffer
+    /// before calling `write_preload_bytes` (e.g. MCU firmware with a
+    /// static scratch arena).
+    ///
+    /// # Errors
+    ///
+    /// * `ContextError::PatternTooLarge` if `sensor_type` is longer than 255 bytes.
+    pub fn preload_bytes_len(&self, sensor_type: &str) -> Result<usize> {
+        let sens_len = sensor_type.len();
+        if sens_len > 255 {
+            return Err(crate::error::ContextError::PatternTooLarge {
+                size: sens_len,
+                max: 255,
+            }
+            .into());
+        }
+        // Fixed header: 4 (magic) + 4 (format ver) + 4 (ctx ver)
+        //             + 4 (scale) + 8 (obs count) + 4 (next_code)
+        //             + 1 (sens_len) + sens_len + 4 (src_count).
+        let mut total = 4 + 4 + 4 + 4 + 8 + 4 + 1 + sens_len + 4;
+        for s in self.source_stats.values() {
+            // Fixed: sid(4) + count(8) + last_value(8) + ema(8)
+            //      + ema_alpha(8) + sum_sq_diff(8) + mean(8)
+            //      + max_history(4) + hist_len(4) = 60 B
+            // Plus: hist_len * 8.
+            total += 60 + s.history.len() * 8;
+        }
+        total += 4; // dict_count
+        for p in self.dictionary.values() {
+            let data_len = p.data.len().min(u16::MAX as usize);
+            // Fixed: code(4) + data_len(2) + data + frequency(8)
+            //      + last_used(8) + created_at(8) = 30 B + data.
+            total += 30 + data_len;
+        }
+        total += 4; // trailing CRC32
+        Ok(total)
+    }
+
+    /// Serialize the context into a caller-provided byte buffer.
+    ///
+    /// **Zero heap allocations.** This is the MCU-friendly serialiser —
+    /// used by `alec_encoder_context_save` so that firmware can save
+    /// its state into a static 2 KB buffer without asking the allocator
+    /// for a ~1.5 KB scratch block (which frequently fails on 4 KB-heap
+    /// Cortex-M targets once patterns have accumulated).
+    ///
+    /// The produced bytes are **byte-identical** to `to_preload_bytes` —
+    /// same ALCS format, same CRC32, same ordering. The two functions
+    /// are interchangeable from the reader's perspective.
+    ///
+    /// # Arguments
+    ///
+    /// * `sensor_type` — label written into the ALCS header (≤ 255 bytes).
+    /// * `out` — destination buffer. Must be at least `preload_bytes_len(sensor_type)`
+    ///   bytes long.
+    ///
+    /// # Returns
+    ///
+    /// Number of bytes written on success.
+    ///
+    /// # Errors
+    ///
+    /// * `ContextError::PatternTooLarge` if `sensor_type` is > 255 bytes.
+    /// * `EncodeError::BufferTooSmall { needed, available }` if `out`
+    ///   is too small. The buffer is NOT modified in that case
+    ///   (no partial write) — callers can safely retry after resizing.
+    pub fn write_preload_bytes(&self, sensor_type: &str, out: &mut [u8]) -> Result<usize> {
         let sens_bytes = sensor_type.as_bytes();
         if sens_bytes.len() > 255 {
             return Err(crate::error::ContextError::PatternTooLarge {
@@ -1012,73 +1181,79 @@ impl Context {
             .into());
         }
 
-        let mut out: Vec<u8> = Vec::with_capacity(256);
-        // Magic + format version
-        out.extend_from_slice(ALCS_MAGIC);
-        out.extend_from_slice(&ALCS_FORMAT_VERSION.to_le_bytes());
-        // Core context scalars
-        out.extend_from_slice(&self.version.to_le_bytes());
-        out.extend_from_slice(&self.scale_factor.to_le_bytes());
-        out.extend_from_slice(&self.observation_count.to_le_bytes());
-        out.extend_from_slice(&self.next_code.to_le_bytes());
-        // sensor_type
-        out.push(sens_bytes.len() as u8);
-        out.extend_from_slice(sens_bytes);
-
-        // Per-source SourceStats, sorted by source_id for determinism.
-        //
-        // Stack-usage note (MCU): on `#[cfg(not(feature = "std"))]`
-        // builds `Map<u32, _>` is a `BTreeMap` whose `.keys()` iterator
-        // already yields in ascending order, so we skip `.sort()`
-        // entirely. On `std` builds the underlying `HashMap` has
-        // random iteration order and we sort in place — host targets
-        // have plenty of stack.
-        //
-        // This matters because Rust's stable sort (driftsort) allocates
-        // a ~450-byte on-stack scratch frame independently of input
-        // size, which can blow a 2-4 KB Cortex-M stack when
-        // `to_preload_bytes` is called from `alec_encoder_context_save`.
-        let source_ids = sorted_u32_keys(&self.source_stats);
-        out.extend_from_slice(&(source_ids.len() as u32).to_le_bytes());
-        for sid in &source_ids {
-            let s = self.source_stats.get(sid).unwrap();
-            out.extend_from_slice(&sid.to_le_bytes());
-            out.extend_from_slice(&s.count.to_le_bytes());
-            out.extend_from_slice(&s.last_value.to_le_bytes());
-            out.extend_from_slice(&s.ema.to_le_bytes());
-            out.extend_from_slice(&s.ema_alpha.to_le_bytes());
-            out.extend_from_slice(&s.sum_sq_diff.to_le_bytes());
-            out.extend_from_slice(&s.mean.to_le_bytes());
-            out.extend_from_slice(&(s.max_history as u32).to_le_bytes());
-            out.extend_from_slice(&(s.history.len() as u32).to_le_bytes());
-            for v in &s.history {
-                out.extend_from_slice(&v.to_le_bytes());
+        // Pre-flight size check so the common BufferTooSmall path does
+        // not leave a partial write in `out`.
+        let needed = self.preload_bytes_len(sensor_type)?;
+        if out.len() < needed {
+            return Err(crate::error::EncodeError::BufferTooSmall {
+                needed,
+                available: out.len(),
             }
+            .into());
         }
 
-        // Dictionary, sorted by code for determinism — same
-        // `sorted_u32_keys` path so the MCU build avoids driftsort.
-        let codes = sorted_u32_keys(&self.dictionary);
-        out.extend_from_slice(&(codes.len() as u32).to_le_bytes());
-        for code in &codes {
-            let p = self.dictionary.get(code).unwrap();
-            out.extend_from_slice(&code.to_le_bytes());
-            // Pattern data length capped at u16 (MAX_PATTERN_SIZE is 255 anyway).
-            let data_len = p.data.len().min(u16::MAX as usize) as u16;
-            out.extend_from_slice(&data_len.to_le_bytes());
-            out.extend_from_slice(&p.data[..data_len as usize]);
-            out.extend_from_slice(&p.frequency.to_le_bytes());
-            out.extend_from_slice(&p.last_used.to_le_bytes());
-            out.extend_from_slice(&p.created_at.to_le_bytes());
-        }
+        let mut w = 0usize;
+        // Magic + format version.
+        out[w..w + 4].copy_from_slice(ALCS_MAGIC);
+        w += 4;
+        out[w..w + 4].copy_from_slice(&ALCS_FORMAT_VERSION.to_le_bytes());
+        w += 4;
+        // Core context scalars.
+        out[w..w + 4].copy_from_slice(&self.version.to_le_bytes());
+        w += 4;
+        out[w..w + 4].copy_from_slice(&self.scale_factor.to_le_bytes());
+        w += 4;
+        out[w..w + 8].copy_from_slice(&self.observation_count.to_le_bytes());
+        w += 8;
+        out[w..w + 4].copy_from_slice(&self.next_code.to_le_bytes());
+        w += 4;
+        // sensor_type.
+        out[w] = sens_bytes.len() as u8;
+        w += 1;
+        out[w..w + sens_bytes.len()].copy_from_slice(sens_bytes);
+        w += sens_bytes.len();
 
-        // CRC32 over everything so far.
+        // === Per-source SourceStats ===
+        out[w..w + 4].copy_from_slice(&(self.source_stats.len() as u32).to_le_bytes());
+        w += 4;
+        // Iterate in ascending source_id order with *zero* heap.
+        //
+        // * `no_std` path: `Map` is a `BTreeMap`, `.iter()` is already
+        //   sorted — a direct `for` loop suffices.
+        // * `std` path: `Map` is a `HashMap` (random iteration order).
+        //   We use an O(n²) "find the next-smallest key > last" sweep
+        //   via `for_each_sorted_u32`, which walks the map multiple
+        //   times without allocating anywhere. `n` is bounded by
+        //   `max_patterns` (≤ 65 535) and is typically < 32 for
+        //   fixed-channel encoders, so the extra compute is trivial.
+        //
+        // This replaces the v1.3.8 `sorted_u32_keys(…) -> Vec<u32>`
+        // helper, which allocated a small `Vec<u32>` and was the last
+        // remaining heap allocation visible to a strict tracking
+        // allocator (verified by `zero_heap_allocator_proof.rs`).
+        for_each_sorted_u32(&self.source_stats, |sid, s| {
+            write_source_stats_into(out, &mut w, sid, s);
+        });
+
+        // === Dictionary ===
+        out[w..w + 4].copy_from_slice(&(self.dictionary.len() as u32).to_le_bytes());
+        w += 4;
+        for_each_sorted_u32(&self.dictionary, |code, p| {
+            write_pattern_into(out, &mut w, code, p);
+        });
+
+        // === Trailing CRC32 ===
+        // The `crc` crate's Crc<u32> holds a 1 KB lookup table; the
+        // `const` hoists it into rodata so no stack copy is made on
+        // ARM release builds (verified in v1.3.8 stack audit).
         use crc::{Crc, CRC_32_ISO_HDLC};
         const CRC32: Crc<u32> = Crc::<u32>::new(&CRC_32_ISO_HDLC);
-        let crc = CRC32.checksum(&out);
-        out.extend_from_slice(&crc.to_le_bytes());
+        let crc = CRC32.checksum(&out[..w]);
+        out[w..w + 4].copy_from_slice(&crc.to_le_bytes());
+        w += 4;
 
-        Ok(out)
+        debug_assert_eq!(w, needed);
+        Ok(w)
     }
 
     /// Reconstruct a context from bytes produced by `to_preload_bytes`.

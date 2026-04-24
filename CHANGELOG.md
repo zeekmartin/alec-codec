@@ -7,6 +7,60 @@ et ce projet adhère au [Semantic Versioning](https://semver.org/lang/fr/).
 
 ---
 
+## [1.3.9] — 2026-04-24
+
+### Fixed
+- `alec_encoder_context_save()`: eliminated **all** temporary heap
+  allocations on both `std` and `no_std` builds. The serialiser now
+  writes directly into the caller-provided buffer (streaming writer).
+  Fixes heap-exhaustion crash reported by a manufacturing partner
+  running on Cortex-M4 with a 4 KB heap and an encoder that had
+  accumulated ~50+ patterns. API unchanged, wire format byte-identical
+  to v1.3.8.
+- `alec_encoder_context_load()`: no temporary heap was found in the
+  load path during the v1.3.9 audit (only the persistent state of the
+  restored Context is allocated, which is unavoidable). No change
+  needed there.
+
+### Added
+- `Context::write_preload_bytes(&self, sensor_type, out: &mut [u8])
+  -> Result<usize>` — zero-heap ALCS serialiser writing directly to
+  a caller-provided slice. Returns `EncodeError::BufferTooSmall {
+  needed, available }` when `out` is too short, with no partial write.
+- `Context::preload_bytes_len(&self, sensor_type) -> Result<usize>` —
+  pre-flight size query so callers can size their static buffer.
+- Integration tests:
+  `alec-ffi/tests/zero_heap_context_save.rs` (6 tests covering the
+  partner scenario, byte-identity with v1.3.8, buffer-too-small,
+  max-patterns stress, FFI round-trip, NULL safety) and
+  `alec-ffi/tests/zero_heap_allocator_proof.rs` (empirical proof via
+  a counting global allocator that the save call performs zero heap
+  allocations).
+
+### Changed
+- `Context::to_preload_bytes(&self, sensor_type)` is now a thin
+  backward-compat wrapper around `write_preload_bytes` (allocates a
+  right-sized `Vec<u8>` and streams into it). Semantics unchanged for
+  existing callers.
+- Replaced v1.3.8's `sorted_u32_keys(&map) -> Vec<u32>` helper with a
+  zero-heap `for_each_sorted_u32(&map, |k, v| …)` callback iterator.
+  On `no_std` this is a direct `BTreeMap` walk; on `std` it uses an
+  O(n²) "next-smallest-key" sweep (n is bounded by `max_patterns`,
+  typically < 32 for fixed-channel encoders).
+
+### Memory budget (partner scenario: 4 KB heap / 2 KB stack)
+
+| Path | v1.3.8 | v1.3.9 |
+|---|---:|---:|
+| Temporary heap during `alec_encoder_context_save` | ~1 550 B | **0 B** |
+| Stack chain for `alec_encoder_context_save` | ~280 B | ~180 B |
+
+With ~50 patterns accumulated, v1.3.8 needed `~5 000 B (persistent) +
+1 550 B (scratch Vec) = 6 550 B` of heap at save time, exceeding the
+4 KB budget. v1.3.9 eliminates the scratch Vec entirely.
+
+---
+
 ## [1.3.8] — 2026-04-24
 
 ### Changed
