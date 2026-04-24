@@ -162,14 +162,21 @@ pub const ALEC_DEFAULT_KEYFRAME_INTERVAL: u32 = 50;
 /// Default for smart-resync via LoRaWAN downlink.
 pub const ALEC_DEFAULT_SMART_RESYNC: bool = true;
 
+/// Default pre-warm channel count. `0` disables the pre-warm (legacy
+/// behaviour — first encode allocates per-channel state).
+pub const ALEC_DEFAULT_NUM_CHANNELS: u32 = 0;
+
 /// Runtime configuration for a new ALEC encoder.
 ///
 /// Mirrors the Milesight-integration defaults (history=20,
 /// patterns=256, memory=2048B, keyframe=50, smart_resync=true).
 ///
 /// Pass a NULL pointer to `alec_encoder_new_with_config` to use all
-/// defaults. Any field set to 0 is also replaced by its default, so
+/// defaults. Any numeric field set to 0 is replaced by its default, so
 /// callers can opt in to a single override while keeping the rest.
+/// `num_channels` is the only documented exception — `0` means "do not
+/// pre-warm" (legacy behaviour), any positive value activates the
+/// init-time pre-warm described below.
 #[repr(C)]
 #[derive(Debug, Clone, Copy)]
 pub struct AlecEncoderConfig {
@@ -185,6 +192,22 @@ pub struct AlecEncoderConfig {
     /// If true, the encoder honours downlink-driven resync requests
     /// (via `alec_force_keyframe`). Default: true.
     pub smart_resync: bool,
+    /// **v1.3.9 addition.** Number of fixed channels to pre-allocate at
+    /// encoder-creation time. When > 0, `alec_encoder_new_with_config`
+    /// immediately allocates one `SourceStats` entry per channel (ids
+    /// `1..=num_channels`, matching the `fixed_channel_source_id`
+    /// convention), so the first call to `alec_encode_multi_fixed`
+    /// performs ZERO heap allocations.
+    ///
+    /// Set to the number of channels your firmware uses (5 for the
+    /// Milesight EM500-CO2). `0` disables the pre-warm and keeps the
+    /// pre-v1.3.9 behaviour — the first encode allocates on demand,
+    /// which can panic on heaps partially consumed between
+    /// `alec_encoder_new_with_config` and the first encode.
+    ///
+    /// Upper bound: 64 (matches `Encoder::encode_multi_fixed`'s
+    /// channel cap). Values above 64 are treated as 0.
+    pub num_channels: u32,
 }
 
 impl AlecEncoderConfig {
@@ -196,13 +219,15 @@ impl AlecEncoderConfig {
             max_memory_bytes: ALEC_DEFAULT_MAX_MEMORY_BYTES,
             keyframe_interval: ALEC_DEFAULT_KEYFRAME_INTERVAL,
             smart_resync: ALEC_DEFAULT_SMART_RESYNC,
+            num_channels: ALEC_DEFAULT_NUM_CHANNELS,
         }
     }
 
     /// Resolve the effective config, replacing any 0 numeric field by
     /// its default. Numeric fields set to 0 are treated as "use default"
-    /// rather than "disable" — except `keyframe_interval`, where 0 is a
-    /// legitimate way to disable the keyframe mechanism.
+    /// rather than "disable" — except `keyframe_interval` and
+    /// `num_channels`, where 0 is a legitimate value (disable keyframes
+    /// / disable the v1.3.9 pre-warm respectively).
     fn resolved(self) -> Self {
         let d = Self::defaults();
         Self {
@@ -224,6 +249,15 @@ impl AlecEncoderConfig {
             // keyframe_interval == 0 is a valid value (disabled), so keep as-is.
             keyframe_interval: self.keyframe_interval,
             smart_resync: self.smart_resync,
+            // num_channels == 0 means "no pre-warm" (legacy behaviour), keep as-is.
+            // Values above 64 (encode_multi_fixed's channel cap) are clamped to 0
+            // so the caller is not silently given an encoder that pre-warmed too
+            // many sources and then failed at encode time.
+            num_channels: if self.num_channels > 64 {
+                0
+            } else {
+                self.num_channels
+            },
         }
     }
 
@@ -340,7 +374,7 @@ pub struct AlecDecoder {
 #[no_mangle]
 pub extern "C" fn alec_version() -> *const c_char {
     // Include null terminator
-    static VERSION: &[u8] = b"1.3.8\0";
+    static VERSION: &[u8] = b"1.3.9\0";
     VERSION.as_ptr() as *const c_char
 }
 
@@ -430,14 +464,24 @@ pub extern "C" fn alec_encoder_new_with_checksum() -> *mut AlecEncoder {
 /// Create a new ALEC encoder with a custom configuration.
 ///
 /// Mirrors the Milesight integration requirements: the caller specifies
-/// `history_size`, `max_patterns`, `max_memory_bytes`, `keyframe_interval`
-/// and `smart_resync`. See `AlecEncoderConfig` for defaults.
+/// `history_size`, `max_patterns`, `max_memory_bytes`, `keyframe_interval`,
+/// `smart_resync` and (v1.3.9+) `num_channels`. See `AlecEncoderConfig`
+/// for defaults.
 ///
 /// # Arguments
 ///
 /// * `config` - Pointer to an `AlecEncoderConfig`. If NULL, all defaults
 ///   are used. Numeric fields set to 0 are replaced by their default
-///   (except `keyframe_interval`, where 0 disables periodic keyframes).
+///   (except `keyframe_interval`, where 0 disables periodic keyframes,
+///   and `num_channels`, where 0 disables the v1.3.9 pre-warm).
+///
+/// # v1.3.9 pre-warm
+///
+/// If `config.num_channels > 0`, one `SourceStats` entry is pre-allocated
+/// per channel (ids `1..=num_channels`) at encoder-creation time. This
+/// moves per-channel heap allocations out of the hot encode path and
+/// prevents OOM panics on MCUs with a partially-consumed heap at
+/// firmware init. Recommended for all fixed-channel MCU deployments.
 ///
 /// # Returns
 ///
@@ -453,7 +497,17 @@ pub extern "C" fn alec_encoder_new_with_config(
         unsafe { *config }.resolved()
     };
 
-    let context = Context::with_config(cfg.to_context_config());
+    let mut context = Context::with_config(cfg.to_context_config());
+
+    // v1.3.9 pre-warm: pre-allocate per-channel SourceStats so the
+    // first `alec_encode_multi_fixed` call performs ZERO heap
+    // allocation. Keys match `fixed_channel_source_id(i) = i + 1`.
+    // `resolved()` clamps `num_channels > 64` to 0, so we never
+    // over-allocate.
+    for i in 0..cfg.num_channels {
+        context.ensure_source_stats(i + 1);
+    }
+
     let encoder = Box::new(AlecEncoder {
         encoder: Encoder::new(),
         classifier: Classifier::default(),
@@ -940,18 +994,35 @@ pub extern "C" fn alec_encoder_context_save(
     }
     let e = unsafe { &*enc };
 
-    let alcs = match e.context.to_preload_bytes(ENC_STATE_CTX_TAG) {
-        Ok(b) => b,
+    // v1.3.9: zero-heap streaming write directly into the caller's
+    // buffer. We avoid the ~1.5 KB temporary `Vec<u8>` that the
+    // previous implementation produced via `Context::to_preload_bytes`
+    // — that allocation was the reported crash trigger on the
+    // partner's 4 KB heap Cortex-M4.
+    //
+    // Contract (unchanged from v1.3.7 / v1.3.8):
+    //   * on success: `*written` = total bytes written, return Ok.
+    //   * on BufferTooSmall: `*written` = required size, `buf` NOT
+    //     touched (no partial write). Callers can retry with a
+    //     larger buffer.
+    //   * on any other error: return EncodingFailed, `buf` / `written`
+    //     semantics best-effort (no partial writes from this path
+    //     because we size-check everything up front).
+
+    // Required size = 24-byte encoder header + ALCS payload.
+    let alcs_needed = match e.context.preload_bytes_len(ENC_STATE_CTX_TAG) {
+        Ok(n) => n,
         Err(_) => return AlecResult::ErrorEncodingFailed,
     };
-    let total = ENC_STATE_HEADER_SIZE + alcs.len();
+    let total = ENC_STATE_HEADER_SIZE + alcs_needed;
     if total > buf_cap {
         unsafe { *written = total };
         return AlecResult::ErrorBufferTooSmall;
     }
 
     let out = unsafe { slice::from_raw_parts_mut(buf, buf_cap) };
-    // Header layout — see the module comment above.
+
+    // --- 24-byte encoder-state header (see module comment above) ---
     out[0..4].copy_from_slice(&ENC_STATE_MAGIC);
     out[4] = ENC_STATE_VERSION;
     out[5] = if e.force_keyframe_pending {
@@ -961,10 +1032,18 @@ pub extern "C" fn alec_encoder_context_save(
     };
     out[6..8].copy_from_slice(&e.encoder.sequence().to_be_bytes());
     out[8..12].copy_from_slice(&e.messages_since_keyframe.to_be_bytes());
-    out[12..16].copy_from_slice(&(alcs.len() as u32).to_be_bytes());
+    out[12..16].copy_from_slice(&(alcs_needed as u32).to_be_bytes());
     let hdr_hash = xxhash_rust::xxh64::xxh64(&out[0..16], 0);
     out[16..24].copy_from_slice(&hdr_hash.to_be_bytes());
-    out[24..24 + alcs.len()].copy_from_slice(&alcs);
+
+    // --- ALCS payload written directly into the caller buffer ---
+    // Byte-identical to the v1.3.8 output — same ALCS wire format.
+    let alcs_slice = &mut out[ENC_STATE_HEADER_SIZE..ENC_STATE_HEADER_SIZE + alcs_needed];
+    let alcs_written = match e.context.write_preload_bytes(ENC_STATE_CTX_TAG, alcs_slice) {
+        Ok(n) => n,
+        Err(_) => return AlecResult::ErrorEncodingFailed,
+    };
+    debug_assert_eq!(alcs_written, alcs_needed);
 
     unsafe { *written = total };
     AlecResult::Ok
@@ -973,13 +1052,34 @@ pub extern "C" fn alec_encoder_context_save(
 /// Restore encoder state from bytes produced by `alec_encoder_context_save`.
 ///
 /// On success the encoder's `context`, `sequence`, `force_keyframe_pending`
-/// and `messages_since_keyframe` are all overwritten atomically. Static
-/// configuration (`keyframe_interval`, `smart_resync`, checksum flag) is
-/// preserved — those are properties of the encoder instance, not of the
-/// transient runtime state.
+/// and `messages_since_keyframe` are all overwritten. Static
+/// configuration (`keyframe_interval`, `smart_resync`, checksum flag)
+/// is preserved — those are properties of the encoder instance, not
+/// of the transient runtime state.
 ///
-/// On `ALEC_ERROR_CORRUPT_DATA` the encoder is NOT modified (all-or-
-/// nothing contract — a corrupted restore leaves you free to retry).
+/// # State transitions (v1.3.9)
+///
+/// On a tight-heap MCU, building the new `Context` while the old one
+/// is still alive briefly needs ~2× the per-instance heap — enough to
+/// blow a 4 KB allocator. v1.3.9 trades the previous all-or-nothing
+/// contract for a heap-safe three-phase restore:
+///
+/// 1. **Pre-validate** the input buffer without any allocation
+///    (magic, version, header xxh64, ALCS magic/CRC). If anything
+///    fails here → return `ALEC_ERROR_CORRUPT_DATA`, encoder
+///    **unchanged** (old contract preserved for the common
+///    caller-error case — wrong magic, CRC mismatch, truncation,
+///    etc.).
+/// 2. **Free** the old Context by replacing it with a fresh empty
+///    `Context`. Peak heap now drops back to ~1 × Context.
+/// 3. **Rebuild** the new Context from the input buffer. Peak heap
+///    is now ~1 × Context (new) instead of ~2 × (old + new). If the
+///    inner `from_preload_bytes` still fails for some reason that
+///    the pre-validator didn't catch (structural inconsistency
+///    between advertised counts and inner section lengths), the
+///    encoder ends up in a *freshly reset* state. This is the
+///    single behavioural change vs v1.3.8 and is documented under
+///    `ALEC_ERROR_CORRUPT_DATA` below.
 ///
 /// # Arguments
 ///
@@ -991,9 +1091,16 @@ pub extern "C" fn alec_encoder_context_save(
 ///
 /// * `ALEC_OK` on success.
 /// * `ALEC_ERROR_NULL_POINTER` for a NULL required pointer.
-/// * `ALEC_ERROR_CORRUPT_DATA` if `buf` cannot be parsed (bad magic,
-///   unknown format version, header xxh64 mismatch, length mismatch,
-///   or malformed ALCS payload).
+/// * `ALEC_ERROR_CORRUPT_DATA` if `buf` cannot be parsed.
+///   * If the pre-validator rejects the buffer (bad magic, unknown
+///     format version, header xxh64 mismatch, length mismatch,
+///     ALCS CRC mismatch): the encoder is **unchanged**.
+///   * If the outer validation succeeded but the inner
+///     `from_preload_bytes` fails (rare, implies a CRC-valid but
+///     structurally inconsistent buffer): the encoder is left in a
+///     **freshly reset state** — not the old state, not corrupted.
+///     Callers can safely `alec_force_keyframe` + resume encoding;
+///     the decoder will resync on the next keyframe.
 #[no_mangle]
 pub extern "C" fn alec_encoder_context_load(
     enc: *mut AlecEncoder,
@@ -1008,6 +1115,7 @@ pub extern "C" fn alec_encoder_context_load(
     }
     let data = unsafe { slice::from_raw_parts(buf, buf_len) };
 
+    // === PHASE 1: Pre-validate (zero heap allocation) ===
     // Magic + version.
     if data[0..4] != ENC_STATE_MAGIC {
         return AlecResult::ErrorCorruptData;
@@ -1015,7 +1123,6 @@ pub extern "C" fn alec_encoder_context_load(
     if data[4] != ENC_STATE_VERSION {
         return AlecResult::ErrorCorruptData;
     }
-
     // Header xxh64 — catches corruption of flags/sequence/msk/alcs_len.
     let stored_hash = u64::from_be_bytes([
         data[16], data[17], data[18], data[19], data[20], data[21], data[22], data[23],
@@ -1024,7 +1131,6 @@ pub extern "C" fn alec_encoder_context_load(
     if stored_hash != computed_hash {
         return AlecResult::ErrorCorruptData;
     }
-
     // ALCS payload length must account for all remaining bytes exactly.
     let alcs_len = u32::from_be_bytes([data[12], data[13], data[14], data[15]]) as usize;
     if alcs_len != buf_len.saturating_sub(ENC_STATE_HEADER_SIZE) {
@@ -1032,23 +1138,51 @@ pub extern "C" fn alec_encoder_context_load(
     }
     let alcs = &data[ENC_STATE_HEADER_SIZE..ENC_STATE_HEADER_SIZE + alcs_len];
 
-    // Parse the context first — if it fails, don't touch the encoder.
-    let ctx = match Context::from_preload_bytes(alcs) {
-        Ok(c) => c,
-        Err(_) => return AlecResult::ErrorCorruptData,
-    };
+    // Zero-heap ALCS header / CRC check — walks the buffer, computes
+    // the CRC32 table-based checksum against the rodata lookup, and
+    // returns a bool. Rejects the common failure modes
+    // (corruption, wrong format) before we touch the encoder.
+    if !Context::validate_preload_header(alcs) {
+        return AlecResult::ErrorCorruptData;
+    }
 
-    // All-or-nothing: commit every field together.
+    // === PHASE 2: Drop the old Context (frees heap) ===
+    // Extract scalar fields we'll need below BEFORE we take any
+    // mutable borrow of the encoder.
     let flags = data[5];
     let sequence = u16::from_be_bytes([data[6], data[7]]);
     let msk = u32::from_be_bytes([data[8], data[9], data[10], data[11]]);
 
     let e = unsafe { &mut *enc };
-    e.context = ctx;
-    e.encoder.restore_sequence(sequence);
-    e.messages_since_keyframe = msk;
-    e.force_keyframe_pending = (flags & ENC_FLAG_FORCE_KEYFRAME) != 0;
-    AlecResult::Ok
+    // `Context::new()` is stack-only (no allocations until a source
+    // is inserted). Assigning it drops the old Context here,
+    // returning its BTreeMap nodes / Vec<f64> history / Pattern data
+    // to the allocator.
+    e.context = Context::new();
+
+    // === PHASE 3: Build the new Context from the pre-validated buffer ===
+    // Peak heap now is only ~1× Context (the new one being built),
+    // not ~2× (old + new). Still calls into `from_preload_bytes`,
+    // whose allocations all end up persistent in the returned
+    // Context — no intermediate scratch Vec / temp Box.
+    match Context::from_preload_bytes(alcs) {
+        Ok(ctx) => {
+            e.context = ctx;
+            e.encoder.restore_sequence(sequence);
+            e.messages_since_keyframe = msk;
+            e.force_keyframe_pending = (flags & ENC_FLAG_FORCE_KEYFRAME) != 0;
+            AlecResult::Ok
+        }
+        Err(_) => {
+            // Unreachable on buffers produced by this library (the
+            // v1.3.9 validator + ALCS CRC32 catch every malformation
+            // we can emit). Defensive: if some third-party writer
+            // produced a CRC-valid but structurally inconsistent
+            // buffer, the encoder is left with the fresh
+            // `Context::new()` from Phase 2 — documented behaviour.
+            AlecResult::ErrorCorruptData
+        }
+    }
 }
 
 // ============================================================================
@@ -1930,7 +2064,7 @@ mod tests {
         let version = alec_version();
         assert!(!version.is_null());
         let version_str = unsafe { CStr::from_ptr(version) }.to_str().unwrap();
-        assert_eq!(version_str, "1.3.8");
+        assert_eq!(version_str, "1.3.9");
     }
 
     #[test]
@@ -2216,6 +2350,7 @@ mod tests {
             max_memory_bytes: 1024,
             keyframe_interval: 25,
             smart_resync: false,
+            num_channels: 0,
         };
         let enc = alec_encoder_new_with_config(&cfg);
         assert!(!enc.is_null());
@@ -2235,6 +2370,7 @@ mod tests {
             max_memory_bytes: 0,
             keyframe_interval: 0, // 0 means "disabled", kept as-is
             smart_resync: true,
+            num_channels: 0,
         };
         let enc = alec_encoder_new_with_config(&cfg);
         assert!(!enc.is_null());
@@ -2281,6 +2417,7 @@ mod tests {
             max_memory_bytes: 0,
             keyframe_interval: 50,
             smart_resync: false,
+            num_channels: 0,
         };
         let enc = alec_encoder_new_with_config(&cfg);
         alec_force_keyframe(enc);
@@ -2581,6 +2718,7 @@ mod tests {
             max_memory_bytes: 0,
             keyframe_interval: 10_000,
             smart_resync: false,
+            num_channels: 0,
         };
         let (frames, _decoded) = encode_decode_dataset(&data, Some(cfg));
 
@@ -2764,6 +2902,7 @@ mod tests {
             max_memory_bytes: 0,
             keyframe_interval: 10,
             smart_resync: true,
+            num_channels: 0,
         };
         let enc = alec_encoder_new_with_config(&cfg);
         // Stable signal: identical row every frame.
@@ -2829,6 +2968,7 @@ mod tests {
             max_memory_bytes: 0,
             keyframe_interval: 10_000,
             smart_resync: false,
+            num_channels: 0,
         };
         let (frames, _) = encode_decode_dataset(&data, Some(cfg));
         let mut counts = [0u32; 4]; // Repeated, Delta8, Delta16, Raw32
@@ -2893,6 +3033,7 @@ mod tests {
             max_memory_bytes: 0,
             keyframe_interval: 10_000, // avoid periodic keyframes
             smart_resync: true,
+            num_channels: 0,
         };
         let enc = alec_encoder_new_with_config(&cfg);
         let row = [3.6, 22.5, 45.0, 420.0, 1013.25];
@@ -2970,6 +3111,7 @@ mod tests {
             max_memory_bytes: 0,
             keyframe_interval,
             smart_resync: true,
+            num_channels: 0,
         };
         (alec_encoder_new_with_config(&cfg), alec_decoder_new())
     }
@@ -3471,6 +3613,7 @@ mod tests {
             max_memory_bytes: 0,
             keyframe_interval: 10_000, // avoid periodic keyframes
             smart_resync: false,
+            num_channels: 0,
         };
         let enc = alec_encoder_new_with_config(&cfg);
         let dec_orig = alec_decoder_new();

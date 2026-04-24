@@ -32,6 +32,12 @@
 #define ALEC_DEFAULT_SMART_RESYNC true
 
 /**
+ * Default pre-warm channel count. `0` disables the pre-warm (legacy
+ * behaviour — first encode allocates per-channel state).
+ */
+#define ALEC_DEFAULT_NUM_CHANNELS 0
+
+/**
  * Result codes for ALEC FFI functions
  */
 typedef enum AlecResult {
@@ -104,8 +110,11 @@ typedef struct AlecEncoder AlecEncoder;
  * patterns=256, memory=2048B, keyframe=50, smart_resync=true).
  *
  * Pass a NULL pointer to `alec_encoder_new_with_config` to use all
- * defaults. Any field set to 0 is also replaced by its default, so
+ * defaults. Any numeric field set to 0 is replaced by its default, so
  * callers can opt in to a single override while keeping the rest.
+ * `num_channels` is the only documented exception — `0` means "do not
+ * pre-warm" (legacy behaviour), any positive value activates the
+ * init-time pre-warm described below.
  */
 typedef struct AlecEncoderConfig {
   /**
@@ -130,6 +139,24 @@ typedef struct AlecEncoderConfig {
    * (via `alec_force_keyframe`). Default: true.
    */
   bool smart_resync;
+  /**
+   * **v1.3.9 addition.** Number of fixed channels to pre-allocate at
+   * encoder-creation time. When > 0, `alec_encoder_new_with_config`
+   * immediately allocates one `SourceStats` entry per channel (ids
+   * `1..=num_channels`, matching the `fixed_channel_source_id`
+   * convention), so the first call to `alec_encode_multi_fixed`
+   * performs ZERO heap allocations.
+   *
+   * Set to the number of channels your firmware uses (5 for the
+   * Milesight EM500-CO2). `0` disables the pre-warm and keeps the
+   * pre-v1.3.9 behaviour — the first encode allocates on demand,
+   * which can panic on heaps partially consumed between
+   * `alec_encoder_new_with_config` and the first encode.
+   *
+   * Upper bound: 64 (matches `Encoder::encode_multi_fixed`'s
+   * channel cap). Values above 64 are treated as 0.
+   */
+  uint32_t num_channels;
 } AlecEncoderConfig;
 
 #ifdef __cplusplus
@@ -200,14 +227,24 @@ struct AlecEncoder *alec_encoder_new_with_checksum(void);
  * Create a new ALEC encoder with a custom configuration.
  *
  * Mirrors the Milesight integration requirements: the caller specifies
- * `history_size`, `max_patterns`, `max_memory_bytes`, `keyframe_interval`
- * and `smart_resync`. See `AlecEncoderConfig` for defaults.
+ * `history_size`, `max_patterns`, `max_memory_bytes`, `keyframe_interval`,
+ * `smart_resync` and (v1.3.9+) `num_channels`. See `AlecEncoderConfig`
+ * for defaults.
  *
  * # Arguments
  *
  * * `config` - Pointer to an `AlecEncoderConfig`. If NULL, all defaults
  *   are used. Numeric fields set to 0 are replaced by their default
- *   (except `keyframe_interval`, where 0 disables periodic keyframes).
+ *   (except `keyframe_interval`, where 0 disables periodic keyframes,
+ *   and `num_channels`, where 0 disables the v1.3.9 pre-warm).
+ *
+ * # v1.3.9 pre-warm
+ *
+ * If `config.num_channels > 0`, one `SourceStats` entry is pre-allocated
+ * per channel (ids `1..=num_channels`) at encoder-creation time. This
+ * moves per-channel heap allocations out of the hot encode path and
+ * prevents OOM panics on MCUs with a partially-consumed heap at
+ * firmware init. Recommended for all fixed-channel MCU deployments.
  *
  * # Returns
  *
@@ -445,13 +482,34 @@ enum AlecResult alec_encoder_context_save(const struct AlecEncoder *enc,
  * Restore encoder state from bytes produced by `alec_encoder_context_save`.
  *
  * On success the encoder's `context`, `sequence`, `force_keyframe_pending`
- * and `messages_since_keyframe` are all overwritten atomically. Static
- * configuration (`keyframe_interval`, `smart_resync`, checksum flag) is
- * preserved — those are properties of the encoder instance, not of the
- * transient runtime state.
+ * and `messages_since_keyframe` are all overwritten. Static
+ * configuration (`keyframe_interval`, `smart_resync`, checksum flag)
+ * is preserved — those are properties of the encoder instance, not
+ * of the transient runtime state.
  *
- * On `ALEC_ERROR_CORRUPT_DATA` the encoder is NOT modified (all-or-
- * nothing contract — a corrupted restore leaves you free to retry).
+ * # State transitions (v1.3.9)
+ *
+ * On a tight-heap MCU, building the new `Context` while the old one
+ * is still alive briefly needs ~2× the per-instance heap — enough to
+ * blow a 4 KB allocator. v1.3.9 trades the previous all-or-nothing
+ * contract for a heap-safe three-phase restore:
+ *
+ * 1. **Pre-validate** the input buffer without any allocation
+ *    (magic, version, header xxh64, ALCS magic/CRC). If anything
+ *    fails here → return `ALEC_ERROR_CORRUPT_DATA`, encoder
+ *    **unchanged** (old contract preserved for the common
+ *    caller-error case — wrong magic, CRC mismatch, truncation,
+ *    etc.).
+ * 2. **Free** the old Context by replacing it with a fresh empty
+ *    `Context`. Peak heap now drops back to ~1 × Context.
+ * 3. **Rebuild** the new Context from the input buffer. Peak heap
+ *    is now ~1 × Context (new) instead of ~2 × (old + new). If the
+ *    inner `from_preload_bytes` still fails for some reason that
+ *    the pre-validator didn't catch (structural inconsistency
+ *    between advertised counts and inner section lengths), the
+ *    encoder ends up in a *freshly reset* state. This is the
+ *    single behavioural change vs v1.3.8 and is documented under
+ *    `ALEC_ERROR_CORRUPT_DATA` below.
  *
  * # Arguments
  *
@@ -463,9 +521,16 @@ enum AlecResult alec_encoder_context_save(const struct AlecEncoder *enc,
  *
  * * `ALEC_OK` on success.
  * * `ALEC_ERROR_NULL_POINTER` for a NULL required pointer.
- * * `ALEC_ERROR_CORRUPT_DATA` if `buf` cannot be parsed (bad magic,
- *   unknown format version, header xxh64 mismatch, length mismatch,
- *   or malformed ALCS payload).
+ * * `ALEC_ERROR_CORRUPT_DATA` if `buf` cannot be parsed.
+ *   * If the pre-validator rejects the buffer (bad magic, unknown
+ *     format version, header xxh64 mismatch, length mismatch,
+ *     ALCS CRC mismatch): the encoder is **unchanged**.
+ *   * If the outer validation succeeded but the inner
+ *     `from_preload_bytes` fails (rare, implies a CRC-valid but
+ *     structurally inconsistent buffer): the encoder is left in a
+ *     **freshly reset state** — not the old state, not corrupted.
+ *     Callers can safely `alec_force_keyframe` + resume encoding;
+ *     the decoder will resync on the next keyframe.
  */
 enum AlecResult alec_encoder_context_load(struct AlecEncoder *enc,
                                           const uint8_t *buf,
