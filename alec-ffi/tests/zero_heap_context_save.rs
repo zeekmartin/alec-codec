@@ -55,6 +55,7 @@ fn partner_cfg() -> AlecEncoderConfig {
         max_memory_bytes: 2048,
         keyframe_interval: 30,
         smart_resync: true,
+        num_channels: 0,
     }
 }
 

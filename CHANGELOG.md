@@ -17,10 +17,28 @@ et ce projet adhère au [Semantic Versioning](https://semver.org/lang/fr/).
   running on Cortex-M4 with a 4 KB heap and an encoder that had
   accumulated ~50+ patterns. API unchanged, wire format byte-identical
   to v1.3.8.
-- `alec_encoder_context_load()`: no temporary heap was found in the
-  load path during the v1.3.9 audit (only the persistent state of the
-  restored Context is allocated, which is unavoidable). No change
-  needed there.
+- `alec_encoder_context_load()`: eliminated the peak ~2× Context
+  heap that the v1.3.8 path briefly required while the new Context
+  was being built with the old one still alive. The v1.3.9 path
+  is now three-phase:
+  1. Pre-validate the input (magic, version, length, ALCS CRC) with
+     **zero heap allocations** — the new `Context::validate_preload_header`.
+  2. Free the old Context (drop-in-place).
+  3. Build the new Context from the pre-validated buffer.
+  Peak heap during the load is now ~1× Context instead of ~2×.
+  For common caller-error failure modes (bad magic, bad CRC,
+  truncation) the encoder's existing state is still preserved
+  (Phase 1 rejects before Phase 2 frees anything). See the
+  `alec_encoder_context_load` doc-comment for the exact error
+  semantics around the rarer Phase-3 failure mode.
+- Bootstrap OOM on first `alec_encode_multi_fixed()` (Q4):
+  `AlecEncoderConfig` gained a new `num_channels` field. When > 0,
+  `alec_encoder_new_with_config()` pre-allocates the per-channel
+  `SourceStats` entries immediately, moving all allocation off the
+  hot encode path. Partner firmwares on ≤ 4 KB heap can now
+  initialise the encoder once at boot and be guaranteed that
+  subsequent `alec_encode_multi_fixed()` calls are zero-heap. Set
+  `num_channels = 5` for the Milesight EM500-CO2.
 
 ### Added
 - `Context::write_preload_bytes(&self, sensor_type, out: &mut [u8])
@@ -29,13 +47,25 @@ et ce projet adhère au [Semantic Versioning](https://semver.org/lang/fr/).
   needed, available }` when `out` is too short, with no partial write.
 - `Context::preload_bytes_len(&self, sensor_type) -> Result<usize>` —
   pre-flight size query so callers can size their static buffer.
+- `Context::validate_preload_header(data: &[u8]) -> bool` — zero-heap
+  pre-flight validator used by `alec_encoder_context_load` to reject
+  corrupt input before freeing the old encoder state.
+- `Context::ensure_source_stats(&mut self, source_id: u32)` —
+  pre-allocation helper for the `num_channels` pre-warm path.
+- `AlecEncoderConfig.num_channels` (new public field, default `0`) —
+  if set to N > 0 at encoder-creation time, N `SourceStats` entries
+  are pre-allocated so the first `alec_encode_multi_fixed` is
+  zero-heap. Clamped to 0 for values above 64.
 - Integration tests:
-  `alec-ffi/tests/zero_heap_context_save.rs` (6 tests covering the
-  partner scenario, byte-identity with v1.3.8, buffer-too-small,
-  max-patterns stress, FFI round-trip, NULL safety) and
-  `alec-ffi/tests/zero_heap_allocator_proof.rs` (empirical proof via
-  a counting global allocator that the save call performs zero heap
-  allocations).
+  `alec-ffi/tests/zero_heap_context_save.rs` (6 tests),
+  `alec-ffi/tests/encoder_context_buffer.rs` (existing v1.3.7 tests),
+  `alec-ffi/tests/context_load_safety.rs` (5 new semantic tests for
+  Q1 CRC-before-drop, garbage rejection, short-input rejection,
+  pre-warm wire-byte identity, `num_channels` clamping), and
+  `alec-ffi/tests/zero_heap_allocator_proof.rs` (4 allocator-proof
+  tests via a per-thread counting `#[global_allocator]`: save is
+  zero-heap, load peak ≤ ~1× Context, first-encode-with-prewarm is
+  zero-heap, and no-prewarm backward compatibility).
 
 ### Changed
 - `Context::to_preload_bytes(&self, sensor_type)` is now a thin

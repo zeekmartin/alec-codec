@@ -46,6 +46,7 @@ fn cfg(keyframe_interval: u32) -> AlecEncoderConfig {
         max_memory_bytes: 0,
         keyframe_interval,
         smart_resync: true,
+        num_channels: 0,
     }
 }
 

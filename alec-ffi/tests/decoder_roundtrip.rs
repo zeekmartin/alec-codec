@@ -60,6 +60,7 @@ fn matched_pair(keyframe_interval: u32) -> (*mut AlecEncoder, *mut AlecDecoder) 
         max_memory_bytes: 0,
         keyframe_interval,
         smart_resync: true,
+        num_channels: 0,
     };
     let enc = alec_encoder_new_with_config(&cfg);
     let dec = alec_decoder_new_with_config(&cfg);
@@ -453,6 +454,7 @@ fn reset_clears_state() {
         max_memory_bytes: 0,
         keyframe_interval: 10_000,
         smart_resync: false,
+        num_channels: 0,
     };
     let fresh_enc = alec_encoder_new_with_config(&cfg);
 

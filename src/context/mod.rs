@@ -606,6 +606,31 @@ impl Context {
     }
 
     /// Observe a new data point (update statistics and trigger evolution)
+    /// Pre-allocate a `SourceStats` entry for the given `source_id`
+    /// without recording any observation. No-op if an entry already
+    /// exists.
+    ///
+    /// Intended to be called at encoder-creation time for targets with
+    /// tight heap budgets (Cortex-M MCUs): moving the per-channel
+    /// allocation out of the first `encode_multi_fixed` call avoids
+    /// OOM panics on heaps that may have been partially consumed by
+    /// the integrator's application between init and first encode.
+    ///
+    /// Allocates:
+    /// * one `BTreeMap`-node (on `no_std`) / `HashMap`-bucket (on
+    ///   `std`) entry if the key is new.
+    /// * one `Vec<f64>` with capacity `config.history_size` (length 0).
+    ///
+    /// Does NOT update `version` or `observation_count` — this is a
+    /// pure warm-up and does not count as an observation.
+    pub fn ensure_source_stats(&mut self, source_id: u32) {
+        let ema_alpha = self.config.ema_alpha;
+        let history_size = self.config.history_size;
+        self.source_stats
+            .entry(source_id)
+            .or_insert_with(|| SourceStats::new(history_size, ema_alpha));
+    }
+
     pub fn observe(&mut self, data: &RawData) {
         self.observation_count += 1;
 
@@ -1254,6 +1279,54 @@ impl Context {
 
         debug_assert_eq!(w, needed);
         Ok(w)
+    }
+
+    /// Zero-heap pre-flight validator for an ALCS preload buffer.
+    ///
+    /// Checks the fixed-position header fields (magic, format version,
+    /// minimum length, CRC32 over the payload) without allocating or
+    /// building any `Context`. Intended for
+    /// `alec_encoder_context_load` which needs to reject corrupt
+    /// input **before** freeing the old encoder context — otherwise
+    /// the new `from_preload_bytes` build would briefly require
+    /// ~2× the Context's heap footprint, crashing on a 4 KB Cortex-M.
+    ///
+    /// Returns `true` iff `data` is a well-formed ALCS buffer whose
+    /// CRC matches its contents. A `true` result does **not**
+    /// guarantee that `from_preload_bytes` will succeed (the inner
+    /// sections could still be truncated or inconsistent) — it only
+    /// proves that the buffer is not obviously corrupt and that the
+    /// CRC-protected bytes agree with the CRC trailer.
+    pub fn validate_preload_header(data: &[u8]) -> bool {
+        // Minimum: 4 (magic) + 4 (fmt) + 4 (ver) + 4 (scale) + 8 (obs)
+        //        + 4 (next) + 1 (sens_len) + 0 (sens) + 4 (src_count)
+        //        + 4 (dict_count) + 4 (crc) = 41 bytes.
+        if data.len() < 41 {
+            return false;
+        }
+        if &data[..4] != ALCS_MAGIC {
+            return false;
+        }
+        let format_version = u32::from_le_bytes([data[4], data[5], data[6], data[7]]);
+        if format_version != ALCS_FORMAT_VERSION {
+            return false;
+        }
+
+        // CRC32 is the LAST 4 bytes of the buffer.
+        let crc_offset = data.len() - 4;
+        let stored_crc = u32::from_le_bytes([
+            data[crc_offset],
+            data[crc_offset + 1],
+            data[crc_offset + 2],
+            data[crc_offset + 3],
+        ]);
+        // Reuse the same CRC polynomial / parameters as the writer —
+        // the `const` is promoted to rodata on ARM release builds, no
+        // stack copy of the 1 KB lookup table (verified in v1.3.8).
+        use crc::{Crc, CRC_32_ISO_HDLC};
+        const CRC32: Crc<u32> = Crc::<u32>::new(&CRC_32_ISO_HDLC);
+        let computed_crc = CRC32.checksum(&data[..crc_offset]);
+        stored_crc == computed_crc
     }
 
     /// Reconstruct a context from bytes produced by `to_preload_bytes`.

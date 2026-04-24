@@ -95,10 +95,12 @@ typedef enum {
  *   - max_memory_bytes:   2048
  *   - keyframe_interval:  50
  *   - smart_resync:       true
+ *   - num_channels:       0       (v1.3.9 — disables pre-warm)
  *
  * Pass a NULL pointer to alec_encoder_new_with_config() to use all defaults.
  * Any numeric field set to 0 is also replaced by its default, except
- * keyframe_interval where 0 is a valid value (disables periodic keyframes).
+ * keyframe_interval and num_channels where 0 is a valid value (disables
+ * periodic keyframes / disables the v1.3.9 pre-warm respectively).
  */
 typedef struct AlecEncoderConfig {
     /** Per-source history window size. Default: 20. */
@@ -117,6 +119,27 @@ typedef struct AlecEncoderConfig {
      * (via alec_force_keyframe). Default: true.
      */
     bool smart_resync;
+    /**
+     * **v1.3.9 addition.** Number of fixed channels to pre-allocate at
+     * encoder-creation time. When > 0, alec_encoder_new_with_config()
+     * immediately allocates one SourceStats entry per channel
+     * (ids 1..=num_channels, matching the fixed_channel_source_id
+     * convention), so the first call to alec_encode_multi_fixed()
+     * performs ZERO heap allocations.
+     *
+     * Set to the number of channels your firmware uses (5 for the
+     * Milesight EM500-CO2). 0 disables the pre-warm and keeps the
+     * pre-v1.3.9 behaviour — first encode allocates on demand.
+     *
+     * Upper bound: 64. Values > 64 are silently clamped to 0.
+     *
+     * IMPORTANT: for constrained-heap MCUs (≤ 8 KB) set this to the
+     * actual channel count. Allocating per-channel state at init
+     * time — when the heap is guaranteed fresh — prevents OOM panics
+     * during first encode on heaps partially consumed by the
+     * integrator's application.
+     */
+    uint32_t num_channels;
 } AlecEncoderConfig;
 
 /* ============================================================================
