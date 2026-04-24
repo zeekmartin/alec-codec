@@ -7,6 +7,26 @@ et ce projet adhère au [Semantic Versioning](https://semver.org/lang/fr/).
 
 ---
 
+## [1.3.8] — 2026-04-24
+
+### Changed
+- `Context::to_preload_bytes` no longer calls `Vec::sort()` on MCU /
+  `no_std` builds. The on-disk `Map<u32, _>` is already a `BTreeMap`
+  on `no_std` targets, so iteration is pre-sorted; the stdlib's stable
+  sort (driftsort) was pulling in a ~450-byte on-stack scratch frame
+  that could blow a 2–4 KB Cortex-M stack when invoked from
+  `alec_encoder_context_save`. The wire format is byte-identical —
+  both code paths emit source_ids / dictionary codes in ascending
+  order.
+
+### Fixed
+- Stack overflow reported by a customer calling
+  `alec_encoder_context_save()` on a Cortex-M4 device with a 2 KB stack.
+  Worst-case stack depth of the call tree dropped from ~1.4 KB to
+  ~270 B.
+
+---
+
 ## [1.3.7] — 2026-04-23
 
 ### Added

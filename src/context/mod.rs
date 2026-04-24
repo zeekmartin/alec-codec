@@ -28,6 +28,30 @@ type Map<K, V> = std::collections::HashMap<K, V>;
 #[cfg(not(feature = "std"))]
 type Map<K, V> = alloc::collections::BTreeMap<K, V>;
 
+/// Return the `u32` keys of `map` in ascending order.
+///
+/// Exists to keep `Context::to_preload_bytes` off the stdlib sort code
+/// path on MCU targets. Rust's stable sort (driftsort) allocates a
+/// ~450-byte scratch frame regardless of input size, which is a
+/// significant fraction of a 2–4 KB Cortex-M stack. On `no_std` builds
+/// the underlying `Map` is a `BTreeMap` whose `.keys()` is already
+/// sorted, so we return them as-is. On `std` builds the underlying
+/// `HashMap` has random iteration order, so we still sort — host
+/// targets have plenty of stack.
+#[cfg(feature = "std")]
+fn sorted_u32_keys<V>(map: &Map<u32, V>) -> Vec<u32> {
+    let mut keys: Vec<u32> = map.keys().copied().collect();
+    keys.sort();
+    keys
+}
+#[cfg(not(feature = "std"))]
+fn sorted_u32_keys<V>(map: &Map<u32, V>) -> Vec<u32> {
+    // BTreeMap::keys() yields in ascending key order already; a plain
+    // `.collect()` preserves that order and avoids pulling in the
+    // stdlib sort machinery at all.
+    map.keys().copied().collect()
+}
+
 /// Maximum number of patterns in dictionary
 pub const MAX_PATTERNS: usize = 65535;
 
@@ -1002,8 +1026,19 @@ impl Context {
         out.extend_from_slice(sens_bytes);
 
         // Per-source SourceStats, sorted by source_id for determinism.
-        let mut source_ids: Vec<u32> = self.source_stats.keys().copied().collect();
-        source_ids.sort();
+        //
+        // Stack-usage note (MCU): on `#[cfg(not(feature = "std"))]`
+        // builds `Map<u32, _>` is a `BTreeMap` whose `.keys()` iterator
+        // already yields in ascending order, so we skip `.sort()`
+        // entirely. On `std` builds the underlying `HashMap` has
+        // random iteration order and we sort in place — host targets
+        // have plenty of stack.
+        //
+        // This matters because Rust's stable sort (driftsort) allocates
+        // a ~450-byte on-stack scratch frame independently of input
+        // size, which can blow a 2-4 KB Cortex-M stack when
+        // `to_preload_bytes` is called from `alec_encoder_context_save`.
+        let source_ids = sorted_u32_keys(&self.source_stats);
         out.extend_from_slice(&(source_ids.len() as u32).to_le_bytes());
         for sid in &source_ids {
             let s = self.source_stats.get(sid).unwrap();
@@ -1021,9 +1056,9 @@ impl Context {
             }
         }
 
-        // Dictionary, sorted by code for determinism.
-        let mut codes: Vec<u32> = self.dictionary.keys().copied().collect();
-        codes.sort();
+        // Dictionary, sorted by code for determinism — same
+        // `sorted_u32_keys` path so the MCU build avoids driftsort.
+        let codes = sorted_u32_keys(&self.dictionary);
         out.extend_from_slice(&(codes.len() as u32).to_le_bytes());
         for code in &codes {
             let p = self.dictionary.get(code).unwrap();
