@@ -340,7 +340,7 @@ pub struct AlecDecoder {
 #[no_mangle]
 pub extern "C" fn alec_version() -> *const c_char {
     // Include null terminator
-    static VERSION: &[u8] = b"1.3.7\0";
+    static VERSION: &[u8] = b"1.3.8\0";
     VERSION.as_ptr() as *const c_char
 }
 
@@ -1930,7 +1930,7 @@ mod tests {
         let version = alec_version();
         assert!(!version.is_null());
         let version_str = unsafe { CStr::from_ptr(version) }.to_str().unwrap();
-        assert_eq!(version_str, "1.3.7");
+        assert_eq!(version_str, "1.3.8");
     }
 
     #[test]
