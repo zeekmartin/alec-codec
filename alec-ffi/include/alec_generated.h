@@ -827,9 +827,9 @@ enum AlecResult alec_decode_multi_fixed(struct AlecDecoder *dec,
  *
  * * `dec`        - Decoder handle.
  * * `values`     - Array of `f64` sensor values, in the same channel
- *                  order the encoder uses.
+ *   order the encoder uses.
  * * `num_values` - Number of values in `values`. Must be in `1..=64`
- *                  (matching `alec_encode_multi_fixed`'s channel cap).
+ *   (matching `alec_encode_multi_fixed`'s channel cap).
  *
  * # Returns
  *
