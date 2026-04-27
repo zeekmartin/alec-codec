@@ -374,7 +374,7 @@ pub struct AlecDecoder {
 #[no_mangle]
 pub extern "C" fn alec_version() -> *const c_char {
     // Include null terminator
-    static VERSION: &[u8] = b"1.3.9\0";
+    static VERSION: &[u8] = b"1.3.10\0";
     VERSION.as_ptr() as *const c_char
 }
 
@@ -1780,6 +1780,122 @@ pub extern "C" fn alec_decode_multi_fixed(
     }
 }
 
+/// Feed raw sensor values into the decoder to advance its prediction
+/// model, **without** an ALEC wire frame.
+///
+/// Use this on the server side when the device sent a legacy TLV
+/// frame (or any non-ALEC wire format) instead of an ALEC frame for
+/// a given uplink — typically because the ALEC-encoded frame would
+/// have exceeded the LoRaWAN payload ceiling and the firmware fell
+/// back to TLV. The encoder advanced its sequence counter, its
+/// `context_version`, and its per-channel prediction state when it
+/// produced the discarded frame; the decoder needs to mirror those
+/// state changes or the next real ALEC frame will be reported as a
+/// sequence gap (and trigger a `reset_to_baseline`).
+///
+/// After this call, the decoder is in the exact same prediction
+/// state as it would be if `alec_decode_multi_fixed` had decoded the
+/// matching ALEC wire bytes. Subsequent ALEC frames decode correctly
+/// without a "gap detected" warning.
+///
+/// # State changes (mirrors `alec_decode_multi_fixed`)
+///
+/// 1. The wire-equivalent sequence (= `last_fixed_sequence + 1`,
+///    matching what the encoder would have written) is recorded —
+///    `alec_decoder_gap_detected` returns `false` after this call.
+/// 2. The wire-equivalent ctx_version (= low 16 bits of the
+///    decoder's CURRENT `context.version`, captured BEFORE the
+///    observe loop) is recorded so a context-version mismatch on
+///    the next real frame is computed against the right baseline.
+/// 3. Each value is fed through `Context::observe` — same loop as
+///    the post-decode path in `alec_decode_multi_fixed`. This
+///    advances `context.version` by `num_values`.
+///
+/// # Arguments
+///
+/// * `dec`        - Decoder handle.
+/// * `values`     - Array of `f64` sensor values, in the same channel
+///   order the encoder uses.
+/// * `num_values` - Number of values in `values`. Must be in `1..=64`
+///   (matching `alec_encode_multi_fixed`'s channel cap).
+///
+/// # Returns
+///
+/// * `ALEC_OK` on success.
+/// * `ALEC_ERROR_NULL_POINTER` if `dec` or `values` is NULL.
+/// * `ALEC_ERROR_INVALID_INPUT` if `num_values == 0` or `num_values > 64`.
+///
+/// # Zero heap
+///
+/// This function performs zero heap allocations once the decoder's
+/// per-channel `SourceStats` entries exist (i.e. after the first
+/// observation per source_id, or after `num_channels` pre-warm at
+/// `alec_decoder_new_with_config` time).
+#[cfg(feature = "decoder")]
+#[no_mangle]
+pub extern "C" fn alec_decoder_feed_values(
+    dec: *mut AlecDecoder,
+    values: *const f64,
+    num_values: usize,
+) -> AlecResult {
+    if dec.is_null() || values.is_null() {
+        return AlecResult::ErrorNullPointer;
+    }
+    // Match the encoder's `Encoder::encode_multi_fixed` cap of 64
+    // channels. Reject 0 (no-op) and >64 (out of wire-format range)
+    // up front — same shape as `alec_encode_multi_fixed`.
+    if num_values == 0 || num_values > 64 {
+        return AlecResult::ErrorInvalidInput;
+    }
+
+    let d = unsafe { &mut *dec };
+    let values_slice = unsafe { slice::from_raw_parts(values, num_values) };
+
+    // Step 1: capture the wire-equivalent ctx_ver BEFORE observing.
+    // The encoder writes `(context.version & 0xFFFF) as u16` into the
+    // CompactHeader BEFORE its post-encode observe loop; we mirror
+    // that exactly so a future real frame's ctx_ver-mismatch check
+    // sees the same value the encoder will write.
+    let wire_ctx_ver = (d.context.context_version() & 0xFFFF) as u16;
+
+    // Step 2: compute the wire-equivalent sequence. The encoder
+    // increments its `Encoder::sequence` once per encode call; the
+    // wire seq is the pre-increment value. The decoder's
+    // `last_fixed_sequence` records what wire seq it last saw; the
+    // next frame (real or "ghost") would be `last + 1`. None means
+    // "no frame yet" — the encoder's first wire seq is 0, so we use
+    // u16::MAX so wrapping_add(1) lands on 0.
+    let wire_seq = d
+        .decoder
+        .last_fixed_sequence()
+        .unwrap_or(u16::MAX)
+        .wrapping_add(1);
+
+    // Step 3: advance the alec::Decoder's fixed-path trackers. This
+    // is the only place we need a setter on the inner Decoder —
+    // `Decoder::record_fixed_frame` was added in v1.3.10 for exactly
+    // this use case.
+    d.decoder.record_fixed_frame(wire_seq, wire_ctx_ver);
+
+    // Step 4: FFI-layer trackers — mirror the post-decode bookkeeping
+    // in `alec_decode_multi_fixed`. By construction `feed_values` is
+    // the lockstep path (no gap, no version mismatch), so gap_size = 0.
+    d.last_header_sequence = Some(wire_seq);
+    d.last_gap_size = 0;
+
+    // Step 5: per-channel observe — same loop as the post-decode
+    // path. Each `observe` increments `context.version` by 1; after
+    // `num_values` observes the decoder's context.version has
+    // advanced by exactly the same amount the encoder's did when it
+    // produced the discarded frame.
+    for (i, &v) in values_slice.iter().enumerate() {
+        let rd = RawData::with_source(fixed_channel_source_id(i), v, 0);
+        d.context.observe(&rd);
+    }
+
+    AlecResult::Ok
+}
+
 // ============================================================================
 // Bloc D — Context persistence FFI
 //
@@ -2064,7 +2180,7 @@ mod tests {
         let version = alec_version();
         assert!(!version.is_null());
         let version_str = unsafe { CStr::from_ptr(version) }.to_str().unwrap();
-        assert_eq!(version_str, "1.3.9");
+        assert_eq!(version_str, "1.3.10");
     }
 
     #[test]

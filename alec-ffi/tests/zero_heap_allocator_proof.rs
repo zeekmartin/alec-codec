@@ -34,6 +34,7 @@ use std::sync::atomic::{AtomicIsize, AtomicU64, AtomicUsize, Ordering};
 use std::sync::{Mutex, MutexGuard};
 
 use alec_ffi::{
+    alec_decoder_feed_values, alec_decoder_free, alec_decoder_new_with_config,
     alec_encode_multi_fixed, alec_encoder_context_load, alec_encoder_context_save,
     alec_encoder_free, alec_encoder_new_with_config, AlecEncoderConfig, AlecResult,
 };
@@ -384,4 +385,46 @@ fn alec_encode_multi_fixed_without_prewarm_still_works() {
     encode_one(enc, &STABLE_ROW);
 
     alec_encoder_free(enc);
+}
+
+// ---------------------------------------------------------------------------
+// v1.3.10 — alec_decoder_feed_values is zero-heap.
+//
+// The partner's TLV-fallback flow calls feed_values once per
+// "discarded ALEC frame" — frequently, on every uplink that exceeded
+// the LoRaWAN ceiling. It must be zero-heap on a warmed-up decoder.
+// We pre-warm via num_channels = 5 so the per-channel SourceStats
+// + Vec<f64; 20> live on the heap from `alec_decoder_new_with_config`.
+// ---------------------------------------------------------------------------
+
+#[test]
+fn alec_decoder_feed_values_is_zero_heap() {
+    let _guard = tracker_lock();
+    let dec = alec_decoder_new_with_config(&partner_cfg_prewarmed());
+
+    // Warm the decoder: the very first feed_values still has to
+    // touch the per-channel state (history.push grows up to
+    // capacity), but those allocations were paid up front by the
+    // pre-warm. After the first call the source_stats Vecs are
+    // already at their full max_history capacity, so subsequent
+    // observes never reallocate.
+    let row = [1.0_f64, 268.0, 120.0, 900.0, 10_100.0];
+    for _ in 0..30 {
+        let _ = alec_decoder_feed_values(dec, row.as_ptr(), row.len());
+    }
+
+    // Now arm the tracker. Subsequent feed_values must allocate
+    // exactly zero bytes.
+    arm();
+    let r = alec_decoder_feed_values(dec, row.as_ptr(), row.len());
+    let (bytes, calls, _peak) = disarm();
+    assert_eq!(r, AlecResult::Ok);
+    assert_eq!(
+        calls, 0,
+        "alec_decoder_feed_values allocated {calls} times ({bytes} B) — \
+         expected 0 on a warmed decoder"
+    );
+    assert_eq!(bytes, 0);
+
+    alec_decoder_free(dec);
 }

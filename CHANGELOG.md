@@ -7,6 +7,43 @@ et ce projet adhère au [Semantic Versioning](https://semver.org/lang/fr/).
 
 ---
 
+## [1.3.10] — 2026-04-25
+
+### Added
+- `alec_decoder_feed_values()` — advance the decoder's prediction
+  model using raw sensor values, **without** an ALEC wire frame.
+  Designed for the partner's "Option C" firmware pattern: when an
+  ALEC-encoded frame would have exceeded the LoRaWAN payload
+  ceiling the firmware sends a legacy TLV frame instead, and the
+  server-side decoder calls `feed_values` with the TLV-decoded raw
+  values to keep its prediction model in lockstep with the encoder.
+  Subsequent ALEC frames decode without spurious gap-detection.
+  Zero heap on a warmed (or pre-warmed) decoder. Gated behind the
+  `decoder` feature, so it is absent from the MCU/zephyr build.
+- `Decoder::record_fixed_frame(seq, ctx_ver)` (alec crate) —
+  internal setter used by `alec_decoder_feed_values` to advance
+  `last_fixed_sequence` / `last_fixed_ctx_version` without a wire
+  frame.
+- Integration tests `alec-ffi/tests/decoder_feed_values.rs`
+  (6 tests: encoder-state lockstep, mixed ALEC + TLV simulation,
+  sequence continuity / no-gap, post-keyframe behaviour, error
+  handling, fresh-decoder first-frame-is-TLV) and
+  `alec-ffi/tests/zero_heap_allocator_proof.rs::alec_decoder_feed_values_is_zero_heap`
+  (counting-allocator proof of zero-heap on a warmed decoder).
+
+### Notes
+- Wire format unchanged. `alec_encoder_context_save` / `_load`
+  unchanged. Encoder path unchanged.
+- `feed_values` observes the **raw** input values (matching the
+  encoder's own observe loop). A decoder that mixes
+  `decode_multi_fixed` with `feed_values` therefore has *better*
+  reconstruction quality across feed_values calls than a pure-ALEC
+  decoder, because feed_values resets the decoder's prediction state
+  to match the encoder's exactly (no f32-quantisation drift on the
+  TLV-fallback frames).
+
+---
+
 ## [1.3.9] — 2026-04-24
 
 ### Fixed
