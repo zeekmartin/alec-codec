@@ -519,6 +519,26 @@ impl Decoder {
         self.last_fixed_sequence
     }
 
+    /// Manually advance the fixed-path sequence and context-version
+    /// trackers as if `decode_multi_fixed` had just run on a frame
+    /// carrying the supplied wire-header values.
+    ///
+    /// Used by the v1.3.10 FFI `alec_decoder_feed_values` path so the
+    /// server side can keep its decoder synchronised with the encoder
+    /// when the device sent a legacy TLV frame instead of an ALEC
+    /// frame (the encoder still advanced its sequence + ctx_version
+    /// for the discarded frame; the decoder needs to do the same to
+    /// avoid spurious gap-detection on the next real ALEC frame).
+    ///
+    /// Note: this does NOT touch the per-channel prediction state —
+    /// the caller is responsible for `Context::observe`-ing each
+    /// value, mirroring the post-decode loop in
+    /// `alec_decode_multi_fixed`.
+    pub fn record_fixed_frame(&mut self, sequence: u16, context_version: u16) {
+        self.last_fixed_sequence = Some(sequence);
+        self.last_fixed_ctx_version = Some(context_version);
+    }
+
     // ========================================================================
     // Bloc B — Compact fixed-channel decoder (Milesight EM500-CO2)
     // ========================================================================

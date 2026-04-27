@@ -695,6 +695,55 @@ AlecResult alec_decode_multi_fixed(
 );
 
 /**
+ * Feed raw sensor values into the decoder to advance its prediction model,
+ * **without** an ALEC wire frame.
+ *
+ * Use this on the server side when the device sent a legacy TLV frame
+ * (or any non-ALEC wire format) instead of an ALEC frame for a given
+ * uplink — typically because the ALEC-encoded frame would have exceeded
+ * the LoRaWAN payload ceiling and the firmware fell back to TLV. The
+ * encoder advanced its sequence counter, its context_version, and its
+ * per-channel prediction state when it produced the discarded frame;
+ * the decoder needs to mirror those state changes or the next real
+ * ALEC frame will be reported as a sequence gap (and trigger a
+ * `reset_to_baseline`).
+ *
+ * After this call, the decoder is in the exact same prediction state
+ * as it would be if alec_decode_multi_fixed() had decoded the matching
+ * ALEC wire bytes. Subsequent ALEC frames decode correctly without a
+ * "gap detected" warning.
+ *
+ * State changes (mirror alec_decode_multi_fixed):
+ *   1. The wire-equivalent sequence is recorded —
+ *      alec_decoder_gap_detected() returns false after this call.
+ *   2. The wire-equivalent ctx_version (low 16 bits of the decoder's
+ *      CURRENT context.version, captured BEFORE the observe loop) is
+ *      recorded so a context-version mismatch on the next real frame
+ *      is computed against the right baseline.
+ *   3. Each value is fed through the per-channel observe path,
+ *      advancing context.version by num_values.
+ *
+ * Zero heap allocations once the decoder's per-channel SourceStats
+ * entries exist (i.e. after the first observation per source_id, or
+ * after `num_channels` pre-warm at alec_decoder_new_with_config time).
+ *
+ * @param dec        Decoder handle.
+ * @param values     Array of f64 sensor values, in the same channel order
+ *                   the encoder uses.
+ * @param num_values Number of values in `values`. Must be in 1..=64
+ *                   (matching alec_encode_multi_fixed's channel cap).
+ *
+ * @return ALEC_OK on success;
+ *         ALEC_ERROR_NULL_POINTER if `dec` or `values` is NULL;
+ *         ALEC_ERROR_INVALID_INPUT if `num_values == 0` or `> 64`.
+ */
+AlecResult alec_decoder_feed_values(
+    AlecDecoder* dec,
+    const double* values,
+    size_t num_values
+);
+
+/**
  * Check whether the most recent decode detected a sequence gap.
  *
  * The server-side sidecar uses this to decide whether to issue a resync
